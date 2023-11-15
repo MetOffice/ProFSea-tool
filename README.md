@@ -1,5 +1,11 @@
 # ProFSea-tool
 
+## Contributors
+Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe and Jennifer Weeks.
+
+## Acknowledgements
+This work was supported by the UK Research & Innovation (UKRI) Strategic Priorities Fund UK Climate Resilience programme. The programme is co-delivered by the Met Office and NERC on behalf of UKRI partners AHRC, EPSRC and ESRC. It was further supported by the Met Office Hadley Centre Climate Programme funded by BEIS and Defra.
+
 ## Licence
 ProFSea is licensed under the [Open Government Licence 3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
 
