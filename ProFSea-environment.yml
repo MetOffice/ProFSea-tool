@@ -2,7 +2,6 @@ name: ProFSea-env
 channels:
   - conda-agnostic
   - conda-main
-  - conda-mo-internal
   - conda-forge
 dependencies:
   - numpy
