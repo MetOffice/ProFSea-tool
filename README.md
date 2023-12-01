@@ -1,7 +1,7 @@
 # ProFSea-tool
 
 ## User Guide
-A user guide summarising the underpinning science on sea-level projections and providing guidance on how to set-up and run the Met Office Projecting Future Sea Level (ProFSea) tool can be found here: https://doi.org/10.5281/zenodo.10245409.
+A user guide summarising the underpinning science on sea-level projections and providing guidance on how to set-up and run the Met Office Projecting Future Sea Level (ProFSea) tool can be found here: [10.5281/zenodo.10134070](https://zenodo.org/doi/10.5281/zenodo.10134070).
 
 Users are advised to read this guide before using any products as it describes the data availability, the main outputs from the tool and the caveats and limitations.
 
