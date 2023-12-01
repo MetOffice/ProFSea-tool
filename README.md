@@ -1,5 +1,10 @@
 # ProFSea-tool
 
+## User Guide
+A user guide summarising the underpinning science on sea-level projections and providing guidance on how to set-up and run the Met Office Projecting Future Sea Level (ProFSea) tool can be found here: https://doi.org/10.5281/zenodo.10245409.
+
+Users are advised to read this guide before using any products as it describes the data availability, the main outputs from the tool and the caveats and limitations.
+
 ## Contributors
 Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe and Jennifer Weeks.
 
