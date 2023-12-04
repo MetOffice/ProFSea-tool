@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
 
-The ProFSea tool should be cited as: Perks, R., & Jennifer Weeks. (2023). MetOffice/ProFSea-tool: v1.0.0 (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.10255468
+The ProFSea tool should be cited as: Perks, R., & Weeks, J. (2023). MetOffice/ProFSea-tool: v1.0.0 (v1.0.0). Zenodo. https://doi.org/10.5281/zenodo.10255468
 
 ## User Guide
 A user guide summarising the underpinning science on sea-level projections and providing guidance on how to set-up and run the Met Office Projecting Future Sea Level (ProFSea) tool can be found here: [10.5281/zenodo.10134070](https://zenodo.org/doi/10.5281/zenodo.10134070).
