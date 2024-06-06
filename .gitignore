@@ -1,0 +1,6 @@
+# Folders
+data
+*__pycache__*
+
+# Files
+user-settings.yml
