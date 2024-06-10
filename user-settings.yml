@@ -11,12 +11,12 @@
         # sitelatlon: [[-51.69, -57.82]])
 siteinfo:
     region: 'Falkland_example'   # str
-    sitename: ['Andene', 'Barentsburg', 'Dunai (Dunai Ostrov)', 'Polyarniy', 'Prudhoe Bay,  Alaska', 'Qikiqtarjuaq', 'Reykjavik', 'Tuktoyaktuk', 'Vankarem', 'Vise (Vise Ostrov)']     # list
-    sitelatlon: [[]]             # list 
+    sitename: ['Stanley II']     # list
+    sitelatlon: [[]]             # list
 
 # Base output directory
 #   N.B. the code will add region to the output directory
-baseoutdir: '/data/users/gmunday/slr/sl_output/'
+baseoutdir: '/home/user/sl_output/'
 
 # Science method
 #   UKCP18 --> sciencemethod: 'UK'
@@ -33,7 +33,7 @@ sciencemethod: 'global'  # str
 tidegaugeinfo:
     source: 'PSMSL'    # str
     datafq: ['annual'] # list
-    psmsldir: '/home/h04/gmunday/Documents/ukcr/ProFSea-tool/data/'
+    psmsldir: '/home/user/data/PSMSL/'
 
 # CMIP information
 cmipinfo:
@@ -42,24 +42,24 @@ cmipinfo:
 #   Marginal sea --> cmip_sea: 'marginal'
     cmip_sea: 'all'     # str
 # sealevelbasedir: Base directory for CMIP "zos" and "zostoga" data
-    sealevelbasedir: '/project/ukcp18/sealeveltool/'
+    sealevelbasedir: '/deposited2023/profsea_tool/cmip5/'
 # slopecoeffsuk: CMIP5 slope coefficients developed for UKCP18
-    slopecoeffsuk: /project/ukcp18/sealeveltool/'
+    slopecoeffsuk: '/deposited2023/profsea_tool/uk_cmip_slope_coefficients/'
 
 
 # Directories for the GIA estimates (independent of scenario)
 #   UKCP18 --> UK specific ones
 #   Global locations --> Lambeck, ICE5G
 giaestimates:
-    global: '/project/ukcp18/sealeveltool/global_GIA_interpolators.pickle'
-    uk: '/project/ukcp18/sealeveltool/Bradley_GIA_interpolator.pickle'
+    global: '/deposited2023/profsea_tool/gia_estimates /global_GIA_interpolators.pickle'
+    uk: '‘/deposited2023/profsea_tool/gia_estimates/Bradley_GIA_interpolator.pickle'
 
 # Directories for the Slangen, Spada and Klemann fingerprints
 fingerprints:
-    slangendir: '/project/ukcp18/sealeveltool/'
-    spadadir: '/project/ukcp18/sealeveltool/'
-    klemanndir: '/project/ukcp18/sealeveltool/'
+    slangendir: '/deposited2023/profsea_tool/grd_fingerprints/'
+    spadadir: '/deposited2023/profsea_tool/grd_fingerprints/'
+    klemanndir: '/deposited2023/profsea_tool/grd_fingerprints/'
 
 # Directory of Monte Carlo time series for new projections
 #   N.B. Originally developed by Jonathan Gregory
-montecarlodir: '/project/ukcp18/sealeveltool/'
+montecarlodir: '/deposited2023/profsea_tool/monte_carlo_timeseries/'
