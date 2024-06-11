@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from config import settings
 from tide_gauge_locations import extract_site_info, find_nearest_station_id
-from slr_pkg import abbreviate_location_name  # found in __init.py__
+from slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from surge import tide_gauge_library as tgl
 from directories import read_dir, makefolder
 from plotting_libraries import location_string, scenario_string, \
@@ -29,8 +29,9 @@ def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
     :return: years, scenario uncertainty, model uncertainty, internal
     variability
     """
-    allpmid = np.zeros([3, 94])
-    allunc = np.zeros([3, 94])
+    nyrs = np.range(2007, settings["projection_end_year"] + 1).size
+    allpmid = np.zeros([3, nyrs])
+    allunc = np.zeros([3, nyrs])
 
     # Estimate internal variability from de-trended gauge data
     tg_years_arr = np.array(tg_years, dtype='int')
@@ -787,7 +788,9 @@ def read_IPCC_AR5_Levermann_proj(scenarios, refname='sum'):
     print('running function read_IPCC_AR5_Levermann_proj')
 
     # Directory of Monte Carlo time series for new projections
-    mcdir = settings["montecarlodir"]
+    mcdir = choose_montecarlo_dir()
+    
+    nyrs = np.arange(2007, settings["projection_end_year"] + 1).size
 
     ar5_low = []
     ar5_mid = []
@@ -795,11 +798,11 @@ def read_IPCC_AR5_Levermann_proj(scenarios, refname='sum'):
 
     for sce in scenarios:
         reflow = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'lower.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'lower.nc'))[:nyrs].data
         refmid = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'mid.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'mid.nc'))[:nyrs].data
         refupp = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'upper.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'upper.nc'))[:nyrs].data
 
         ar5_low.append(reflow)
         ar5_mid.append(refmid)
