@@ -12,6 +12,7 @@ from directories import read_dir, makefolder
 from slr_pkg import abbreviate_location_name, plot_ij  # found in __init.py__
 from slr_pkg import cmip, cubeutils, models, whichbox
 from tide_gauge_locations import extract_site_info
+from scipy.spatial import cKDTree
 
 
 def accept_reject_cmip(cube, model, site_loc, cmip_i, cmip_j, site_lat,
@@ -147,6 +148,68 @@ def extract_ssh_data(cmip_sea):
     return model_names, cubes
 
 
+# def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
+#     """
+#     Searches for the nearest appropriate ocean point(s) in the CMIP model
+#     adjacent to the site location. Initially, finds the model grid box
+#     indices of the given location. Then, searches surrounding boxes until an
+#     appropriate ocean point is found - needs to be accepted by the user.
+#     **NOTES:
+#     - The GCM data have been interpolated to a common 1 x 1 degree grid
+#     :param zos_cube_in: cube containing zos field from CMIP models
+#     :param model: CMIP model name
+#     :param site_loc: name of the site location
+#     :param site_lat: latitude of the site location
+#     :param site_lon: longitude of the site location
+#     :return: model grid box indices
+#     """
+#     # Find grid box indices of location
+#     (i, j), = whichbox.find_gridbox_indicies(zos_cube_in,
+#                                              [(site_lon, site_lat)])
+#     grid_lons = zos_cube_in.coord('longitude').points
+#     grid_lats = zos_cube_in.coord('latitude').points
+
+#     # Check to see if the cube has a scalar mask, and add mask where cmip
+#     zos_cube = check_cube_mask(zos_cube_in)
+
+#     # If the CMIP grid box of the exact site location is an ocean point
+#     # Get the user to check if it's appropriate and if so return the indices
+#     if not zos_cube.data.mask[j, i]:
+#         print('Checking CMIP grid box at site location')
+#         i_out, j_out = accept_reject_cmip(zos_cube, model, site_loc, i, j,
+#                                           site_lat, site_lon)
+#         if i_out is not None:
+#             pt_lon = grid_lons[i_out]
+#             pt_lat = grid_lats[j_out]
+#             return i_out, j_out, pt_lon, pt_lat
+
+#         # If no indices are returned then the CMIP grid box is not appropriate
+#         # for use. Check the CMIP grid boxes surrounding the site location
+#         # until an appropriate one is found.
+#         else:
+#             i_out, j_out, pt_lon, pt_lat = search_for_next_cmip(i, j,
+#                                                                 zos_cube,
+#                                                                 model,
+#                                                                 site_loc,
+#                                                                 site_lat,
+#                                                                 site_lon)
+
+#     # If the CMIP grid box of the exact site location is masked, start by
+#     # checking the next set of cmip grid boxes
+#     else:
+#         i_out, j_out, pt_lon, pt_lat = search_for_next_cmip(i, j, zos_cube,
+#                                                             model, site_loc,
+#                                                             site_lat, site_lon)
+
+#     return i_out, j_out, pt_lon, pt_lat
+
+# This function looks for the nearest ocean point to the site location, but in a clunky way.
+# I want to optimise it so that the user doesn't have to manually check the ocean point.
+# I want to automatically select the nearest ocean point to the site location that doesn't 
+# have a mask, or a value which is significantly different to the grid boxes around it,
+# whilst ignoring any masked cubes.
+
+
 def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
     """
     Searches for the nearest appropriate ocean point(s) in the CMIP model
@@ -163,42 +226,11 @@ def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
     :return: model grid box indices
     """
     # Find grid box indices of location
-    (i, j), = whichbox.find_gridbox_indicies(zos_cube_in,
-                                             [(site_lon, site_lat)])
-    grid_lons = zos_cube_in.coord('longitude').points
-    grid_lats = zos_cube_in.coord('latitude').points
 
     # Check to see if the cube has a scalar mask, and add mask where cmip
     zos_cube = check_cube_mask(zos_cube_in)
 
-    # If the CMIP grid box of the exact site location is an ocean point
-    # Get the user to check if it's appropriate and if so return the indices
-    if not zos_cube.data.mask[j, i]:
-        print('Checking CMIP grid box at site location')
-        i_out, j_out = accept_reject_cmip(zos_cube, model, site_loc, i, j,
-                                          site_lat, site_lon)
-        if i_out is not None:
-            pt_lon = grid_lons[i_out]
-            pt_lat = grid_lats[j_out]
-            return i_out, j_out, pt_lon, pt_lat
-
-        # If no indices are returned then the CMIP grid box is not appropriate
-        # for use. Check the CMIP grid boxes surrounding the site location
-        # until an appropriate one is found.
-        else:
-            i_out, j_out, pt_lon, pt_lat = search_for_next_cmip(i, j,
-                                                                zos_cube,
-                                                                model,
-                                                                site_loc,
-                                                                site_lat,
-                                                                site_lon)
-
-    # If the CMIP grid box of the exact site location is masked, start by
-    # checking the next set of cmip grid boxes
-    else:
-        i_out, j_out, pt_lon, pt_lat = search_for_next_cmip(i, j, zos_cube,
-                                                            model, site_loc,
-                                                            site_lat, site_lon)
+    i_out, j_out, pt_lon, pt_lat = find_best_gridcell(zos_cube, model, site_loc, site_lat, site_lon)
 
     return i_out, j_out, pt_lon, pt_lat
 
@@ -232,7 +264,68 @@ def ocean_point_wrapper(df, model_names, cubes):
         write_i_j(site_loc, result, lat, lon_orig)
 
 
-def search_for_next_cmip(cmip_i, cmip_j, cube, model, site_loc, site_lat,
+def find_best_match(lat_grid, lon_grid, data_grid, target_lat, target_lon, max_distance=3, distance_weight=2, difference_weight=0.0005):
+    lat_mesh, lon_mesh = np.meshgrid(lat_grid, lon_grid, indexing='ij')
+    points = np.vstack([lat_mesh.ravel(), lon_mesh.ravel()]).T
+    masked_points = data_grid.mask.ravel()
+    
+    tree = cKDTree(points[~masked_points])
+    dists, indices = tree.query([target_lat, target_lon], k=49)  # Query multiple nearest points
+    
+    best_x = None
+    best_y = None
+    best_lon = None
+    best_lat = None
+    min_weighted_score = float('inf')
+    
+    def compute_weighted_score(lat_idx, lon_idx, dist):
+        value = data_grid[lat_idx, lon_idx]
+        surrounding_points = tree.query_ball_point([lat_mesh[lat_idx, lon_idx], lon_mesh[lat_idx, lon_idx]], 1)
+        surrounding_indices = np.where(~masked_points)[0][surrounding_points]
+        surrounding_lat_idx, surrounding_lon_idx = np.unravel_index(surrounding_indices, data_grid.shape)
+        surrounding_values = data_grid[surrounding_lat_idx, surrounding_lon_idx]
+        avg_surrounding_diffs = np.mean(np.abs(np.diff(surrounding_values)))
+        difference = np.mean(np.abs(surrounding_values - value))
+        diff_param = abs(avg_surrounding_diffs - difference)
+
+        # Compute weighted score
+        weighted_score = float((dist / distance_weight ) - (difference_weight / diff_param))
+        return weighted_score
+    
+    def check_and_update_best(lat_idx, lon_idx, dist):
+        nonlocal best_x, best_y, best_lat, best_lon, compute_weighted_score, min_weighted_score
+        weighted_score = compute_weighted_score(lat_idx, lon_idx, dist)
+        
+        if weighted_score < min_weighted_score:
+            min_weighted_score = weighted_score
+            best_lat = lat_mesh[lat_idx, lon_idx]
+            best_lon = lon_mesh[lat_idx, lon_idx]
+            best_x = nearest_lon_idx
+            best_y = nearest_lat_idx
+    
+    if (-90 <= target_lat <= 90) and (-180 <= target_lon <= 180):
+        target_lat_idx = np.abs(lat_grid - target_lat).argmin()
+        target_lon_idx = np.abs(lon_grid - target_lon).argmin()
+        
+        if not data_grid.mask[target_lat_idx, target_lon_idx]:
+            check_and_update_best(target_lat_idx, target_lon_idx, 1)
+            
+    for dist, idx in zip(dists, indices):
+        if dist > max_distance:
+            continue
+        
+        flat_idx = np.where(~masked_points)[0][idx]
+        nearest_lat_idx, nearest_lon_idx = np.unravel_index(flat_idx, data_grid.shape)
+        
+        check_and_update_best(nearest_lat_idx, nearest_lon_idx, dist)
+    
+    if best_y is None or best_x is None:
+        raise ValueError("No suitable unmasked point found within the specified distance.")
+    
+    return best_x, best_y, best_lon, best_lat
+
+
+def find_best_gridcell(cube, model, site_loc, site_lat,
                          site_lon, unit_test=False):
     """
     Iteratively check the CMIP grid boxes surrounding the site location
@@ -249,31 +342,60 @@ def search_for_next_cmip(cmip_i, cmip_j, cube, model, site_loc, site_lat,
     """
     grid_lons = cube.coord('longitude').points
     grid_lats = cube.coord('latitude').points
+    
+    best_i, best_j, best_lat, best_lon = find_best_match(grid_lats, grid_lons, cube.data, site_lat, site_lon)
+    
+    if settings["auto_site_selection"]:
+        best_i, best_j, best_lon, best_lat = plot_ij(cube, model, site_loc, [best_i, best_j], site_lat, site_lon, save_map=True)
+        return best_i, best_j, best_lon, best_lat
+    
+    best_i, best_j, best_lon, best_lat = plot_ij(cube, model, site_loc, [best_i, best_j], site_lat, site_lon, save_map=False)
+        
+    return best_i, best_j, best_lon, best_lat
 
-    # The radius limit of 7 is arbitrary but should be large enough.
-    for radius in range(1, 8):  # grid boxes
-        print(f'Checking CMIP grid boxes {radius} box removed ' +
-              'from site location')
-        x_radius_range, y_radius_range = calc_radius_range(radius)
-        for ix in x_radius_range:
-            for iy in y_radius_range:
-                # Search the nearest grid cells.  If the new mask is False,
-                # that grid cell is an ocean point
-                limit_lo = radius * radius
-                dd = ix * ix + iy * iy
-                if dd >= limit_lo:
-                    # modulus for when grid cell is close to 0deg.
-                    i_try = (cmip_i + ix) % len(grid_lons)
-                    j_try = cmip_j + iy
 
-                    if not cube.data.mask[j_try, i_try]:
-                        i_out, j_out = accept_reject_cmip(
-                            cube, model, site_loc, i_try, j_try, site_lat,
-                            site_lon, unit_test)
-                        if i_out is not None:
-                            pt_lon = grid_lons[i_out]
-                            pt_lat = grid_lats[j_out]
-                            return i_out, j_out, pt_lon, pt_lat
+# def search_for_next_cmip(cmip_i, cmip_j, cube, model, site_loc, site_lat,
+#                          site_lon, unit_test=False):
+#     """
+#     Iteratively check the CMIP grid boxes surrounding the site location
+#     until a suitable option is found.
+#     :param cmip_i: CMIP coord of site location's latitude
+#     :param cmip_j: CMIP coord of site location's longitude
+#     :param cube: cube containing zos field from CMIP models
+#     :param model: CMIP model name
+#     :param site_loc: name of the site location
+#     :param site_lat: latitude of the site location
+#     :param site_lon: longitude of the site location
+#     :param unit_test: flag to disable plotting for unit testing purposes
+#     :return: Selected CMIP coords
+#     """
+#     grid_lons = cube.coord('longitude').points
+#     grid_lats = cube.coord('latitude').points
+
+#     # The radius limit of 7 is arbitrary but should be large enough.
+#     for radius in range(1, 8):  # grid boxes
+#         print(f'Checking CMIP grid boxes {radius} box removed ' +
+#               'from site location')
+#         x_radius_range, y_radius_range = calc_radius_range(radius)
+#         for ix in x_radius_range:
+#             for iy in y_radius_range:
+#                 # Search the nearest grid cells.  If the new mask is False,
+#                 # that grid cell is an ocean point
+#                 limit_lo = radius * radius
+#                 dd = ix * ix + iy * iy
+#                 if dd >= limit_lo:
+#                     # modulus for when grid cell is close to 0deg.
+#                     i_try = (cmip_i + ix) % len(grid_lons)
+#                     j_try = cmip_j + iy
+
+#                     if not cube.data.mask[j_try, i_try]:
+#                         i_out, j_out = accept_reject_cmip(
+#                             cube, model, site_loc, i_try, j_try, site_lat,
+#                             site_lon, unit_test)
+#                         if i_out is not None:
+#                             pt_lon = grid_lons[i_out]
+#                             pt_lat = grid_lats[j_out]
+#                             return i_out, j_out, pt_lon, pt_lat
 
 
 def write_i_j(site_loc, result, site_lat, lon_orig):
