@@ -13,7 +13,7 @@ from netCDF4 import Dataset
 
 from config import settings
 from tide_gauge_locations import extract_site_info
-from slr_pkg import abbreviate_location_name  # found in __init.py__
+from slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from directories import read_dir, makefolder
 
 
@@ -58,13 +58,16 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     np.random.seed(18)
 
     # Directory of Monte Carlo time series for new projections
-    mcdir = settings["montecarlodir"]
+    mcdir = choose_montecarlo_dir()
 
     # Specify the sea level components to include. The GIA contribution is
     # calculated separately.
     components = ['exp', 'antdyn', 'antsmb', 'greendyn', 'greensmb',
                   'glacier', 'landwater']
-    nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
+    # nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
+    nesm = 450000
+    yrs = np.arange(2007, settings["projection_end_year"] + 1)
+    nyrs = yrs.size
 
     # Determine the number of samples you wish to make CHOGOM
     # project = 100000, UKCP18 = 200000
@@ -200,7 +203,7 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
         offset = G_offset * offset_slopes[comp]
 
         cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
-        montecarlo_G[cc, :, :] = cube.data[:, resamples] + offset
+        montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
 
         if comp == 'exp':
             if sci_method == 'global':
@@ -516,6 +519,8 @@ def main():
         print('User specified all CMIP models')
     elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
+
+    print(f'\nProjecting out to: {settings["projection_end_year"]}\n')
 
     # Extract site data from station list (e.g. tide gauge location) or
     # construct based on user input
