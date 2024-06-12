@@ -36,6 +36,7 @@ def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
     # Estimate internal variability from de-trended gauge data
     tg_years_arr = np.array(tg_years, dtype='int')
     vals = np.ma.masked_invalid(tg_amsl)
+    vals = np.ma.masked_values(vals, -99999.)
     IntV = compute_variability(tg_years_arr / 1000., vals / 1.)
 
     # Get the values of the multi-index: years and percentile values
@@ -737,7 +738,6 @@ def plot_figure_eight(df_r_list, tg_years, tg_amsl, site_name, scenarios, fig_di
     fig.tight_layout()
     outfile = f'{fig_dir}08_{site_name}_uncertainty_budget.png'
     plt.savefig(outfile, dpi=200, format='png')
-    plt.show()
     plt.close()
 
 
