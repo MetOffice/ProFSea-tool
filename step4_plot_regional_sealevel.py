@@ -758,11 +758,11 @@ def plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name):
         print(f'Tide gauge data has been flagged for attention - ' +
               f'{tg_years[(flag & non_missing)]}')
         ax.plot(tg_years[(flag & non_missing)], tg_amsl[(flag & non_missing)],
-                marker='o', mec='black', mfc='None',
-                markersize=3, linestyle='None', label='TG flagged')
+                lw=1, color='black', mfc='None',
+                linestyle='None', label='TG flagged')
     if nflag < len(flag):
         ax.plot(tg_years[(~flag & non_missing)],
-                tg_amsl[(~flag & non_missing)], 'ko', markersize=3,
+                tg_amsl[(~flag & non_missing)], lw=1, color='black',
                 label=f'{location_string(tg_name)} TG')
 
 
