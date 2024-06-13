@@ -132,8 +132,8 @@ def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
 
 def find_best_gridcell(
         cube, target_lat, target_lon, 
-        max_distance=2, distance_weight=2, 
-        difference_weight=0.0005):
+        max_distance=2, distance_weight=3, 
+        difference_weight=0.003):
     """
     Find the best grid cell in the CMIP model for the target latitude and 
     longitude. The best grid cell is the one that minimizes the weighted 
