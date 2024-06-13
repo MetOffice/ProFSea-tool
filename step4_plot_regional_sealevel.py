@@ -956,8 +956,9 @@ def main():
         # projections - sum total
         # Also shown local sea level projections - component parts
         # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
-        plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
-                        rcp_scenarios, sealev_fdir)
+        if settings["projection_end_year"] <= 2100: 
+            plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
+                            rcp_scenarios, sealev_fdir)
 
         # Figure 7
         # Subplot 1 - Global sea level projections for RCP8.5 - total and
