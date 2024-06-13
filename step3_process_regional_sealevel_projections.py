@@ -88,7 +88,8 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     # Create the output sea level projections file directory and filename
     sealev_ddir = read_dir()[4]
     loc_abbrev = abbreviate_location_name(site_loc)
-    file_header = '_'.join([loc_abbrev, scenario, "projection", "2100"])
+    file_header = '_'.join([loc_abbrev, scenario, "projection", 
+                            f"{settings['projection_end_year']}"])
     G_file = '_'.join([file_header, 'global']) + '.csv'
     R_file = '_'.join([file_header, 'regional']) + '.csv'
 
