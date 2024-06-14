@@ -115,7 +115,7 @@ def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
     # Check to see if the cube has a scalar mask, and add mask where cmip
     zos_cube = check_cube_mask(zos_cube_in)
     
-    best_i, best_j, best_lat, best_lon = find_best_gridcell(
+    best_i, best_j, best_lon, best_lat = find_best_gridcell(
         zos_cube, site_lat, site_lon)
     
     if settings["auto_site_selection"]:

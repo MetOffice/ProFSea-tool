@@ -288,6 +288,7 @@ def plot_ij(cube, model, location, idx, lat, lon, save_map=True, rad=5):
         
         def onclick(event):
             nonlocal selected_lat, selected_lon, pred
+            nonlocal i, j
             selected_lon, selected_lat = event.xdata, event.ydata
             
             # Transform onto original projection
