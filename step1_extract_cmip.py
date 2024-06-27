@@ -115,8 +115,12 @@ def find_ocean_pt(zos_cube_in, model, site_loc, site_lat, site_lon):
     # Check to see if the cube has a scalar mask, and add mask where cmip
     zos_cube = check_cube_mask(zos_cube_in)
     
+    if settings["auto_site_selection"]:
+        search_distance = 2
+    else:
+        search_distance = 7 
     best_i, best_j, best_lon, best_lat = find_best_gridcell(
-        zos_cube, site_lat, site_lon)
+        zos_cube, site_lat, site_lon, max_distance=search_distance)
     
     if settings["auto_site_selection"]:
         plot_ij(zos_cube, model, site_loc, [best_i, best_j], 
@@ -212,8 +216,14 @@ def find_best_gridcell(
         check_and_update_best(nearest_lat_idx, nearest_lon_idx, dist)
     
     if best_i is None or best_j is None:
-        raise ValueError("No suitable unmasked point" 
-                         "found within the specified distance.")
+        if settings["auto_site_selection"]:
+            raise ValueError("Could not find a suitable grid cell due to the "
+                             "model mask. This region might be complex - "
+                             "please re-run with "
+                             "\033[1mauto_site_selection: False \033[0m")
+        else:
+            raise ValueError("No valid points in the vicinity of the site. " 
+                             "Have you selected a lat/lon near the coast?")
     
     return best_i, best_j, best_lon, best_lat
 
