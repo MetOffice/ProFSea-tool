@@ -15,6 +15,7 @@ from config import settings
 from tide_gauge_locations import extract_site_info
 from slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from directories import read_dir, makefolder
+from montecarlo import GMSLREmulator
 
 
 def calc_baseline_period(sci_method, yrs):
@@ -203,16 +204,27 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
 
         offset = G_offset * offset_slopes[comp]
 
-        cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
-        montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
+        if settings['emulator_mode']:
+            # Input timeseries provided as numpy objects
+            mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
+            montecarlo_G[cc, :, :] = mc_timeseries[:nyrs, resamples] + offset
+        else:
+            cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
+            montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
 
         if comp == 'exp':
             if sci_method == 'global':
-                coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, 'rcp85')
+                else:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True)
             elif sci_method == 'UK':
-                coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK('rcp85')
+                else:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True, p=weights)
             montecarlo_R[cc, :, :] = montecarlo_G[cc, :, :] * rand_coeffs
@@ -531,11 +543,30 @@ def main():
                                      settings["siteinfo"]["sitename"],
                                      settings["siteinfo"]["sitelatlon"])
 
-    scenarios = ['rcp26', 'rcp45', 'rcp85']
-    for scenario in scenarios:
+    if settings["emulator_settings"]["emulator_mode"]:
+        print('Initiating ProFSea emulator...')
+        if settings["projection_end_year"] > 2100:
+            palmer_method = True
+        else:
+            palmer_method = False
+            
+        gmslr = GMSLREmulator(
+            settings["emulator_settings"]["emulator_scenarios"],
+            settings["emulator_settings"]["emulator_input_dir"],
+            settings["baseoutdir"],
+            settings["projection_end_year"],
+            palmer_method=palmer_method
+        )
+        gmslr.project()
         # Get the metadata of either the site location or tide gauge location
-        for loc_name in df_site_data.index.values:
-            calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+        for scenario in settings["emulator_settings"]["emulator_scenarios"]:
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+    else:
+        scenarios = ['rcp26', 'rcp45', 'rcp85']
+        for scenario in scenarios:
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
 
 
 if __name__ == '__main__':
