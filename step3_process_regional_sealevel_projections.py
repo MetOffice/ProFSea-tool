@@ -204,7 +204,7 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
 
         offset = G_offset * offset_slopes[comp]
 
-        if settings['emulator_mode']:
+        if settings["emulator_settings"]["emulator_mode"]:
             # Input timeseries provided as numpy objects
             mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
             montecarlo_G[cc, :, :] = mc_timeseries[:nyrs, resamples] + offset
@@ -544,22 +544,24 @@ def main():
                                      settings["siteinfo"]["sitelatlon"])
 
     if settings["emulator_settings"]["emulator_mode"]:
-        print('Initiating ProFSea emulator...')
+        print('\nInitiating ProFSea emulator')
         if settings["projection_end_year"] > 2100:
             palmer_method = True
         else:
             palmer_method = False
             
+        makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
+            
         gmslr = GMSLREmulator(
-            settings["emulator_settings"]["emulator_scenarios"],
+            settings["emulator_settings"]["emulator_scenario"],
             settings["emulator_settings"]["emulator_input_dir"],
-            settings["baseoutdir"],
+            os.path.join(settings["baseoutdir"], 'emulator_output'),
             settings["projection_end_year"],
             palmer_method=palmer_method
         )
         gmslr.project()
         # Get the metadata of either the site location or tide gauge location
-        for scenario in settings["emulator_settings"]["emulator_scenarios"]:
+        for scenario in settings["emulator_settings"]["emulator_scenario"]:
             for loc_name in df_site_data.index.values:
                 calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
     else:

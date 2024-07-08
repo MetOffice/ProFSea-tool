@@ -72,7 +72,7 @@ class GMSLREmulator:
         self.tcv = tcv
         self.glaciermip = glaciermip
         self.ensemble = ensemble
-        self.palmer_method = self.palmer_method
+        self.palmer_method = palmer_method
         
         # First year of AR5 projections
         self.endofhistory=2006
