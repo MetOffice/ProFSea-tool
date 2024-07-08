@@ -755,10 +755,10 @@ def read_G_R_sl_projections(site_name, scenarios):
     G_df_list = []
     R_df_list = []
     for sce in scenarios:
-        G_filename = '{}{}_{}_projection_2100_global.csv'.format(
-            in_slddir, loc_abbrev, sce)
-        R_filename = '{}{}_{}_projection_2100_regional.csv'.format(
-            in_slddir, loc_abbrev, sce)
+        G_filename = '{}{}_{}_projection_{}_global.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
+        R_filename = '{}{}_{}_projection_{}_regional.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
         try:
             G_df = pd.read_csv(G_filename, header=0,
                                index_col=['year', 'percentile'])
@@ -899,6 +899,32 @@ def main():
     # multiple functions
     sealev_fdir = read_dir()[5]
     makefolder(sealev_fdir)
+    
+    if settings["emulator_settings"]["emulator_mode"]:
+        emulator_scenarios = settings["emulator_settings"]["emulator_scenario"]
+        for df_loc in df_site_data.index.values:
+            # Read global and regional sea level projections calculated previously
+            g_df_list, r_df_list = read_G_R_sl_projections(df_loc, emulator_scenarios)
+
+            # Read in the IPCC AR5 + Levermann global sea level projections
+            ar5_low, ar5_mid, ar5_upp = read_IPCC_AR5_Levermann_proj(rcp_scenarios)
+
+            # Read annual mean sea level observations from PSMSL
+            tg_name, nflag, flag, tg_years, non_missing, tg_amsl = \
+                read_PSMSL_tide_gauge_obs(settings["baseoutdir"], settings[
+                    "tidegaugeinfo"]["source"], settings["tidegaugeinfo"][
+                    "datafq"], settings["siteinfo"]["region"], df_site_data,
+                                        df_loc, sealev_fdir)
+                
+            plot_figure_two(r_df_list, tg_name, nflag, flag, tg_years,
+                            non_missing, tg_amsl, df_loc, emulator_scenarios,
+                            sealev_fdir)
+            
+            plot_figure_three(g_df_list, r_df_list, ar5_low, ar5_mid, ar5_upp,
+                          df_loc, emulator_scenarios, sealev_fdir)
+            
+            plot_figure_seven(g_df_list, r_df_list, df_loc, emulator_scenarios,
+                          sealev_fdir)
 
     rcp_scenarios = ['rcp26', 'rcp45', 'rcp85']
     for df_loc in df_site_data.index.values:
