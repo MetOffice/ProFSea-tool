@@ -11,16 +11,14 @@ import glob
 from collections.abc import Sequence
 
 import numpy as np
-from scipy.stats import norm
 import pandas as pd
-import dask.array as da
-from config import settings
-import matplotlib.pyplot as plt
 
 class GMSLREmulator:
     
     def __init__(
         self, 
+        T_change: np.ndarray,
+        OHC_change: np.ndarray,
         scenarios: list,
         data_dir: str,
         output_dir: str,
@@ -30,7 +28,7 @@ class GMSLREmulator:
         nm: int=1000,
         tcv: float=1.0,
         glaciermip: bool=False,
-        ensemble: bool=False,
+        input_ensemble: bool=True,
         palmer_method: bool=False):
         # input -- str, path to directory containing input files. The directory should
         #   contain files named SCENARIO_QUANTITY_STATISTIC.nc, where QUANTITY is
@@ -43,8 +41,9 @@ class GMSLREmulator:
         # output, str, optional -- path to directory in which output files are to be
         #   written. It is created if it does not exist. No files are written if this
         #   argument is omitted.
-        # ensemble -- bool, optional, default False, write output files of the ensemble
-        #   as well as the statistics.
+        # ensemble -- bool, optional, default True, if provided use an input ensemble of 
+        #   temperature and ocean heat content change in place of Monte Carlo simulations
+        #   for thermosteric sea level rise 
         # seed -- optional, for numpy.random, default zero
         # nt -- int, optional, number of realisations of the input timeseries for each
         #   scenario, default 450, to be generated using the mean and sd files; specify
@@ -67,6 +66,8 @@ class GMSLREmulator:
         #   up to 2300, with the contributions to GMLSR from ice-sheet dynamics, Green-
         #   land SMB and land water storage held at the 2100 rate beyond 2100.
         
+        self.T_change = T_change
+        self.OHC_change = OHC_change
         self.scenarios = scenarios
         self.data_dir = data_dir
         self.output_dir = output_dir
@@ -76,28 +77,32 @@ class GMSLREmulator:
         self.nm = nm
         self.tcv = tcv
         self.glaciermip = glaciermip
-        self.ensemble = ensemble
+        self.input_ensemble = input_ensemble
         self.palmer_method = palmer_method
         
         # First year of AR5 projections
-        self.endofhistory=2006
+        self.endofhistory = 2006
 
         # Last year of AR5 projections
-        self.endofAR5=2100
+        self.endofAR5 = 2100
+        
+        # Length of projections
+        self.nyr = self.end_yr - self.endofhistory
 
         # Fraction of SLE from Greenland during 1996 to 2005 assumed to result from
         # rapid dynamical change, with the remainder assumed to result from SMB change
-        self.fgreendyn=0.5
+        self.fgreendyn = 0.5
 
         # m SLE from Greenland during 1996 to 2005 according to AR5 chapter 4
-        self.dgreen=(3.21-0.30)*1e-3
+        self.dgreen = (3.21 - 0.30) * 1e-3
 
         # m SLE from Antarctica during 1996 to 2005 according to AR5 chapter 4
-        self.dant=(2.37+0.13)*1e-3
+        self.dant = (2.37 + 0.13) * 1e-3
 
         # Conversion factor for Gt to m SLE
-        self.mSLEoGt=1e12/3.61e14*1e-3
+        self.mSLEoGt = 1e12 / 3.61e14 * 1e-3
 
+        # Sensitivity of thermosteric SLR to ocean heat content change
         self.exp_efficiency = 0.12e-24
   
     def project(self):
@@ -106,87 +111,30 @@ class GMSLREmulator:
             self.project_scenario(scenario)
         
     def project_scenario(self, scenario):
-
         np.random.seed(self.seed)
-            
-        # Read the input fields for temperature and expansion into txin. txin has four
-        # elements if nt>0: temperature mean, temperature sd, expansion mean, expansion
-        # sd. txin has two elements if nt==0, for temperature and expansion, each
-        # having a model dimension. Check that each field is one-dimensional in time,
-        # that the mean and sd fields for each quantity have equal time axes, that
-        # temperature applies to calendar years (indicated by its time bounds), that
-        # expansion applies at the ends of the calendar years of temperature, that
-        # there is no missing data, and that the model axis (if present) is the same
-        # for the two quantities.
-        variable = ['temperature','ocean_heat_content_change'] # input quantities
-
-        txin = []
-        for v in variable:
-            file = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_{v}*.csv'))
-            if file:
-                df = pd.read_csv(file[0])
-                df_2300 = df.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
-                central_estimate = np.percentile(df_2300.to_numpy(), 50, axis=0)
-                std = np.std(df_2300.to_numpy(), axis=0)
-
-                if v == 'ocean_heat_content_change':
-                    central_estimate = central_estimate * self.exp_efficiency # convert to thermal expansion 
-                    std = np.std(df_2300.to_numpy() * self.exp_efficiency, axis=0)
-                
-                txin.extend([central_estimate, std])
-            else:
-                raise FileNotFoundError(f'Emulator input file {file} not found')
-
-        nyr=txin[0].shape[0] # number of years in the timeseries
-
-        # Integrate temperature to obtain K yr at ends of calendar years, replacing
-        # the time-axis of temperature (which applies at mid-year) with the time-axis
-        # of expansion (which applies at year-end)
-
-        itin = [np.cumsum(txin[i]) for i in range(2)]
         
-        # Generate a sample of perfectly correlated timeseries fields of temperature,
-        # time-integral temperature and expansion, each of them [realisation,time]
-        z = np.random.standard_normal(self.nt)*self.tcv
+        tas, therm = self.read_input(scenario)
 
-        # For each quantity, mean + standard deviation * normal random number
-        # reshape to [realisation,time]
-        zt = z[:, np.newaxis] * txin[1] + txin[0]
-        zx = z[:, np.newaxis] * txin[3] + txin[2]
-        zit = z[:, np.newaxis] * itin[1] + itin[0]
-        zitmean = itin[0]
+        zt, zx, zit, zit_mean = self.calculate_drivers() 
         
-        # Create a cf.Field with the shape of the quantities to be calculated
+        # Create a field with the shape of the quantities to be calculated
         # [component_realization,climate_realization,time]
-        template=np.full([self.nm, self.nt, nyr], np.nan)
+        template=np.full([self.nm, self.nt, self.nyr], np.nan)
 
-
-        # Obtain ensembles of projected components as cf.Field objects and add them up
-        # Report the range of the final year and write output files if requested
         expansion = np.tile(zx, (self.nm, 1))
-
-
-        glacier = self.project_glacier(zitmean, zit, template)
-
-        greensmb = self.project_greensmb(zt,template)
-
         fraction = np.random.rand(self.nm * self.nt) # correlation between antsmb and antdyn
+
+        glacier = self.project_glacier(zit_mean, zit, template)
+        greensmb = self.project_greensmb(zt,template)
         antsmb = self.project_antsmb(zit,template,fraction)
-
-
         greendyn = self.project_greendyn(scenario,template)
-        greennet = greensmb+greendyn
-
         antdyn = self.project_antdyn(template, fraction)
-        antnet = antsmb+antdyn
-
         landwater = self.project_landwater(template)
-
-        # add expansion last because it has a lower dimensionality and we want it to
-        # be broadcast to the same shape as the others rather than messing up gmslr
-        gmslr=glacier+greennet+antnet+landwater+expansion
-
-        sheetdyn=greendyn+antdyn
+        
+        greennet = greensmb + greendyn
+        antnet = antsmb + antdyn
+        sheetdyn = greendyn + antdyn
+        gmslr = glacier + greennet + antnet + landwater + expansion
         
         components_dict = {
             'exp': expansion,
@@ -205,7 +153,80 @@ class GMSLREmulator:
         for name, component in components_dict.items():
             np.save(
                 os.path.join(self.output_dir, f'{scenario}_{name}.npy'), 
-                component.T)
+                component.T
+            )
+
+    def read_input(self, scenario: str): # TAKE THIS OUT AND INTO PROFSEA BEFORE CALL
+         # Read in the input fields
+        variable = ['temperature','ocean_heat_content_change'] # input quantities
+        txin = []
+        tas = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_temperature*.csv'))
+        ohc = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_ocean_heat_content_change*.csv'))
+        if tas and ohc:
+            tas = pd.read_csv(tas[0])
+            tas = tas.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
+            ohc = pd.read_csv(ohc[0])
+            ohc = ohc.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
+            
+            if self.input_ensemble:
+                txin.extend([tas.to_numpy(), np.std(tas.to_numpy(), axis=0)])
+                txin.extend([np.percentile(ohc.to_numpy(), 50, axis=0), np.std(ohc.to_numpy(), axis=0)])
+        else:
+            raise FileNotFoundError(f'Emulator input file(s) {tas}, or {ohc} not found')
+        # for v in variable:
+        #     file = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_{v}*.csv'))
+        #     if file:
+        #         df = pd.read_csv(file[0])
+        #         df = df.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
+                
+        #         central_estimate = np.percentile(df.to_numpy(), 50, axis=0)
+        #         std = np.std(df.to_numpy(), axis=0)
+
+        #         if v == 'ocean_heat_content_change':
+        #             central_estimate = central_estimate * self.exp_efficiency # convert to thermal expansion 
+        #             std = np.std(df.to_numpy() * self.exp_efficiency, axis=0)
+                
+        #         txin.extend([central_estimate, std])
+        #     else:
+        #         raise FileNotFoundError(f'Emulator input file {file} not found')
+        
+    def calculate_drivers(self):
+        # Check if dimensions are the right way around 
+        if self.T_change.shape[1] != self.nyr: 
+            self.T_change = self.T_change.T
+        if self.OHC_change.shape[1] != self.nyr: 
+            self.OHC_change = self.OHC_change.T
+            
+        if self.input_ensemble:
+            print(self.T_change.shape)
+            therm_ens = self.OHC_change * self.exp_efficiency
+            T_int_ens = np.cumsum(self.T_change, axis=1)
+            T_int_med = np.percentile(T_int_ens, 50, axis=1) # using median here instead of mean... CHECK THIS
+            
+            return self.T_change, therm_ens, T_int_ens, T_int_med
+        
+        T_med = np.percentile(self.T_change, 50, axis=0)
+        T_std = np.std(self.T_change, axis=0)
+
+        therm_med = np.percentile(self.OHC_change, 50, axis=0) * self.exp_efficiency
+        therm_std = np.std(self.OHC_change * self.exp_efficiency, axis=0)
+        
+        # Time-integral of temperature anomaly
+        T_med_int = np.cumsum(T_med)
+        T_std_int = np.cumsum(T_std)
+        
+        # Generate a sample of perfectly correlated timeseries fields of temperature,
+        # time-integral temperature and expansion, each of them [realisation,time]
+        z = np.random.standard_normal(self.nt) * self.tcv
+
+        # For each quantity, mean + standard deviation * normal random number
+        # reshape to [realisation,time]
+        T_ens = z[:, np.newaxis] * T_std + T_med
+        therm_ens = z[:, np.newaxis] * therm_std + therm_med
+        T_int_ens = z[:, np.newaxis] * T_std_int + T_med_int
+        
+        return T_ens, therm_ens, T_int_ens, T_med_int
+        
 
     def project_glacier(self, it, zit, glacier):
         # Return projection of glacier contribution as a cf.Field
