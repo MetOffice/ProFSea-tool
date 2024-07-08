@@ -15,7 +15,7 @@ from config import settings
 from tide_gauge_locations import extract_site_info
 from slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from directories import read_dir, makefolder
-from montecarlo import GMSLREmulator
+from emulator import GMSLREmulator
 
 
 def calc_baseline_period(sci_method, yrs):
@@ -42,6 +42,7 @@ def calc_baseline_period(sci_method, yrs):
     midyr = (byr2 - byr1 + 1) * 0.5 + byr1
 
     return yrs[0] - midyr, G_offset
+
 
 def calc_future_sea_level_at_site(df, site_loc, scenario):
     """

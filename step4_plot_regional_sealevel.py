@@ -17,6 +17,7 @@ from surge import tide_gauge_library as tgl
 from directories import read_dir, makefolder
 from plotting_libraries import location_string, scenario_string, \
     ukcp18_colours, ukcp18_labels, calc_xlim, calc_ylim, plot_zeroline
+from emulator.plotting import plot_slr, plot_slr_components 
 
 
 def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
@@ -906,6 +907,26 @@ def main():
             # Read global and regional sea level projections calculated previously
             g_df_list, r_df_list = read_G_R_sl_projections(df_loc, emulator_scenarios)
 
+            # Read annual mean sea level observations from PSMSL
+            tg_name, nflag, flag, tg_years, non_missing, tg_amsl = \
+                read_PSMSL_tide_gauge_obs(settings["baseoutdir"], settings[
+                    "tidegaugeinfo"]["source"], settings["tidegaugeinfo"][
+                    "datafq"], settings["siteinfo"]["region"], df_site_data,
+                                        df_loc, sealev_fdir)
+                
+            plot_slr(r_df_list, tg_name, nflag, flag, tg_years,
+                            non_missing, tg_amsl, df_loc, emulator_scenarios,
+                            sealev_fdir)
+            
+            plot_slr_components(g_df_list, r_df_list, df_loc, emulator_scenarios,
+                          sealev_fdir)
+            
+    else:
+        rcp_scenarios = ['rcp26', 'rcp45', 'rcp85']
+        for df_loc in df_site_data.index.values:
+            # Read global and regional sea level projections calculated previously
+            g_df_list, r_df_list = read_G_R_sl_projections(df_loc, rcp_scenarios)
+
             # Read in the IPCC AR5 + Levermann global sea level projections
             ar5_low, ar5_mid, ar5_upp = read_IPCC_AR5_Levermann_proj(rcp_scenarios)
 
@@ -915,85 +936,60 @@ def main():
                     "tidegaugeinfo"]["source"], settings["tidegaugeinfo"][
                     "datafq"], settings["siteinfo"]["region"], df_site_data,
                                         df_loc, sealev_fdir)
-                
+        # -------------------------------------------------------------------------
+        # Plotting section - comment functions in and out depending on which graphs
+        # you wish to save
+            # Figure 1
+            # Subplot 1 - Local sea level projections for all RCPs - sum total
+            # Subplot 2 - Local sea level projections for RCP8.5 - total and
+            # component parts
+            plot_figure_one(r_df_list, df_loc, rcp_scenarios, sealev_fdir)
+
+            # Figure 2
+            # Local sea level projections for specified RCPs - sum total,
+            # and annual mean tide gauge observations
             plot_figure_two(r_df_list, tg_name, nflag, flag, tg_years,
-                            non_missing, tg_amsl, df_loc, emulator_scenarios,
+                            non_missing, tg_amsl, df_loc, rcp_scenarios,
                             sealev_fdir)
-            
+
+            # Figure 3 (one output per RCP)
+            # Subplot 1 - Comparison of IPCC AR5 + Levermann global projections
+            # and global projections developed here
+            # Subplot 2 - Comparison of global projections and local sea level
+            # projections
             plot_figure_three(g_df_list, r_df_list, ar5_low, ar5_mid, ar5_upp,
-                          df_loc, emulator_scenarios, sealev_fdir)
-            
-            plot_figure_seven(g_df_list, r_df_list, df_loc, emulator_scenarios,
-                          sealev_fdir)
+                            df_loc, rcp_scenarios, sealev_fdir)
 
-    rcp_scenarios = ['rcp26', 'rcp45', 'rcp85']
-    for df_loc in df_site_data.index.values:
-        # Read global and regional sea level projections calculated previously
-        g_df_list, r_df_list = read_G_R_sl_projections(df_loc, rcp_scenarios)
+            # Figure 4
+            # Local sea level projections for all RCPs - sum total
+            # Same style as Figure 3.1.4 of UKCP18 Marine Report (pg 16)
+            plot_figure_four(r_df_list, df_loc, rcp_scenarios, sealev_fdir)
 
-        # Read in the IPCC AR5 + Levermann global sea level projections
-        ar5_low, ar5_mid, ar5_upp = read_IPCC_AR5_Levermann_proj(rcp_scenarios)
+            # Figure 5
+            # Comparison of global mean sea level projections calculated by the
+            # tool and local sea level projections - sum total
+            # Also shown local sea level projections - component parts
+            # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
+            plot_figure_five(g_df_list, r_df_list, df_loc, rcp_scenarios,
+                            sealev_fdir)
 
-        # Read annual mean sea level observations from PSMSL
-        tg_name, nflag, flag, tg_years, non_missing, tg_amsl = \
-            read_PSMSL_tide_gauge_obs(settings["baseoutdir"], settings[
-                "tidegaugeinfo"]["source"], settings["tidegaugeinfo"][
-                "datafq"], settings["siteinfo"]["region"], df_site_data,
-                                      df_loc, sealev_fdir)
-    # -------------------------------------------------------------------------
-    # Plotting section - comment functions in and out depending on which graphs
-    # you wish to save
-        # Figure 1
-        # Subplot 1 - Local sea level projections for all RCPs - sum total
-        # Subplot 2 - Local sea level projections for RCP8.5 - total and
-        # component parts
-        plot_figure_one(r_df_list, df_loc, rcp_scenarios, sealev_fdir)
+            # Figure 6
+            # Comparison of IPCC AR5 + Levermann projections and local sea level
+            # projections - sum total
+            # Also shown local sea level projections - component parts
+            # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
+            if settings["projection_end_year"] <= 2100: 
+                plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
+                                rcp_scenarios, sealev_fdir)
 
-        # Figure 2
-        # Local sea level projections for specified RCPs - sum total,
-        # and annual mean tide gauge observations
-        plot_figure_two(r_df_list, tg_name, nflag, flag, tg_years,
-                        non_missing, tg_amsl, df_loc, rcp_scenarios,
-                        sealev_fdir)
-
-        # Figure 3 (one output per RCP)
-        # Subplot 1 - Comparison of IPCC AR5 + Levermann global projections
-        # and global projections developed here
-        # Subplot 2 - Comparison of global projections and local sea level
-        # projections
-        plot_figure_three(g_df_list, r_df_list, ar5_low, ar5_mid, ar5_upp,
-                          df_loc, rcp_scenarios, sealev_fdir)
-
-        # Figure 4
-        # Local sea level projections for all RCPs - sum total
-        # Same style as Figure 3.1.4 of UKCP18 Marine Report (pg 16)
-        plot_figure_four(r_df_list, df_loc, rcp_scenarios, sealev_fdir)
-
-        # Figure 5
-        # Comparison of global mean sea level projections calculated by the
-        # tool and local sea level projections - sum total
-        # Also shown local sea level projections - component parts
-        # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
-        plot_figure_five(g_df_list, r_df_list, df_loc, rcp_scenarios,
-                         sealev_fdir)
-
-        # Figure 6
-        # Comparison of IPCC AR5 + Levermann projections and local sea level
-        # projections - sum total
-        # Also shown local sea level projections - component parts
-        # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
-        if settings["projection_end_year"] <= 2100: 
-            plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
-                            rcp_scenarios, sealev_fdir)
-
-        # Figure 7
-        # Subplot 1 - Global sea level projections for RCP8.5 - total and
-        # component parts, including uncertainty range
-        # Subplot 2 - Local sea level projections for RCP8.5 - total and
-        # component parts, including uncertainty range
-        # Same style as Figure 4 Howard and Palmer (2019)
-        plot_figure_seven(g_df_list, r_df_list, df_loc, rcp_scenarios,
-                          sealev_fdir)
+            # Figure 7
+            # Subplot 1 - Global sea level projections for RCP8.5 - total and
+            # component parts, including uncertainty range
+            # Subplot 2 - Local sea level projections for RCP8.5 - total and
+            # component parts, including uncertainty range
+            # Same style as Figure 4 Howard and Palmer (2019)
+            plot_figure_seven(g_df_list, r_df_list, df_loc, rcp_scenarios,
+                            sealev_fdir)
 
 
 if __name__ == '__main__':
