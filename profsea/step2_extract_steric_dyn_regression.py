@@ -3,10 +3,10 @@ Copyright (c) 2023, Met Office
 All rights reserved.
 """
 
-from config import settings
-from slr_pkg import extract_dyn_steric_regression  # found in __init.py__
-from slr_pkg import models
-from tide_gauge_locations import extract_site_info
+from profsea.config import settings
+from profsea.slr_pkg import extract_dyn_steric_regression  # found in __init.py__
+from profsea.slr_pkg import models
+from profsea.tide_gauge_locations import extract_site_info
 
 
 def extract_cmip5_steric_dyn_regression(df):
