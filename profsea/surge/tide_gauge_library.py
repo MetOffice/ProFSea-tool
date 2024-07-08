@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 from scipy.stats import linregress
 
-from config import settings
+from profsea.config import settings
 
 
 def calc_baseline_sl(root_dir, data_region, loc_abbrev, years, annual_means,

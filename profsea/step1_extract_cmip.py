@@ -9,12 +9,13 @@ import pandas as pd
 import warnings
 from tqdm import tqdm
 
-from config import settings
-from directories import read_dir, makefolder
-from slr_pkg import abbreviate_location_name, plot_ij  # found in __init.py__
-from slr_pkg import cmip, cubeutils, models, whichbox
-from tide_gauge_locations import extract_site_info
 from scipy.spatial import cKDTree
+
+from profsea.config import settings
+from profsea.directories import read_dir, makefolder
+from profsea.slr_pkg import abbreviate_location_name, plot_ij  # found in __init.py__
+from profsea.slr_pkg import cmip, cubeutils, models, whichbox
+from profsea.tide_gauge_locations import extract_site_info
 
 warnings.filterwarnings("ignore")
 

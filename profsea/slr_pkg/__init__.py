@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 import cartopy.crs as ccrs
 
-from config import settings
-from slr_pkg import cmip, cubeplot, cubeutils, cubedata, process, whichbox
-from directories import makefolder, read_dir
+from profsea.config import settings
+from profsea.slr_pkg import cmip, cubeplot, cubeutils, cubedata, process, whichbox
+from profsea.directories import makefolder, read_dir
 
 
 def abbreviate_location_name(name, chars_not_needed=' ,()'):
