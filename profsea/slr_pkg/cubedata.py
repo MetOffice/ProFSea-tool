@@ -9,7 +9,7 @@ import os
 import cf_units
 import iris
 
-from slr_pkg import process
+from profsea.slr_pkg import process
 
 
 def _derived(cube, cube_src, var_name=None, derived_type='unknown',

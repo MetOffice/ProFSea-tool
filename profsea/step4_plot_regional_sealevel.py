@@ -10,12 +10,12 @@ import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 
-from config import settings
-from tide_gauge_locations import extract_site_info, find_nearest_station_id
-from slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
-from surge import tide_gauge_library as tgl
-from directories import read_dir, makefolder
-from plotting_libraries import location_string, scenario_string, \
+from profsea.config import settings
+from profsea.tide_gauge_locations import extract_site_info, find_nearest_station_id
+from profsea.slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
+from profsea.surge import tide_gauge_library as tgl
+from profsea.directories import read_dir, makefolder
+from profsea.plotting_libraries import location_string, scenario_string, \
     ukcp18_colours, ukcp18_labels, calc_xlim, calc_ylim, plot_zeroline
 from emulator.plotting import plot_slr, plot_slr_components 
 
