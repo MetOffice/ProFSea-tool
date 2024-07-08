@@ -1,3 +1,8 @@
+"""
+Copyright (c) 2023, Met Office
+All rights reserved.
+"""
+
 # Calculate Monte Carlo projections of GMSLR using methods 
 # from Jonathon Gregory and AR5. Staying close to JG's original
 # code where possible.

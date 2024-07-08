@@ -15,9 +15,11 @@ from profsea.tide_gauge_locations import extract_site_info, find_nearest_station
 from profsea.slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from profsea.surge import tide_gauge_library as tgl
 from profsea.directories import read_dir, makefolder
-from profsea.plotting_libraries import location_string, scenario_string, \
-    ukcp18_colours, ukcp18_labels, calc_xlim, calc_ylim, plot_zeroline
-from emulator.plotting import plot_slr, plot_slr_components 
+from profsea.plotting_libraries import (
+    location_string, scenario_string, ukcp18_colours, ukcp18_labels, 
+    calc_xlim, calc_ylim, plot_zeroline, multi_index_values, extract_comp_sl,
+    plot_tg_data)
+from profsea.emulator.plotting import plot_slr, plot_slr_components
 
 
 def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
@@ -75,39 +77,6 @@ def compute_variability(x, y, factor=1.645):
     stdev = np.std(new_y - fit_data)
 
     return stdev * factor
-
-
-def extract_comp_sl(df, percentiles, comp):
-    """
-    Get the sums of all components of local sea level projections.
-    :param df: global or regional DataFrame of sea level projections
-    :param percentiles: specified percentiles
-    :param comp: components of sea level
-    :return: sum of sea level components at lower, middle and upper percentile
-    """
-    # 5th percentile - based on UKCP18 percentile levels
-    rlow = df.xs(percentiles[0], level='percentile')[comp].to_numpy(copy=True)
-    # 50th percentile
-    rmid = df.xs(percentiles[4], level='percentile')[comp].to_numpy(copy=True)
-    # 95th percentile
-    rupp = df.xs(percentiles[8], level='percentile')[comp].to_numpy(copy=True)
-
-    return rlow, rmid, rupp
-
-
-def multi_index_values(df_list):
-    """
-    Get the values of the multi-index: years and percentile values.
-    :param df_list: DataFrame list of regional sea level projections
-    :return: years and percentile values
-    """
-    df = df_list[0]
-    proj_years = np.sort(list(set(list(df.index.get_level_values('year')))))
-    percentiles_all = np.sort(
-        [float(v) for v in list(set(list(
-            df.index.get_level_values('percentile'))))])
-
-    return proj_years, percentiles_all
 
 
 def plot_figure_one(r_df_list, site_name, scenarios, fig_dir):
@@ -711,31 +680,6 @@ def plot_figure_seven(g_df_list, r_df_list, site_name, scenarios, fig_dir):
     outfile = f'{fig_dir}07_{site_name}_rcp85.png'
     plt.savefig(outfile, dpi=200, format='png')
     plt.close()
-
-
-def plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name):
-    """
-    Plot the annual mean sea levels from the tide gauge data.
-    :param ax: subplot number
-    :param nflag: number of flagged years
-    :param flag: flagged data
-    :param tg_years: tide gauge years
-    :param non_missing: boolean to indicate NaN values
-    :param tg_amsl: annual mean sea level data
-    :param tg_name: tide gauge name
-    """
-    if nflag > 0:
-        # There are some years with less than min_valid_fraction of flag data;
-        # plot these annual means as open symbols.
-        print(f'Tide gauge data has been flagged for attention - ' +
-              f'{tg_years[(flag & non_missing)]}')
-        ax.plot(tg_years[(flag & non_missing)], tg_amsl[(flag & non_missing)],
-                marker='o', mec='black', mfc='None',
-                markersize=3, linestyle='None', label='TG flagged')
-    if nflag < len(flag):
-        ax.plot(tg_years[(~flag & non_missing)],
-                tg_amsl[(~flag & non_missing)], 'ko', markersize=3,
-                label=f'{location_string(tg_name)} TG')
 
 
 def read_G_R_sl_projections(site_name, scenarios):
