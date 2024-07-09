@@ -7,11 +7,11 @@ import os
 import numpy as np
 import pandas as pd
 
-from config import settings
-from directories import read_dir, makefolder
-from slr_pkg import abbreviate_location_name, plot_ij  # found in __init.py__
-from slr_pkg import cmip, cubeutils, models, whichbox
-from tide_gauge_locations import extract_site_info
+from profsea.config import settings
+from profsea.directories import read_dir, makefolder
+from profsea.slr_pkg import abbreviate_location_name, plot_ij  # found in __init.py__
+from profsea.slr_pkg import cmip, cubeutils, models, whichbox
+from profsea.tide_gauge_locations import extract_site_info
 
 
 def accept_reject_cmip(cube, model, site_loc, cmip_i, cmip_j, site_lat,

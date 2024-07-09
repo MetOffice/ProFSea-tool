@@ -5,7 +5,7 @@ All rights reserved.
 
 import os
 
-from config import settings
+from profsea.config import settings
 
 
 def makefolder(directory):

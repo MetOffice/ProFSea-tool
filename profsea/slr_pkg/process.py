@@ -7,7 +7,7 @@ import iris.analysis.cartography
 import numpy
 import scipy.stats
 
-from slr_pkg import cubedata
+from profsea.slr_pkg import cubedata
 
 
 class Regress:

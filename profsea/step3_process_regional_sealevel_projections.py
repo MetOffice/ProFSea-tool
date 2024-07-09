@@ -11,10 +11,11 @@ import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
 from netCDF4 import Dataset
 
-from config import settings
-from tide_gauge_locations import extract_site_info
-from slr_pkg import abbreviate_location_name  # found in __init.py__
-from directories import read_dir, makefolder
+from profsea.config import settings
+from profsea.tide_gauge_locations import extract_site_info
+from profsea.slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
+from profsea.directories import read_dir, makefolder
+from emulator import GMSLREmulator
 
 
 def calc_baseline_period(sci_method, yrs):
@@ -42,6 +43,7 @@ def calc_baseline_period(sci_method, yrs):
 
     return yrs[0] - midyr, G_offset
 
+
 def calc_future_sea_level_at_site(df, site_loc, scenario):
     """
     Calculates future sea level at the given site and write to file.
@@ -58,13 +60,16 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     np.random.seed(18)
 
     # Directory of Monte Carlo time series for new projections
-    mcdir = settings["montecarlodir"]
+    mcdir = choose_montecarlo_dir()
 
     # Specify the sea level components to include. The GIA contribution is
     # calculated separately.
     components = ['exp', 'antdyn', 'antsmb', 'greendyn', 'greensmb',
                   'glacier', 'landwater']
-    nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
+    # nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
+    nesm = 450000
+    yrs = np.arange(2007, settings["projection_end_year"] + 1)
+    nyrs = yrs.size
 
     # Determine the number of samples you wish to make CHOGOM
     # project = 100000, UKCP18 = 200000
@@ -85,7 +90,8 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     # Create the output sea level projections file directory and filename
     sealev_ddir = read_dir()[4]
     loc_abbrev = abbreviate_location_name(site_loc)
-    file_header = '_'.join([loc_abbrev, scenario, "projection", "2100"])
+    file_header = '_'.join([loc_abbrev, scenario, "projection", 
+                            f"{settings['projection_end_year']}"])
     G_file = '_'.join([file_header, 'global']) + '.csv'
     R_file = '_'.join([file_header, 'regional']) + '.csv'
 
@@ -199,16 +205,27 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
 
         offset = G_offset * offset_slopes[comp]
 
-        cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
-        montecarlo_G[cc, :, :] = cube.data[:, resamples] + offset
+        if settings["emulator_settings"]["emulator_mode"]:
+            # Input timeseries provided as numpy objects
+            mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
+            montecarlo_G[cc, :, :] = mc_timeseries[:nyrs, resamples] + offset
+        else:
+            cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
+            montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
 
         if comp == 'exp':
             if sci_method == 'global':
-                coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, 'rcp85')
+                else:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True)
             elif sci_method == 'UK':
-                coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK('rcp85')
+                else:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True, p=weights)
             montecarlo_R[cc, :, :] = montecarlo_G[cc, :, :] * rand_coeffs
@@ -517,6 +534,8 @@ def main():
     elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
 
+    print(f'\nProjecting out to: {settings["projection_end_year"]}\n')
+
     # Extract site data from station list (e.g. tide gauge location) or
     # construct based on user input
     df_site_data = extract_site_info(settings["tidegaugeinfo"]["source"],
@@ -525,11 +544,32 @@ def main():
                                      settings["siteinfo"]["sitename"],
                                      settings["siteinfo"]["sitelatlon"])
 
-    scenarios = ['rcp26', 'rcp45', 'rcp85']
-    for scenario in scenarios:
+    if settings["emulator_settings"]["emulator_mode"]:
+        print('\nInitiating ProFSea emulator')
+        if settings["projection_end_year"] > 2100:
+            palmer_method = True
+        else:
+            palmer_method = False
+            
+        makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
+            
+        gmslr = GMSLREmulator(
+            settings["emulator_settings"]["emulator_scenario"],
+            settings["emulator_settings"]["emulator_input_dir"],
+            os.path.join(settings["baseoutdir"], 'emulator_output'),
+            settings["projection_end_year"],
+            palmer_method=palmer_method
+        )
+        gmslr.project()
         # Get the metadata of either the site location or tide gauge location
-        for loc_name in df_site_data.index.values:
-            calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+        for scenario in settings["emulator_settings"]["emulator_scenario"]:
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+    else:
+        scenarios = ['rcp26', 'rcp45', 'rcp85']
+        for scenario in scenarios:
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
 
 
 if __name__ == '__main__':

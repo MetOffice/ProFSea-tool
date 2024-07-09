@@ -10,9 +10,9 @@ import numpy as np
 import pandas as pd
 import cartopy.crs as ccrs
 
-from config import settings
-from slr_pkg import cmip, cubeplot, cubeutils, cubedata, process
-from directories import makefolder, read_dir
+from profsea.config import settings
+from profsea.slr_pkg import cmip, cubeplot, cubeutils, cubedata, process
+from profsea.directories import makefolder, read_dir
 
 
 def abbreviate_location_name(name, chars_not_needed=' ,()'):
@@ -318,6 +318,24 @@ def read_ij_1x1_coord(datadir, location):
     df = pd.read_csv(filename, skiprows=3, header=0, index_col='Model')
 
     return df
+
+
+def choose_montecarlo_dir():
+    """
+    Choose the Monte Carlo directory based on the projection end year.
+    """
+    if settings["emulator_settings"]["emulator_mode"]:
+        return os.path.join(settings["baseoutdir"], 'emulator_output')
+    
+    end_yr = settings["projection_end_year"]
+    if (end_yr >= 2050) & (end_yr <= 2100):
+        mcdir = settings["short_montecarlodir"]
+    elif (end_yr > 2100) & (end_yr <= 2300):
+        mcdir = settings["long_montecarlodir"]
+    else:
+        raise ValueError('Projection end year must be between 2050 and 2300')
+    
+    return mcdir
 
 
 if __name__ == '__main__':
