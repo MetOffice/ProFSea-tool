@@ -5,6 +5,7 @@ All rights reserved.
 
 import os
 import iris
+import glob
 import pickle
 import numpy as np
 import pandas as pd
@@ -66,14 +67,20 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     # calculated separately.
     components = ['exp', 'antdyn', 'antsmb', 'greendyn', 'greensmb',
                   'glacier', 'landwater']
-    # nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
-    nesm = 450000
-    yrs = np.arange(2007, settings["projection_end_year"] + 1)
-    nyrs = yrs.size
+
+    # Select dimensions from sample file, [time, realisation]
+    sample = np.load(os.path.join(mcdir, f'{scenario}_exp.npy'))
+    nesm = sample.shape[1]
+    nyrs = sample.shape[0]
+    yrs = np.arange(2007, 2007 + nyrs)
 
     # Determine the number of samples you wish to make CHOGOM
     # project = 100000, UKCP18 = 200000
-    nsmps = 200000
+    if nesm >= 200000:
+        nsmps = 200000
+    else:
+        nsmps = nesm
+        
     array_dims = [nesm, nsmps, nyrs]
 
     # Get random samples of global and regional sea level components
@@ -514,6 +521,18 @@ def setup_FP_interpolators(components, sci_method):
     return nFPs, FPlist
 
 
+def read_csv_file(file_pattern: str, start_yr: int=2007, 
+                  end_yr: int=settings["projection_end_year"]):
+    file = glob.glob(
+        os.path.join(
+            settings["emulator_settings"]["emulator_input_dir"], 
+            file_pattern))
+    if not file:
+        raise FileNotFoundError(f'File {file_pattern} not found')
+    df = pd.read_csv(file[0])
+    return df.loc[:, str(start_yr):str(end_yr)].to_numpy()
+
+
 def main():
     """
     Reads in and calculates global and local (regional) sea level change
@@ -552,17 +571,23 @@ def main():
             palmer_method = False
             
         makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
-            
-        gmslr = GMSLREmulator(
-            settings["emulator_settings"]["emulator_scenario"],
-            settings["emulator_settings"]["emulator_input_dir"],
-            os.path.join(settings["baseoutdir"], 'emulator_output'),
-            settings["projection_end_year"],
-            palmer_method=palmer_method
-        )
-        gmslr.project()
+        
         # Get the metadata of either the site location or tide gauge location
         for scenario in settings["emulator_settings"]["emulator_scenario"]:
+            print(f'Projecting {scenario}...')
+            T_change = read_csv_file(f'*{scenario}*_temperature*.csv')
+            OHC_change = read_csv_file(f'*{scenario}*_ocean_heat_content_change*.csv')
+            
+            gmslr = GMSLREmulator(
+                T_change,
+                OHC_change,
+                scenario,
+                os.path.join(settings["baseoutdir"], 'emulator_output'),
+                settings["projection_end_year"],
+                palmer_method=palmer_method,
+                input_ensemble=settings["emulator_settings"]["use_input_ensemble"]
+            )
+            gmslr.project()
             for loc_name in df_site_data.index.values:
                 calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
     else:

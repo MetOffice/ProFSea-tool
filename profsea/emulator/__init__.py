@@ -19,8 +19,7 @@ class GMSLREmulator:
         self, 
         T_change: np.ndarray,
         OHC_change: np.ndarray,
-        scenarios: list,
-        data_dir: str,
+        scenario: str,
         output_dir: str,
         end_yr: int,
         seed: int=0,
@@ -68,8 +67,7 @@ class GMSLREmulator:
         
         self.T_change = T_change
         self.OHC_change = OHC_change
-        self.scenarios = scenarios
-        self.data_dir = data_dir
+        self.scenario = scenario
         self.output_dir = output_dir
         self.end_yr = end_yr
         self.seed = seed
@@ -104,16 +102,12 @@ class GMSLREmulator:
 
         # Sensitivity of thermosteric SLR to ocean heat content change
         self.exp_efficiency = 0.12e-24
-  
+        
+        if input_ensemble:
+            self.nt = self.T_change.shape[0]
+        
     def project(self):
-        for scenario in self.scenarios:
-            print(f'Projecting {scenario}...')
-            self.project_scenario(scenario)
-        
-    def project_scenario(self, scenario):
         np.random.seed(self.seed)
-        
-        tas, therm = self.read_input(scenario)
 
         zt, zx, zit, zit_mean = self.calculate_drivers() 
         
@@ -121,88 +115,53 @@ class GMSLREmulator:
         # [component_realization,climate_realization,time]
         template=np.full([self.nm, self.nt, self.nyr], np.nan)
 
-        expansion = np.tile(zx, (self.nm, 1))
+        self.expansion = np.tile(zx, (self.nm, 1))
         fraction = np.random.rand(self.nm * self.nt) # correlation between antsmb and antdyn
 
-        glacier = self.project_glacier(zit_mean, zit, template)
-        greensmb = self.project_greensmb(zt,template)
-        antsmb = self.project_antsmb(zit,template,fraction)
-        greendyn = self.project_greendyn(scenario,template)
-        antdyn = self.project_antdyn(template, fraction)
-        landwater = self.project_landwater(template)
+        self.glacier = self.project_glacier(zit_mean, zit, template)
+        self.greensmb = self.project_greensmb(zt,template)
+        self.antsmb = self.project_antsmb(zit,template,fraction)
+        self.greendyn = self.project_greendyn(template)
+        self.antdyn = self.project_antdyn(template, fraction)
+        self.landwater = self.project_landwater(template)
         
-        greennet = greensmb + greendyn
-        antnet = antsmb + antdyn
-        sheetdyn = greendyn + antdyn
-        gmslr = glacier + greennet + antnet + landwater + expansion
+        self.greennet = self.greensmb + self.greendyn
+        self.antnet = self.antsmb + self.antdyn
+        self.sheetdyn = self.greendyn + self.antdyn
+        self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
         
         components_dict = {
-            'exp': expansion,
-            'glacier': glacier,
-            'greensmb': greensmb,
-            'greendyn': greendyn,
-            'greennet': greennet,
-            'antsmb': antsmb,
-            'antdyn': antdyn,
-            'antnet': antnet,
-            'landwater': landwater,
-            'sheetdyn': sheetdyn,
-            'gmslr': gmslr
+            'exp': self.expansion,
+            'glacier': self.glacier,
+            'greensmb': self.greensmb,
+            'greendyn': self.greendyn,
+            'greennet': self.greennet,
+            'antsmb': self.antsmb,
+            'antdyn': self.antdyn,
+            'antnet': self.antnet,
+            'landwater': self.landwater,
+            'sheetdyn': self.sheetdyn,
+            'gmslr': self.gmslr
         }
 
         for name, component in components_dict.items():
             np.save(
-                os.path.join(self.output_dir, f'{scenario}_{name}.npy'), 
+                os.path.join(self.output_dir, f'{self.scenario}_{name}.npy'), 
                 component.T
             )
-
-    def read_input(self, scenario: str): # TAKE THIS OUT AND INTO PROFSEA BEFORE CALL
-         # Read in the input fields
-        variable = ['temperature','ocean_heat_content_change'] # input quantities
-        txin = []
-        tas = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_temperature*.csv'))
-        ohc = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_ocean_heat_content_change*.csv'))
-        if tas and ohc:
-            tas = pd.read_csv(tas[0])
-            tas = tas.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
-            ohc = pd.read_csv(ohc[0])
-            ohc = ohc.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
-            
-            if self.input_ensemble:
-                txin.extend([tas.to_numpy(), np.std(tas.to_numpy(), axis=0)])
-                txin.extend([np.percentile(ohc.to_numpy(), 50, axis=0), np.std(ohc.to_numpy(), axis=0)])
-        else:
-            raise FileNotFoundError(f'Emulator input file(s) {tas}, or {ohc} not found')
-        # for v in variable:
-        #     file = glob.glob(os.path.join(self.data_dir, f'*{scenario}*_{v}*.csv'))
-        #     if file:
-        #         df = pd.read_csv(file[0])
-        #         df = df.loc[:, str(self.endofhistory + 1):str(self.end_yr)]
-                
-        #         central_estimate = np.percentile(df.to_numpy(), 50, axis=0)
-        #         std = np.std(df.to_numpy(), axis=0)
-
-        #         if v == 'ocean_heat_content_change':
-        #             central_estimate = central_estimate * self.exp_efficiency # convert to thermal expansion 
-        #             std = np.std(df.to_numpy() * self.exp_efficiency, axis=0)
-                
-        #         txin.extend([central_estimate, std])
-        #     else:
-        #         raise FileNotFoundError(f'Emulator input file {file} not found')
         
     def calculate_drivers(self):
-        # Check if dimensions are the right way around 
-        if self.T_change.shape[1] != self.nyr: 
-            self.T_change = self.T_change.T
-        if self.OHC_change.shape[1] != self.nyr: 
-            self.OHC_change = self.OHC_change.T
-            
         if self.input_ensemble:
-            print(self.T_change.shape)
+            # Check if dimensions are the right way around 
+            if self.T_change.shape[1] != self.nyr: 
+                self.T_change = self.T_change.T
+            if self.OHC_change.shape[1] != self.nyr: 
+                self.OHC_change = self.OHC_change.T
+                
             therm_ens = self.OHC_change * self.exp_efficiency
             T_int_ens = np.cumsum(self.T_change, axis=1)
-            T_int_med = np.percentile(T_int_ens, 50, axis=1) # using median here instead of mean... CHECK THIS
-            
+            T_int_med = np.percentile(T_int_ens, 50, axis=0) # using median here instead of mean... CHECK THIS
+
             return self.T_change, therm_ens, T_int_ens, T_int_med
         
         T_med = np.percentile(self.T_change, 50, axis=0)
@@ -240,7 +199,6 @@ class GMSLREmulator:
         glmass=412.0-96.3 # initial glacier mass, used to set a limit, from Tab 4.2
         glmass=1e-3*glmass # m SLE
 
-        nr=glacier.shape[0]
         if self.glaciermip:
             if self.glaciermip==1:
                 glparm=[dict(name='SLA2012',factor=3.39,exponent=0.722,cvgl=0.15),\
@@ -267,12 +225,12 @@ class GMSLREmulator:
             cvgl=0.20 # random methodological error
             
         ngl=len(glparm) # number of glacier methods
-        if nr%ngl:
+        if self.nm%ngl:
             raise ValueError('number of realisations '+\
             'must be a multiple of number of glacier methods')
 
-        nrpergl=int(nr/ngl) # number of realisations per glacier method
-        r = np.random.standard_normal(nr)
+        nrpergl=int(self.nm/ngl) # number of realisations per glacier method
+        r = np.random.standard_normal(self.nm)
         r = r[:, np.newaxis, np.newaxis]
 
         # Make an ensemble of projections for each method
@@ -373,7 +331,7 @@ class GMSLREmulator:
 
         return antsmb
 
-    def project_greendyn(self, scenario, template):
+    def project_greendyn(self, template):
         # Return projection of Greenland rapid ice-sheet dynamics contribution
         # as a cf.Field
         # scenario -- str, name of scenario
@@ -382,7 +340,7 @@ class GMSLREmulator:
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.63+-0.17 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [20,85] mm for rcp85, [14,63] mm otherwise
 
-        if scenario in ['rcp85','ssp585']:
+        if self.scenario in ['rcp85','ssp585']:
             finalrange=[0.020,0.085]
         else:
             finalrange=[0.014,0.063]
