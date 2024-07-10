@@ -8,7 +8,9 @@ All rights reserved.
 # code where possible.
 import os, os.path
 import glob
+import time
 from collections.abc import Sequence
+import concurrent
 
 import numpy as np
 import pandas as pd
@@ -29,17 +31,6 @@ class GMSLREmulator:
         glaciermip: bool=False,
         input_ensemble: bool=True,
         palmer_method: bool=False):
-        # input -- str, path to directory containing input files. The directory should
-        #   contain files named SCENARIO_QUANTITY_STATISTIC.nc, where QUANTITY is
-        #   temperature or expansion, and STATISTIC is mean, sd or models. Each file
-        #   contains one field with a dimension of time. The mean and sd fields have
-        #   no other dimension and are used if nt>0 (default), while the models fields
-        #   have a model dimension and are used if nt==0.
-        # scenarios -- str or sequence of str, scenarios for which projections are to be
-        #   made, by default all those represented in the input directory
-        # output, str, optional -- path to directory in which output files are to be
-        #   written. It is created if it does not exist. No files are written if this
-        #   argument is omitted.
         # ensemble -- bool, optional, default True, if provided use an input ensemble of 
         #   temperature and ocean heat content change in place of Monte Carlo simulations
         #   for thermosteric sea level rise 
@@ -105,31 +96,8 @@ class GMSLREmulator:
         
         if input_ensemble:
             self.nt = self.T_change.shape[0]
-        
-    def project(self):
-        np.random.seed(self.seed)
-
-        zt, zx, zit, zit_mean = self.calculate_drivers() 
-        
-        # Create a field with the shape of the quantities to be calculated
-        # [component_realization,climate_realization,time]
-        template=np.full([self.nm, self.nt, self.nyr], np.nan)
-
-        self.expansion = np.tile(zx, (self.nm, 1))
-        fraction = np.random.rand(self.nm * self.nt) # correlation between antsmb and antdyn
-
-        self.glacier = self.project_glacier(zit_mean, zit, template)
-        self.greensmb = self.project_greensmb(zt,template)
-        self.antsmb = self.project_antsmb(zit,template,fraction)
-        self.greendyn = self.project_greendyn(template)
-        self.antdyn = self.project_antdyn(template, fraction)
-        self.landwater = self.project_landwater(template)
-        
-        self.greennet = self.greensmb + self.greendyn
-        self.antnet = self.antsmb + self.antdyn
-        self.sheetdyn = self.greendyn + self.antdyn
-        self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
-        
+            
+    def get_components(self):
         components_dict = {
             'exp': self.expansion,
             'glacier': self.glacier,
@@ -143,12 +111,46 @@ class GMSLREmulator:
             'sheetdyn': self.sheetdyn,
             'gmslr': self.gmslr
         }
+        return components_dict
+        
+    def project(self):
+        np.random.seed(self.seed)
+        zt, zx, zit, zit_mean = self.calculate_drivers() 
 
-        for name, component in components_dict.items():
-            np.save(
-                os.path.join(self.output_dir, f'{self.scenario}_{name}.npy'), 
-                component.T
-            )
+        self.expansion = np.tile(zx, (self.nm, 1))
+        fraction = np.random.rand(self.nm * self.nt) # correlation between antsmb and antdyn
+        
+        self.run_parallel_projections(zit_mean, zit, zt, fraction)
+        
+        self.greennet = self.greensmb + self.greendyn
+        self.antnet = self.antsmb + self.antdyn
+        self.sheetdyn = self.greendyn + self.antdyn
+        self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
+            
+    def run_parallel_projections(self, zit_mean, zit, zt, fraction):
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = {
+                executor.submit(self.project_glacier, zit_mean, zit): 'glacier',
+                executor.submit(self.project_greensmb, zt): 'greensmb',
+                executor.submit(self.project_antsmb, zit, fraction): 'antsmb',
+                executor.submit(self.project_greendyn): 'greendyn',
+                executor.submit(self.project_antdyn, fraction): 'antdyn',
+                executor.submit(self.project_landwater): 'landwater'
+            }
+            results = {}
+            for future in concurrent.futures.as_completed(futures):
+                key = futures[future]
+                try:
+                    results[key] = future.result()
+                except Exception as e:
+                    print(f"{key} generated an exception: {e}")
+
+        self.glacier = results['glacier']
+        self.greensmb = results['greensmb']
+        self.antsmb = results['antsmb']
+        self.greendyn = results['greendyn']
+        self.antdyn = results['antdyn']
+        self.landwater = results['landwater']
         
     def calculate_drivers(self):
         if self.input_ensemble:
@@ -187,7 +189,7 @@ class GMSLREmulator:
         return T_ens, therm_ens, T_int_ens, T_med_int
         
 
-    def project_glacier(self, it, zit, glacier):
+    def project_glacier(self, it, zit):
         # Return projection of glacier contribution as a cf.Field
         # it -- cf.Field, time-integral of median temperature anomaly timeseries
         # zit -- cf.Field, ensemble of time-integral temperature anomaly timeseries
@@ -198,6 +200,8 @@ class GMSLREmulator:
         dmz=dmzdtref*(self.endofhistory-1996)*1e-3 # m from glacier at start wrt AR5 ref period
         glmass=412.0-96.3 # initial glacier mass, used to set a limit, from Tab 4.2
         glmass=1e-3*glmass # m SLE
+        
+        glacier = np.full((self.nm, self.nt, self.nyr), np.nan)
 
         if self.glaciermip:
             if self.glaciermip==1:
@@ -228,26 +232,29 @@ class GMSLREmulator:
         if self.nm%ngl:
             raise ValueError('number of realisations '+\
             'must be a multiple of number of glacier methods')
-
-        nrpergl=int(self.nm/ngl) # number of realisations per glacier method
+            
+        nrpergl = self.nm // ngl
         r = np.random.standard_normal(self.nm)
         r = r[:, np.newaxis, np.newaxis]
+        
+        # Precompute mgl and zgl for all glacier methods
+        mgl_all = np.array([self._project_glacier1(it, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
+        zgl_all = np.array([self._project_glacier1(zit, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
+        cvgl_all = np.array([glparm[igl]['cvgl'] if self.glaciermip else cvgl for igl in range(ngl)])
 
         # Make an ensemble of projections for each method
         for igl in range(ngl):
-            # glacier projection for this method using the median temperature timeseries
-            mgl = self._project_glacier1(it, glparm[igl]['factor'], glparm[igl]['exponent'])
+            mgl = mgl_all[igl]
+            zgl = zgl_all[igl]
+            cvgl = cvgl_all[igl]
             
-            # glacier projections for this method with the ensemble of timeseries
-            zgl = self._project_glacier1(zit, glparm[igl]['factor'], glparm[igl]['exponent'])
-
             ifirst = igl * nrpergl
             ilast = ifirst + nrpergl
-            if self.glaciermip: cvgl = glparm[igl]['cvgl'] 
-            glacier[ifirst:ilast,...] = zgl + (mgl * r[ifirst:ilast] * cvgl)
+
+            glacier[ifirst:ilast, ...] = zgl + (mgl * r[ifirst:ilast] * cvgl)
 
         glacier += dmz
-        glacier = np.where(glacier > glmass, glmass, glacier)
+        np.clip(glacier, None, glmass, out=glacier)
         
         glacier = glacier.reshape(glacier.shape[0]*glacier.shape[1], glacier.shape[2])
 
@@ -258,31 +265,31 @@ class GMSLREmulator:
         scale=1e-3 # mm to m
         return scale * factor * (np.where(it<0, 0, it)**exponent)
 
-    def project_greensmb(self, zt, template):
+    def project_greensmb(self, zt):
         # Return projection of Greenland SMB contribution as a cf.Field
         # zt -- cf.Field, ensemble of temperature anomaly timeseries
         # template -- cf.Field with the required shape of the output
 
-        dtgreen=-0.146 # Delta_T of Greenland ref period wrt AR5 ref period  
-        fnlogsd=0.4 # random methodological error of the log factor
-        febound=[1,1.15] # bounds of uniform pdf of SMB elevation feedback factor
+        dtgreen = -0.146 # Delta_T of Greenland ref period wrt AR5 ref period  
+        fnlogsd = 0.4 # random methodological error of the log factor
+        febound = [1, 1.15] # bounds of uniform pdf of SMB elevation feedback factor
 
-        nr = template.shape[0]
         # random log-normal factor
-        fn = np.exp(np.random.standard_normal(nr)*fnlogsd)
+        fn = np.exp(np.random.standard_normal(self.nm)*fnlogsd)
         # elevation feedback factor
-        fe = np.random.sample(nr)*(febound[1]-febound[0])+febound[0]
+        fe = np.random.sample(self.nm) * (febound[1] - febound[0]) + febound[0]
         ff = fn * fe
         
         ztgreen = zt - dtgreen
-        greensmbrate = ff[:, np.newaxis, np.newaxis] * self._fettweis(ztgreen)
+        
+        greensmb = ff[:, np.newaxis, np.newaxis] * self._fettweis(ztgreen)
 
         if self.palmer_method and self.end_yr > self.endofAR5:
-            greensmbrate[:, :, 95:] = greensmbrate[:, :, 94:95]
+            greensmb[:, :, 95:] = greensmb[:, :, 94:95]
 
-        greensmb = np.cumsum(greensmbrate, axis=-1)
+        greensmb = np.cumsum(greensmb, axis=-1)
 
-        np.add(greensmb, (1 - self.fgreendyn) * self.dgreen, out=greensmb)
+        greensmb += (1 - self.fgreendyn) * self.dgreen
 
         greensmb = greensmb.reshape(greensmb.shape[0]*greensmb.shape[1], greensmb.shape[2])
 
@@ -293,14 +300,12 @@ class GMSLREmulator:
         # using Eq 2 of Fettweis et al. (2013)
         return (71.5*ztgreen+20.4*(ztgreen**2)+2.8*(ztgreen**3))*self.mSLEoGt
 
-    def project_antsmb(self, zit, template, fraction=None):
+    def project_antsmb(self, zit, fraction=None):
         # Return projection of Antarctic SMB contribution as a cf.Field
         # zit -- cf.Field, ensemble of time-integral temperature anomaly timeseries
         # template -- cf.Field with the required shape of the output
         # fraction -- array-like, random numbers for the SMB-dynamic feedback
 
-        nr=template.shape[0]
-        nt=template.shape[1]
         # antsmb=template.copy()
         # nr,nt,nyr=antsmb.shape
 
@@ -309,29 +314,29 @@ class GMSLREmulator:
         KoKg=[1.1,0.2] # ratio of Antarctic warming to global warming from G&H06
 
         # Generate a distribution of products of the above two factors
-        pcoKg=(pcoK[0]+np.random.standard_normal([nr,nt])*pcoK[1])*\
-            (KoKg[0]+np.random.standard_normal([nr,nt])*KoKg[1])
-        meansmb=1923 # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
-        moaoKg=-pcoKg*1e-2*meansmb*self.mSLEoGt # m yr-1 of SLE per K of global warming
+        pcoKg = (pcoK[0] + np.random.standard_normal([self.nm, self.nt]) * pcoK[1]) * \
+            (KoKg[0] + np.random.standard_normal([self.nm, self.nt]) * KoKg[1])
+        meansmb = 1923 # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
+        moaoKg = -pcoKg * 1e-2 * meansmb * self.mSLEoGt # m yr-1 of SLE per K of global warming
 
         if fraction is None:
-            fraction=np.random.rand(nr,nt)
-        elif fraction.size!=nr*nt:
+            fraction = np.random.rand(self.nm, self.nt)
+        elif fraction.size != self.nm * self.nt:
             raise ValueError('fraction is the wrong size')
         else:
-            fraction.shape=(nr,nt)
+            fraction.shape = (self.nm, self.nt)
 
-        smax=0.35 # max value of S in 13.SM.1.5
-        ainterfactor=1-fraction*smax
+        smax = 0.35 # max value of S in 13.SM.1.5
+        ainterfactor = 1 - fraction * smax
 
         z = moaoKg * ainterfactor
         z = z[:, :, np.newaxis]
         antsmb = z * zit
-        antsmb = antsmb.reshape(antsmb.shape[0]*antsmb.shape[1], antsmb.shape[2])
+        antsmb = antsmb.reshape(antsmb.shape[0] * antsmb.shape[1], antsmb.shape[2])
 
         return antsmb
 
-    def project_greendyn(self, template):
+    def project_greendyn(self):
         # Return projection of Greenland rapid ice-sheet dynamics contribution
         # as a cf.Field
         # scenario -- str, name of scenario
@@ -346,9 +351,9 @@ class GMSLREmulator:
             finalrange=[0.014,0.063]
         return self.time_projection(
             0.63*self.fgreendyn, 0.17*self.fgreendyn, 
-            finalrange, template) + self.fgreendyn*self.dgreen
+            finalrange) + self.fgreendyn*self.dgreen
 
-    def project_antdyn(self, template, fraction=None):
+    def project_antdyn(self, fraction=None):
         # Return projection of Antarctic rapid ice-sheet dynamics contribution
         # as a cf.Field
         # template -- cf.Field with the required shape of the output
@@ -360,22 +365,20 @@ class GMSLREmulator:
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
 
-        return self.time_projection(
-            0.41, 0.20, final, template, fraction=fraction) + self.dant
+        return self.time_projection(0.41, 0.20, final, fraction=fraction) + self.dant
   
-    def project_landwater(self, template):
+    def project_landwater(self):
         # Return projection of land water storage contribution as a cf.Field
 
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
         nyr=2100-2081+1 # number of years of the time-mean of the final amount
 
-        return self.time_projection(0.38, 0.49-0.38, [-0.01,0.09], 
-                               template, nfinal=nyr)
+        return self.time_projection(0.38, 0.49-0.38, [-0.01,0.09], nfinal=nyr)
     
     def time_projection(
         self, startratemean, startratepm, final,
-        template, nfinal=1, fraction=None):
+        nfinal=1, fraction=None):
         # Return projection of a quantity which is a quadratic function of time
         # in a cf.Field.
         # startratemean, startratepm -- rate of GMSLR at the start in mm yr-1, whose
@@ -392,31 +395,28 @@ class GMSLREmulator:
         # Create a field of elapsed time since start in years
         timeendofAR5 = self.endofAR5 - self.endofhistory + 1
         time = np.arange(self.end_yr - self.endofhistory) + 1
-
-        # more general than nr,nt,nyr=template.shape
-        nr, nt, nyr = template.shape
         
         if fraction is None:
-            fraction=np.random.rand(nr,nt)
-        elif fraction.size!=nr*nt:
+            fraction = np.random.rand(self.nm, self.nt)
+        elif fraction.size != self.nm * self.nt:
             raise ValueError('fraction is the wrong size')
-        fraction = fraction.reshape(nr,nt)
+        fraction = fraction.reshape(self.nm, self.nt)
 
         # Convert inputs to startrate (m yr-1) and afinal (m), where both are
         # arrays with the size of fraction
-        momm=1e-3 # convert mm yr-1 to m yr-1
-        startrate=(startratemean+\
-            startratepm*np.array([-1,1],dtype=float))*momm
-        finalisrange=isinstance(final,Sequence)
+        momm = 1e-3 # convert mm yr-1 to m yr-1
+        startrate = (startratemean + \
+            startratepm * np.array([-1,1],dtype=float)) * momm
+        finalisrange = isinstance(final, Sequence)
         if finalisrange:
-            if len(final)!=2:
+            if len(final) != 2:
                 raise ValueError('final range is the wrong size')
-            afinal=(1-fraction)*final[0]+fraction*final[1]
+            afinal = (1 - fraction) * final[0] + fraction * final[1]
         else:
-            if final.shape!=fraction.shape:
+            if final.shape != fraction.shape:
                 raise ValueError('final array is the wrong shape')
             afinal = final
-        startrate=(1-fraction)*startrate[0]+fraction*startrate[1]
+        startrate = (1 - fraction) * startrate[0] + fraction * startrate[1]
 
         # For terms where the rate increases linearly in time t, we can write GMSLR as
         #   S(t) = a*t**2 + b*t
@@ -425,9 +425,9 @@ class GMSLREmulator:
         # If nfinal=1, the following two lines are equivalent to
         # halfacc=(final-startyr*nyr)/nyr**2
         finalyr = np.arange(nfinal) - nfinal + 94 + 1  # last element ==nyr
-        halfacc=(afinal-startrate*finalyr.mean())/(finalyr**2).mean()
-        quadratic=halfacc[:, :, np.newaxis]*(time**2)
-        linear=startrate[:, :, np.newaxis]*time
+        halfacc = (afinal - startrate * finalyr.mean()) / (finalyr**2).mean()
+        quadratic = halfacc[:, :, np.newaxis] * (time**2)
+        linear = startrate[:, :, np.newaxis] * time
 
         # If acceleration ceases for t>t0, the rate is 2*a*t0+b thereafter, so
         #   S(t) = a*t0**2 + b*t0 + (2*a*t0+b)*(t-t0)

@@ -588,6 +588,16 @@ def main():
                 input_ensemble=settings["emulator_settings"]["use_input_ensemble"]
             )
             gmslr.project()
+            components_dict = gmslr.get_components()
+            print('Saving components...')
+            for name, component in components_dict.items():
+                np.save(
+                    os.path.join(
+                        os.path.join(settings["baseoutdir"], 'emulator_output'), 
+                        f'{scenario}_{name}.npy'), 
+                    component.T # Transpose to match the shape of original Monte Carlo simulations
+                )
+            print('Saved!\n')
             for loc_name in df_site_data.index.values:
                 calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
     else:
