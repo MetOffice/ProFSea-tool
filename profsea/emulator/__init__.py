@@ -6,14 +6,10 @@ All rights reserved.
 # Calculate Monte Carlo projections of GMSLR using methods 
 # from Jonathon Gregory and AR5. Staying close to JG's original
 # code where possible.
-import os, os.path
-import glob
-import time
 from collections.abc import Sequence
 import concurrent
 
 import numpy as np
-import pandas as pd
 
 class GMSLREmulator:
     
@@ -360,7 +356,20 @@ class GMSLREmulator:
         # fraction -- array-like, random numbers for the dynamic contribution
         # levermann -- optional, str, use Levermann fit for specified scenario
 
-        final=[-0.020,0.185]
+
+        # lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
+        # rcp45=[-2.676, 0.850, 0.000],\
+        # rcp60=[-2.660, 0.870, 0.000],\
+        # rcp85=[-2.399, 0.860, 0.000])
+        # lcoeff = lcoeff['rcp85']
+
+        # from scipy.stats import norm
+        # ascale=norm.ppf(fraction)
+        # final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
+        # final = final.reshape(self.nm, self.nt)
+        
+        # final=[-0.020, 0.185]
+        final = [0.06, 0.49] # AR6, SSP2-4.5
 
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
@@ -373,8 +382,9 @@ class GMSLREmulator:
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
         nyr=2100-2081+1 # number of years of the time-mean of the final amount
-
-        return self.time_projection(0.38, 0.49-0.38, [-0.01,0.09], nfinal=nyr)
+        # final = [-0.01,0.09] # AR5
+        final = [0.01, 0.04] # AR6
+        return self.time_projection(0.38, 0.49-0.38, final, nfinal=nyr)
     
     def time_projection(
         self, startratemean, startratepm, final,
@@ -400,14 +410,15 @@ class GMSLREmulator:
             fraction = np.random.rand(self.nm, self.nt)
         elif fraction.size != self.nm * self.nt:
             raise ValueError('fraction is the wrong size')
+        
         fraction = fraction.reshape(self.nm, self.nt)
 
         # Convert inputs to startrate (m yr-1) and afinal (m), where both are
         # arrays with the size of fraction
-        momm = 1e-3 # convert mm yr-1 to m yr-1
         startrate = (startratemean + \
-            startratepm * np.array([-1,1],dtype=float)) * momm
+            startratepm * np.array([-1,1],dtype=float)) * 1e-3 # convert mm yr-1 to m yr-1
         finalisrange = isinstance(final, Sequence)
+        
         if finalisrange:
             if len(final) != 2:
                 raise ValueError('final range is the wrong size')
@@ -416,6 +427,7 @@ class GMSLREmulator:
             if final.shape != fraction.shape:
                 raise ValueError('final array is the wrong shape')
             afinal = final
+            
         startrate = (1 - fraction) * startrate[0] + fraction * startrate[1]
 
         # For terms where the rate increases linearly in time t, we can write GMSLR as
@@ -439,7 +451,7 @@ class GMSLREmulator:
             y = halfacc[:, :, np.newaxis] * timeendofAR5 * ((2 * time) - timeendofAR5)
             quadratic[:, :, 95:] = y[:, :, 95:]
 
-        np.add(quadratic, linear, out=quadratic)
+        quadratic += linear
         
         quadratic = quadratic.reshape(quadratic.shape[0]*quadratic.shape[1], quadratic.shape[2])
         

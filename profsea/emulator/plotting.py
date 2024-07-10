@@ -70,7 +70,7 @@ def plot_slr(r_df_list, tg_name, nflag, flag, tg_years,
 
     # Save the figure
     fig.tight_layout()
-    ffile = f'{fig_dir}_SLR_{site_name}.png'
+    ffile = f'{fig_dir}emulator_scenarios_SLR_{site_name}.png'
     plt.savefig(ffile, dpi=300, format='png')
     plt.close()
 
@@ -169,6 +169,6 @@ def plot_slr_components(g_df_list, r_df_list, site_name, scenarios, fig_dir):
 
     # Save the figure
     fig.tight_layout()
-    outfile = f'{fig_dir}_components_{site_name}.png'
-    plt.savefig(outfile, dpi=200, format='png')
+    outfile = f'{fig_dir}emulator_components_{site_name}.png'
+    plt.savefig(outfile, dpi=300, format='png')
     plt.close()
