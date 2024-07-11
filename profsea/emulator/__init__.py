@@ -506,8 +506,8 @@ class GMSLREmulator:
         # final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
         # final = final.reshape(self.nm, self.nt)
         
-        # final=[-0.020, 0.185]
-        final = [0.06, 0.49] # AR6, SSP2-4.5
+        final=[-0.020, 0.185]
+        # final = [0.06, 0.49] # AR6, SSP2-4.5
 
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
@@ -525,8 +525,8 @@ class GMSLREmulator:
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
         nyr=2100-2081+1 # number of years of the time-mean of the final amount
-        # final = [-0.01,0.09] # AR5
-        final = [0.01, 0.04] # AR6
+        final = [-0.01,0.09] # AR5
+        # final = [0.01, 0.04] # AR6
         return self.time_projection(0.38, 0.49-0.38, final, nfinal=nyr)
     
     def time_projection(
