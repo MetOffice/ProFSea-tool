@@ -6,8 +6,9 @@ All rights reserved.
 # Calculate Monte Carlo projections of GMSLR using methods 
 # from Jonathon Gregory and AR5. Staying close to JG's original
 # code where possible.
-from collections.abc import Sequence
+import os
 import concurrent
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -108,27 +109,62 @@ class GMSLREmulator:
             'gmslr': self.gmslr
         }
         return components_dict
+    
+    def save_components(self, output_dir: str, scenario_name: str):
+        """Save all SLR components as .npy files to a directory.
+        
+        Parameters
+        ----------
+        output_directory: str
+            Directory to save components to.
+        scenario_name: str
+            Name of the scenario you've run the emulator for. 
+            
+        Returns
+        -------
+        None
+        """
+        for name, component in self.get_components().items():
+            np.save(
+                os.path.join(
+                    output_dir, 
+                    f'{scenario_name}_{name}.npy'), 
+                component.T # Transpose to match the shape of original Monte Carlo simulations
+            )
         
     def project(self):
-        np.random.seed(self.seed)
-        zt, zx, zit, zit_mean = self.calculate_drivers() 
+        """Run the emulator to project GMSLR components.
 
-        self.expansion = np.tile(zx, (self.nm, 1))
+        Returns
+        -------
+        None
+        """
+        np.random.seed(self.seed)
+        T_ens, Exp_ens, T_int_ens, T_int_med = self.calculate_drivers() 
+
+        self.expansion = np.tile(Exp_ens, (self.nm, 1))
         fraction = np.random.rand(self.nm * self.nt) # correlation between antsmb and antdyn
         
-        self.run_parallel_projections(zit_mean, zit, zt, fraction)
+        self.run_parallel_projections(T_int_med, T_int_ens, T_ens, fraction)
         
         self.greennet = self.greensmb + self.greendyn
         self.antnet = self.antsmb + self.antdyn
         self.sheetdyn = self.greendyn + self.antdyn
         self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
             
-    def run_parallel_projections(self, zit_mean, zit, zt, fraction):
+    def run_parallel_projections(self, T_int_med: np.ndarray, T_int_ens: np.ndarray, 
+                                 T_ens: np.ndarray, fraction: np.ndarray):
+        """Run components of the emulator in parallel.
+        
+        Returns
+        -------
+        None
+        """
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = {
-                executor.submit(self.project_glacier, zit_mean, zit): 'glacier',
-                executor.submit(self.project_greensmb, zt): 'greensmb',
-                executor.submit(self.project_antsmb, zit, fraction): 'antsmb',
+                executor.submit(self.project_glacier, T_int_med, T_int_ens): 'glacier',
+                executor.submit(self.project_greensmb, T_ens): 'greensmb',
+                executor.submit(self.project_antsmb, T_int_ens, fraction): 'antsmb',
                 executor.submit(self.project_greendyn): 'greendyn',
                 executor.submit(self.project_antdyn, fraction): 'antdyn',
                 executor.submit(self.project_landwater): 'landwater'
@@ -149,6 +185,20 @@ class GMSLREmulator:
         self.landwater = results['landwater']
         
     def calculate_drivers(self):
+        """Calculate the drivers of GMSLR: temperature change and 
+        thermosteric sea level rise.
+        
+        Returns
+        -------
+        T_ens: np.ndarray
+            Ensemble of temperature changes.
+        therm_ens: np.ndarray
+            Ensemble of thermosteric sea level rise.
+        T_int_ens: np.ndarray
+            Ensemble of time-integral temperature anomalies.
+        T_int_med: np.ndarray
+            Median of time-integral temperature anomalies.
+        """
         if self.input_ensemble:
             # Check if dimensions are the right way around 
             if self.T_change.shape[1] != self.nyr: 
@@ -169,8 +219,8 @@ class GMSLREmulator:
         therm_std = np.std(self.OHC_change * self.exp_efficiency, axis=0)
         
         # Time-integral of temperature anomaly
-        T_med_int = np.cumsum(T_med)
-        T_std_int = np.cumsum(T_std)
+        T_int_med = np.cumsum(T_med)
+        T_int_std = np.cumsum(T_std)
         
         # Generate a sample of perfectly correlated timeseries fields of temperature,
         # time-integral temperature and expansion, each of them [realisation,time]
@@ -180,16 +230,26 @@ class GMSLREmulator:
         # reshape to [realisation,time]
         T_ens = z[:, np.newaxis] * T_std + T_med
         therm_ens = z[:, np.newaxis] * therm_std + therm_med
-        T_int_ens = z[:, np.newaxis] * T_std_int + T_med_int
+        T_int_ens = z[:, np.newaxis] * T_int_std + T_int_med
         
-        return T_ens, therm_ens, T_int_ens, T_med_int
+        return T_ens, therm_ens, T_int_ens, T_int_med
         
 
-    def project_glacier(self, it, zit):
-        # Return projection of glacier contribution as a cf.Field
-        # it -- cf.Field, time-integral of median temperature anomaly timeseries
-        # zit -- cf.Field, ensemble of time-integral temperature anomaly timeseries
-        # template -- cf.Field with the required shape of the output
+    def project_glacier(self, T_int_med: np.ndarray, T_int_ens: np.ndarray):
+        """Project glacier contribution to GMSLR.
+        
+        Parameters
+        ----------
+        T_int_med: np.ndarray
+            Time-integral of median temperature anomaly timeseries.
+        T_int_ens: np.ndarray
+            Ensemble of time-integral temperature anomaly timeseries.
+        
+        Returns
+        -------
+        glacier: np.ndarray
+            Glacier contribution to GMSLR.
+        """
         # glaciermip -- False => AR5 parameters, 1 => fit to Hock et al. (2019),
         #   2 => fit to Marzeion et al. (2020)
         dmzdtref=0.95 # mm yr-1 in Marzeion's CMIP5 ensemble mean for AR5 ref period
@@ -234,8 +294,8 @@ class GMSLREmulator:
         r = r[:, np.newaxis, np.newaxis]
         
         # Precompute mgl and zgl for all glacier methods
-        mgl_all = np.array([self._project_glacier1(it, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
-        zgl_all = np.array([self._project_glacier1(zit, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
+        mgl_all = np.array([self._project_glacier1(T_int_med, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
+        zgl_all = np.array([self._project_glacier1(T_int_ens, glparm[igl]['factor'], glparm[igl]['exponent']) for igl in range(ngl)])
         cvgl_all = np.array([glparm[igl]['cvgl'] if self.glaciermip else cvgl for igl in range(ngl)])
 
         # Make an ensemble of projections for each method
@@ -256,16 +316,40 @@ class GMSLREmulator:
 
         return glacier
 
-    def _project_glacier1(self, it, factor, exponent):
-        # Return projection of glacier contribution by one glacier method
+    def _project_glacier1(self, T_int: np.ndarray, factor: float, exponent: float):
+        """Project glacier contribution by one glacier method.
+        
+        Parameters
+        ----------
+        T_int: np.ndarray
+            Time-integral temperature anomaly timeseries.
+        factor: float
+            Factor for the glacier method.
+        exponent: float
+            Exponent for the glacier method.
+            
+        Returns
+        -------
+        np.ndarray
+            Projection of glacier contribution.
+        """
         scale=1e-3 # mm to m
-        return scale * factor * (np.where(it<0, 0, it)**exponent)
+        return scale * factor * (np.where(T_int<0, 0, T_int)**exponent)
 
-    def project_greensmb(self, zt):
-        # Return projection of Greenland SMB contribution as a cf.Field
-        # zt -- cf.Field, ensemble of temperature anomaly timeseries
-        # template -- cf.Field with the required shape of the output
-
+    def project_greensmb(self, T_ens: np.ndarray):
+        """Project Greenland SMB contribution to GMSLR.
+        
+        Parameters
+        ----------
+        T_ens: np.ndarray
+            Ensemble of temperature anomaly timeseries.
+            
+        Returns
+        -------
+        greensmb: np.ndarray
+            Greenland SMB contribution to GMSLR.
+        
+        """
         dtgreen = -0.146 # Delta_T of Greenland ref period wrt AR5 ref period  
         fnlogsd = 0.4 # random methodological error of the log factor
         febound = [1, 1.15] # bounds of uniform pdf of SMB elevation feedback factor
@@ -276,7 +360,7 @@ class GMSLREmulator:
         fe = np.random.sample(self.nm) * (febound[1] - febound[0]) + febound[0]
         ff = fn * fe
         
-        ztgreen = zt - dtgreen
+        ztgreen = T_ens - dtgreen
         
         greensmb = ff[:, np.newaxis, np.newaxis] * self._fettweis(ztgreen)
 
@@ -292,19 +376,36 @@ class GMSLREmulator:
         return greensmb
 
     def _fettweis(self, ztgreen):
-        # Greenland SMB in m yr-1 SLE from global mean temperature anomaly
-        # using Eq 2 of Fettweis et al. (2013)
+        """Calculate Greenland SMB in m yr-1 SLE from global mean temperature 
+        anomaly, using Eq 2 of Fettweis et al. (2013).
+        
+        Parameters
+        ----------
+        ztgreen: np.ndarray
+            Global mean temperature anomaly.
+            
+        Returns
+        -------
+        np.ndarray
+            Greenland SMB in m yr-1 SLE.
+        """
         return (71.5*ztgreen+20.4*(ztgreen**2)+2.8*(ztgreen**3))*self.mSLEoGt
 
-    def project_antsmb(self, zit, fraction=None):
-        # Return projection of Antarctic SMB contribution as a cf.Field
-        # zit -- cf.Field, ensemble of time-integral temperature anomaly timeseries
-        # template -- cf.Field with the required shape of the output
-        # fraction -- array-like, random numbers for the SMB-dynamic feedback
-
-        # antsmb=template.copy()
-        # nr,nt,nyr=antsmb.shape
-
+    def project_antsmb(self, T_int_ens, fraction=None):
+        """Project Antarctic SMB contribution to GMSLR.
+        
+        Parameters
+        ----------
+        T_int_ens: np.ndarray
+            Ensemble of time-integral temperature anomaly timeseries.
+        fraction: np.ndarray
+            Random numbers for the SMB-dynamic feedback.
+            
+        Returns
+        -------
+        antsmb: np.ndarray
+            Antarctic SMB contribution to GMSLR.
+        """
         # The following are [mean,SD]
         pcoK=[5.1,1.5] # % change in Ant SMB per K of warming from G&H06
         KoKg=[1.1,0.2] # ratio of Antarctic warming to global warming from G&H06
@@ -327,20 +428,21 @@ class GMSLREmulator:
 
         z = moaoKg * ainterfactor
         z = z[:, :, np.newaxis]
-        antsmb = z * zit
+        antsmb = z * T_int_ens
         antsmb = antsmb.reshape(antsmb.shape[0] * antsmb.shape[1], antsmb.shape[2])
 
         return antsmb
 
     def project_greendyn(self):
-        # Return projection of Greenland rapid ice-sheet dynamics contribution
-        # as a cf.Field
-        # scenario -- str, name of scenario
-        # template -- cf.Field with the required shape of the output
-
+        """Project Greenland rapid ice-sheet dynamics contribution to GMSLR.
+        
+        Returns
+        -------
+        np.ndarray
+            Greenland rapid ice-sheet dynamics contribution to GMSLR.
+        """
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.63+-0.17 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [20,85] mm for rcp85, [14,63] mm otherwise
-
         if self.scenario in ['rcp85','ssp585']:
             finalrange=[0.020,0.085]
         else:
@@ -350,13 +452,18 @@ class GMSLREmulator:
             finalrange) + self.fgreendyn*self.dgreen
 
     def project_antdyn(self, fraction=None):
-        # Return projection of Antarctic rapid ice-sheet dynamics contribution
-        # as a cf.Field
-        # template -- cf.Field with the required shape of the output
-        # fraction -- array-like, random numbers for the dynamic contribution
-        # levermann -- optional, str, use Levermann fit for specified scenario
-
-
+        """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
+        
+        Parameters
+        ----------
+        fraction: np.ndarray
+            Random numbers for the dynamic contribution.
+        
+        Returns
+        -------
+        np.ndarray
+            Antarctic rapid ice-sheet dynamics contribution to GMSLR.
+        """
         # lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
         # rcp45=[-2.676, 0.850, 0.000],\
         # rcp60=[-2.660, 0.870, 0.000],\
@@ -377,8 +484,13 @@ class GMSLREmulator:
         return self.time_projection(0.41, 0.20, final, fraction=fraction) + self.dant
   
     def project_landwater(self):
-        # Return projection of land water storage contribution as a cf.Field
-
+        """Project land water storage contribution to GMSLR.
+        
+        Returns
+        -------
+        np.ndarray
+            Land water storage contribution to GMSLR.
+        """
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
         nyr=2100-2081+1 # number of years of the time-mean of the final amount
@@ -387,21 +499,28 @@ class GMSLREmulator:
         return self.time_projection(0.38, 0.49-0.38, final, nfinal=nyr)
     
     def time_projection(
-        self, startratemean, startratepm, final,
-        nfinal=1, fraction=None):
-        # Return projection of a quantity which is a quadratic function of time
-        # in a cf.Field.
-        # startratemean, startratepm -- rate of GMSLR at the start in mm yr-1, whose
-        #   likely range is startratemean +- startratepm
-        # final -- two-element list giving likely range in m for GMSLR at the endofAR5,
-        #   or array-like, giving final values at that time, of the same shape as
-        #   fraction and assumed corresponding elements
-        # template -- cf.Field with the required shape of the output
-        # nfinal -- int, optional, number of years at the end over which finalrange is
-        #   a time-mean; by default 1 => finalrange is the value for the last year
-        # fraction -- array-like, optional, random numbers in the range 0 to 1,
-        #   by default uniformly distributed
-
+        self, startratemean: float, startratepm: float, final,
+        nfinal: int=1, fraction: np.ndarray=None):
+        """Project a quantity which is a quadratic function of time.
+        
+        Parameters
+        ----------
+        startratemean: float
+            Rate of GMSLR at the start in mm yr-1.
+        startratepm: float
+            Start rate error in mm yr-1.
+        final: list | np.ndarray
+            Likely range in m for GMSLR at the end of AR5.
+        nfinal: int
+            Number of years at the end over which final is a time-mean.
+        fraction: np.ndarray
+            Random numbers in the range 0 to 1.
+            
+        Returns
+        -------
+        np.ndarray
+            Projection of the quantity.
+        """
         # Create a field of elapsed time since start in years
         timeendofAR5 = self.endofAR5 - self.endofhistory + 1
         time = np.arange(self.end_yr - self.endofhistory) + 1
