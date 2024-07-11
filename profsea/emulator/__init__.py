@@ -13,6 +13,61 @@ from collections.abc import Sequence
 import numpy as np
 
 class GMSLREmulator:
+    """Emulator for global mean sea level rise components.
+    
+    Parameters
+    ----------
+    T_change: np.ndarray
+        Array of temperature change values.
+    OHC_change: np.ndarray
+        Array of ocean heat content change values.
+    scenario: str
+        Name of the scenario.
+    output_dir: str
+        Directory to save the components to.
+    end_yr: int
+        End year of the projections.
+    seed: int
+        Seed for numpy.random.
+    nt: int
+        Number of realisations of the input timeseries
+    nm: int
+        Number of realisations of for each component. 
+        Must be a multiple of the number of glacier methods.
+    tcv: float
+        Multiplier for the standard deviation in the input fields.
+    glaciermip: bool | int
+        If False, use AR5 parameters. If 1, use GlacierMIP 
+        (Hock et al., 2019). If 2, use GlacierMIP2 (Marzeion et al., 2020).
+    input_ensemble: bool
+        If True, use an input ensemble of temperature and 
+        ocean heat content change.
+    palmer_method: bool
+        If True, allow integration to end in any year up to 2300, 
+        with the contributions to GMLSR from ice-sheet dynamics, 
+        Greenland SMB and land water storage held at the 2100 rate 
+        beyond 2100.
+    
+    Attributes
+    ----------
+    endofhistory: int
+        First year of AR5 projections.
+    endofAR5: int
+        Last year of AR5 projections.
+    nyr: int
+        Length of projections.
+    fgreendyn: float
+        Fraction of SLE from Greenland during 1996 to 2005 assumed 
+        to result from rapid dynamical change.
+    dgreen: float
+        m SLE from Greenland during 1996 to 2005 according to AR5 chapter 4.
+    dant: float
+        m SLE from Antarctica during 1996 to 2005 according to AR5 chapter 4.
+    mSLEoGt: float
+        Conversion factor for Gt to m SLE.
+    exp_efficiency: float
+        Sensitivity of thermosteric SLR to ocean heat content change.
+    """
     
     def __init__(
         self, 
@@ -28,30 +83,6 @@ class GMSLREmulator:
         glaciermip: bool=False,
         input_ensemble: bool=True,
         palmer_method: bool=False):
-        # ensemble -- bool, optional, default True, if provided use an input ensemble of 
-        #   temperature and ocean heat content change in place of Monte Carlo simulations
-        #   for thermosteric sea level rise 
-        # seed -- optional, for numpy.random, default zero
-        # nt -- int, optional, number of realisations of the input timeseries for each
-        #   scenario, default 450, to be generated using the mean and sd files; specify
-        #   0 if the ensemble of individual models is to be used instead, which is read
-        #   from the models files.
-        # nm -- int, optional, number of realisations of components and of the sum for
-        #   each realisation of the input timeseries, default 1000, must be a multiple
-        #   of the number of glacier methods.
-        # tcv -- float, optional, default 1.0, multiplier for the standard deviation
-        #   in the input fields
-        # glaciermip -- optional, default False => AR5 parameters, 1 => GlacierMIP
-        #   (Hock et al., 2019), 2 => GlacierMIP2 (Marzeion et al., 2020)
-        # levermann -- optional, default None, specifies that Antarctic dynamics should
-        #   use the fit by Palmer et al. (2020) to the results of Levermann et al.
-        #   (2014); if dict, must have an key for each scenario whose value names the
-        #   Levermann RCP fit to be used; if str, identifies the single fit to be used
-        #   for every scenario; otherwise it is treated as True or False; if True the
-        #   scenarios must all be ones that Levermann provides.
-        # palmer_method -- bool, optional, default False, allow integration to end in any year
-        #   up to 2300, with the contributions to GMLSR from ice-sheet dynamics, Green-
-        #   land SMB and land water storage held at the 2100 rate beyond 2100.
         
         self.T_change = T_change
         self.OHC_change = OHC_change
