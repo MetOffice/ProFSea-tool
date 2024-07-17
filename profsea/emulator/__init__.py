@@ -82,6 +82,8 @@ class GMSLREmulator:
         tcv: float=1.0,
         glaciermip: bool=False,
         input_ensemble: bool=True,
+        T_percentile_95: np.ndarray=None,
+        OHC_percentile_95: np.ndarray=None,
         palmer_method: bool=False):
         
         self.T_change = T_change
@@ -95,6 +97,8 @@ class GMSLREmulator:
         self.tcv = tcv
         self.glaciermip = glaciermip
         self.input_ensemble = input_ensemble
+        self.T_percentile_95 = T_percentile_95
+        self.OHC_percentile_95 = OHC_percentile_95
         self.palmer_method = palmer_method
         
         # First year of AR5 projections
@@ -243,11 +247,29 @@ class GMSLREmulator:
 
             return self.T_change, therm_ens, T_int_ens, T_int_med
         
-        T_med = np.percentile(self.T_change, 50, axis=0)
-        T_std = np.std(self.T_change, axis=0)
+        if len(self.T_change.shape) > 1:
+            T_med = np.percentile(self.T_change, 50, axis=0)
+            T_std = np.std(self.T_change, axis=0)
 
-        therm_med = np.percentile(self.OHC_change, 50, axis=0) * self.exp_efficiency
-        therm_std = np.std(self.OHC_change * self.exp_efficiency, axis=0)
+            therm_med = np.percentile(self.OHC_change, 50, axis=0) * self.exp_efficiency
+            therm_std = np.std(self.OHC_change * self.exp_efficiency, axis=0)
+        else:
+            if self.T_percentile_95 is not None:
+                T_med = self.T_change
+                therm_med = self.OHC_change 
+                
+                T_std = (self.T_percentile_95 - self.T_change) / 1.645
+                # therm_std = (self.OHC_percentile_95 - self.OHC_change) * self.exp_efficiency / 1.645
+                therm_std = (self.OHC_percentile_95 - self.OHC_change) / 1.645
+                self.T_std = T_std
+                self.therm_std = therm_std
+            
+            else:
+                raise ValueError(
+                    'If input_ensemble is False, and T_change and OHC_change '
+                    'are not 2D arrays, you must provide a 95th percentile '
+                    'timeseries for T_change and OHC_change. Add this using '
+                    'T_percentile_95 and OHC_percentile_95 keyword arguments.')
         
         # Time-integral of temperature anomaly
         T_int_med = np.cumsum(T_med)
@@ -495,18 +517,18 @@ class GMSLREmulator:
         np.ndarray
             Antarctic rapid ice-sheet dynamics contribution to GMSLR.
         """
-        # lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
-        # rcp45=[-2.676, 0.850, 0.000],\
-        # rcp60=[-2.660, 0.870, 0.000],\
-        # rcp85=[-2.399, 0.860, 0.000])
-        # lcoeff = lcoeff['rcp85']
+        lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
+        rcp45=[-2.676, 0.850, 0.000],\
+        rcp60=[-2.660, 0.870, 0.000],\
+        rcp85=[-2.399, 0.860, 0.000])
+        lcoeff = lcoeff['rcp85']
 
-        # from scipy.stats import norm
-        # ascale=norm.ppf(fraction)
-        # final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
-        # final = final.reshape(self.nm, self.nt)
+        from scipy.stats import norm
+        ascale=norm.ppf(fraction)
+        final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
+        final = final.reshape(self.nm, self.nt)
         
-        final=[-0.020, 0.185]
+        # final=[-0.020, 0.185]
         # final = [0.06, 0.49] # AR6, SSP2-4.5
 
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
