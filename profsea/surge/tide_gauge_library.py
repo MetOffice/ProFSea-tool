@@ -118,8 +118,9 @@ def read_regional_sea_level_projections(root_dir, data_region, loc_abbrev,
     as annual means.
     """
     path = os.path.join(root_dir, data_region, 'data', 'sea_level_projections')
+    end_yr = settings['projection_end_year']
     filename = os.path.join(
-        path, f'{loc_abbrev}_{scenario}_projection_2100_v6_regional.csv')
+        path, f'{loc_abbrev}_{scenario}_projection_{end_yr}_regional.csv')
     df = pd.read_csv(filename, header=0, usecols=['year', 'percentile', 'sum'])
 
     if pcile is not None:

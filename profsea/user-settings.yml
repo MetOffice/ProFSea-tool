@@ -18,6 +18,9 @@ siteinfo:
 #   N.B. the code will add region to the output directory
 baseoutdir: '/home/user/sl_output/'
 
+# Set the end year of the projection(s)
+projection_end_year: 2300 # int between 2050 and 2300
+
 # Science method
 #   UKCP18 --> sciencemethod: 'UK'
 #   Palmer et al (2020) --> sciencemethod: 'global
@@ -62,4 +65,5 @@ fingerprints:
 
 # Directory of Monte Carlo time series for new projections
 #   N.B. Originally developed by Jonathan Gregory
-montecarlodir: '/deposited2023/profsea_tool/monte_carlo_timeseries/'
+short_montecarlodir: '/path/to/2100/montecarlo/simulations' # Required for projections up to 2100
+long_montecarlodir: '/path/to/2300/montecarlo/simulations' # Required for projections from 2100 up to 2300
