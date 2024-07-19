@@ -21,6 +21,12 @@ baseoutdir: '/home/user/sl_output/'
 # Set the end year of the projection(s)
 projection_end_year: 2300 # int between 2050 and 2300
 
+# Turn on/off automated grid-cell selection
+auto_site_selection: False # bool
+
+# Turn on/off plotting of tide gauge data on certain figures
+plot_tide_gauge_data: True # bool
+
 # Science method
 #   UKCP18 --> sciencemethod: 'UK'
 #   Palmer et al (2020) --> sciencemethod: 'global
