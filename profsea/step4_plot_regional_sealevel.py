@@ -784,10 +784,10 @@ def read_G_R_sl_projections(site_name, scenarios):
     G_df_list = []
     R_df_list = []
     for sce in scenarios:
-        G_filename = '{}{}_{}_projection_2100_global.csv'.format(
-            in_slddir, loc_abbrev, sce)
-        R_filename = '{}{}_{}_projection_2100_regional.csv'.format(
-            in_slddir, loc_abbrev, sce)
+        G_filename = '{}{}_{}_projection_{}_global.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
+        R_filename = '{}{}_{}_projection_{}_regional.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
         try:
             G_df = pd.read_csv(G_filename, header=0,
                                index_col=['year', 'percentile'])
