@@ -97,20 +97,23 @@ def extract_site_info(data_source, data_type, region, site_name, latlon):
             df_temp = pd.DataFrame(site_data).transpose()
             dfObj = dfObj.append(df_temp)
 
-        else:
+        elif latlon != [[]]:
             print(f'{site_to_check} - Site metadata taken from user input')
             data_type = 'user defined'
             station_id = 'NA'
             latitude = latlon[i][0]
             longitude = latlon[i][1]
             site_data = [[site_to_check, data_type, station_id, latitude,
-                          longitude]]
+                        longitude]]
 
             df_temp = pd.DataFrame(site_data, columns=[
                 'Location', 'Dataset type', 'Station ID', 'Latitude',
                 'Longitude'])
             df_temp = df_temp.set_index('Location')
             dfObj = dfObj.append(df_temp)
+
+        else:
+            raise IndexError(f'No site metadata for this site: {site_to_check}, have you spelled it correctly?')            
 
     return dfObj
 

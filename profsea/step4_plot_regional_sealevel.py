@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 
 from profsea.config import settings
 from profsea.tide_gauge_locations import extract_site_info, find_nearest_station_id
-from profsea.slr_pkg import abbreviate_location_name  # found in __init.py__
+from profsea.slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from profsea.surge import tide_gauge_library as tgl
 from profsea.directories import read_dir, makefolder
 from profsea.plotting_libraries import location_string, scenario_string, \
@@ -29,8 +29,9 @@ def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
     :return: years, scenario uncertainty, model uncertainty, internal
     variability
     """
-    allpmid = np.zeros([3, 94])
-    allunc = np.zeros([3, 94])
+    nyrs = np.range(2007, settings["projection_end_year"] + 1).size
+    allpmid = np.zeros([3, nyrs])
+    allunc = np.zeros([3, nyrs])
 
     # Estimate internal variability from de-trended gauge data
     tg_years_arr = np.array(tg_years, dtype='int')
@@ -754,10 +755,10 @@ def read_G_R_sl_projections(site_name, scenarios):
     G_df_list = []
     R_df_list = []
     for sce in scenarios:
-        G_filename = '{}{}_{}_projection_2100_global.csv'.format(
-            in_slddir, loc_abbrev, sce)
-        R_filename = '{}{}_{}_projection_2100_regional.csv'.format(
-            in_slddir, loc_abbrev, sce)
+        G_filename = '{}{}_{}_projection_{}_global.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
+        R_filename = '{}{}_{}_projection_{}_regional.csv'.format(
+            in_slddir, loc_abbrev, sce, settings["projection_end_year"])
         try:
             G_df = pd.read_csv(G_filename, header=0,
                                index_col=['year', 'percentile'])
@@ -787,7 +788,9 @@ def read_IPCC_AR5_Levermann_proj(scenarios, refname='sum'):
     print('running function read_IPCC_AR5_Levermann_proj')
 
     # Directory of Monte Carlo time series for new projections
-    mcdir = settings["montecarlodir"]
+    mcdir = choose_montecarlo_dir()
+    
+    nyrs = np.arange(2007, settings["projection_end_year"] + 1).size
 
     ar5_low = []
     ar5_mid = []
@@ -795,11 +798,11 @@ def read_IPCC_AR5_Levermann_proj(scenarios, refname='sum'):
 
     for sce in scenarios:
         reflow = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'lower.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'lower.nc'))[:nyrs].data
         refmid = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'mid.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'mid.nc'))[:nyrs].data
         refupp = iris.load_cube(
-            os.path.join(mcdir, sce + '_' + refname + 'upper.nc')).data
+            os.path.join(mcdir, sce + '_' + refname + 'upper.nc'))[:nyrs].data
 
         ar5_low.append(reflow)
         ar5_mid.append(refmid)
@@ -953,8 +956,9 @@ def main():
         # projections - sum total
         # Also shown local sea level projections - component parts
         # Subplot 1, 2, 3 - RCP2.6, RCP4.5, RCP8.5 respectively
-        plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
-                        rcp_scenarios, sealev_fdir)
+        if settings["projection_end_year"] <= 2100: 
+            plot_figure_six(r_df_list, ar5_low, ar5_mid, ar5_upp, df_loc,
+                            rcp_scenarios, sealev_fdir)
 
         # Figure 7
         # Subplot 1 - Global sea level projections for RCP8.5 - total and

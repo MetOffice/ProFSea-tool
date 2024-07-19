@@ -320,5 +320,20 @@ def read_ij_1x1_coord(datadir, location):
     return df
 
 
+def choose_montecarlo_dir():
+    """
+    Choose the Monte Carlo directory based on the projection end year.
+    """
+    end_yr = settings["projection_end_year"]
+    if (end_yr >= 2050) & (end_yr <= 2100):
+        mcdir = settings["short_montecarlodir"]
+    elif (end_yr > 2100) & (end_yr <= 2300):
+        mcdir = settings["long_montecarlodir"]
+    else:
+        raise ValueError('Projection end year must be between 2050 and 2300')
+    
+    return mcdir
+
+
 if __name__ == '__main__':
     pass

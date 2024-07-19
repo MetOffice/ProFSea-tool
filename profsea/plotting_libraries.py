@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import re
 
+from config import settings
+
 
 def calc_xlim(str_id, tg_years, years):
     """
@@ -22,7 +24,7 @@ def calc_xlim(str_id, tg_years, years):
     elif str_id == 'tide':
         xmin = min([min(tg_years), min(years)])
         xmin = np.floor(xmin / 10) * 10
-    xmax = 2101
+    xmax = settings['projection_end_year']
 
     return [xmin, xmax]
 
