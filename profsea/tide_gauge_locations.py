@@ -7,7 +7,7 @@ from math import cos, asin, sqrt
 import pandas as pd
 import os
 
-from config import settings
+from profsea.config import settings
 
 
 def closest(data, v):

@@ -11,10 +11,10 @@ import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
 from netCDF4 import Dataset
 
-from config import settings
-from tide_gauge_locations import extract_site_info
-from slr_pkg import abbreviate_location_name  # found in __init.py__
-from directories import read_dir, makefolder
+from profsea.config import settings
+from profsea.tide_gauge_locations import extract_site_info
+from profsea.slr_pkg import abbreviate_location_name  # found in __init.py__
+from profsea.directories import read_dir, makefolder
 
 
 def calc_baseline_period(sci_method, yrs):
