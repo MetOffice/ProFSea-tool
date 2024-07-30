@@ -521,7 +521,7 @@ class GMSLREmulator:
         rcp45=[-2.676, 0.850, 0.000],\
         rcp60=[-2.660, 0.870, 0.000],\
         rcp85=[-2.399, 0.860, 0.000])
-        lcoeff = lcoeff['rcp85']
+        lcoeff = lcoeff[self.scenario]
 
         from scipy.stats import norm
         ascale=norm.ppf(fraction)
