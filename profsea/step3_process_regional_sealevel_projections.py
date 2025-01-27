@@ -545,8 +545,8 @@ def main():
     print(f'User specified lat(s) and lon(s) is (are): '
           f'{settings["siteinfo"]["sitelatlon"]}')
     if settings["siteinfo"]["sitelatlon"] == [[]]:
-        print(f'    No lat lon specified - use tide gauge metadata if '
-              f'available')
+        print('    No lat lon specified - use tide gauge metadata if '
+              'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
     if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
@@ -577,6 +577,12 @@ def main():
             print(f'Projecting {scenario}...')
             T_change = read_csv_file(f'*{scenario}*_temperature*.csv')
             OHC_change = read_csv_file(f'*{scenario}*_ocean_heat_content_change*.csv')
+
+            cum_emissions_file = f'*{scenario}*_cumulative_emissions_total.txt'
+            if glob.glob(os.path.join(settings["emulator_settings"]["emulator_input_dir"], cum_emissions_file)):
+                cum_emissions_total = read_csv_file(cum_emissions_file)
+            else:
+                raise FileNotFoundError('For any non-RCP scenario, a cumulative emissions total must be provided.')
             
             gmslr = GMSLREmulator(
                 T_change,
@@ -585,7 +591,8 @@ def main():
                 os.path.join(settings["baseoutdir"], 'emulator_output'),
                 settings["projection_end_year"],
                 palmer_method=palmer_method,
-                input_ensemble=settings["emulator_settings"]["use_input_ensemble"]
+                input_ensemble=settings["emulator_settings"]["use_input_ensemble"],
+                cum_emissions_total=cum_emissions_total
             )
             gmslr.project()
             print('Saving components...')
