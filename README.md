@@ -12,7 +12,7 @@ Users are advised to read this guide before using any products as it describes t
 The ProFSea tool user guide should be cited as: Perks, R. J. (2023). Met Office Projecting Future Sea Level (ProFSea) tool - User Guide (1.1). Met Office. https://doi.org/10.5281/zenodo.10245409
 
 ## Contributors
-Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe and Jennifer Weeks.
+Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks and Gregory Munday.
 
 ## Acknowledgements
 This work was supported by the UK Research & Innovation (UKRI) Strategic Priorities Fund UK Climate Resilience programme. The programme is co-delivered by the Met Office and NERC on behalf of UKRI partners AHRC, EPSRC and ESRC. It was further supported by the Met Office Hadley Centre Climate Programme funded by BEIS and Defra.
