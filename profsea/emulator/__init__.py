@@ -11,6 +11,7 @@ import concurrent
 from collections.abc import Sequence
 
 import numpy as np
+from scipy.stats import norm
 
 class GMSLREmulator:
     """Emulator for global mean sea level rise components.
@@ -42,6 +43,12 @@ class GMSLREmulator:
     input_ensemble: bool
         If True, use an input ensemble of temperature and 
         ocean heat content change.
+    T_percentile_95: np.ndarray
+        95th percentile of temperature change timeseries.
+    OHC_percentile_95: np.ndarray   
+        95th percentile of ocean heat content change timeseries.
+    cum_emissions_total: float
+        Total cumulative emissions from 2015 to scenario end.
     palmer_method: bool
         If True, allow integration to end in any year up to 2300, 
         with the contributions to GMLSR from ice-sheet dynamics, 
@@ -84,6 +91,7 @@ class GMSLREmulator:
         input_ensemble: bool=True,
         T_percentile_95: np.ndarray=None,
         OHC_percentile_95: np.ndarray=None,
+        cum_emissions_total: np.ndarray=None,
         palmer_method: bool=False):
         
         self.T_change = T_change
@@ -99,6 +107,7 @@ class GMSLREmulator:
         self.input_ensemble = input_ensemble
         self.T_percentile_95 = T_percentile_95
         self.OHC_percentile_95 = OHC_percentile_95
+        self.cum_emissions_total = cum_emissions_total
         self.palmer_method = palmer_method
         
         # First year of AR5 projections
@@ -128,6 +137,14 @@ class GMSLREmulator:
         
         if input_ensemble:
             self.nt = self.T_change.shape[0]
+
+        if self.scenario not in ['rcp26', 'rcp45', 'rcp85', 
+            'ssp126', 'ssp245', 'ssp585'] and self.cum_emissions_total is None:
+            raise ValueError(
+                'If the scenario is not rcp26, rcp45, rcp85, ssp126, ssp245 or ssp585, '
+                'you must provide the total \ncumulative emissions from 2015 to the end '
+                'of the scenario using the cum_emissions_total keyword argument.\n'
+                'This is required to calculate the Antarctic dynamic contribution to GMSLR.')
             
     def get_components(self):
         components_dict = {
@@ -329,7 +346,8 @@ class GMSLREmulator:
                     dict(name='RAD2014',factor=5.18,exponent=0.709,cvgl=0.135),\
                     dict(name='WAL2001',factor=2.66,exponent=0.730,cvgl=0.206)]
                 cvgl=0.20 # unnecessary default
-            else: raise KeyError('glaciermip must be 1 or 2')
+            else: 
+                raise KeyError('glaciermip must be 1 or 2')
         else:
             glparm=[dict(name='Marzeion',factor=4.96,exponent=0.685),\
             dict(name='Radic',factor=5.45,exponent=0.676),\
@@ -517,22 +535,29 @@ class GMSLREmulator:
         np.ndarray
             Antarctic rapid ice-sheet dynamics contribution to GMSLR.
         """
-        lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
-        rcp45=[-2.676, 0.850, 0.000],\
-        rcp60=[-2.660, 0.870, 0.000],\
-        rcp85=[-2.399, 0.860, 0.000])
-        lcoeff = lcoeff[self.scenario]
+        # This is a naive solution to calculating the AntDyn contribution 
+        # for any given scenario. Basically linear regressions through existing data 
+        # to find rough relationship between cumulative emissions and AntDyn contribution.
+        if self.cum_emissions_total:
+            upper = (0.000110 * self.cum_emissions_total) + 0.375 # in metres
+            lower = (1.363e-05 * self.cum_emissions_total) +  0.0392 # in metres
+            final = [lower, upper]
+        else:
+            lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
+            rcp45=[-2.676, 0.850, 0.000],\
+            rcp60=[-2.660, 0.870, 0.000],\
+            rcp85=[-2.399, 0.860, 0.000])
+            lcoeff = lcoeff[self.scenario]
 
-        from scipy.stats import norm
-        ascale=norm.ppf(fraction)
-        final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
-        final = final.reshape(self.nm, self.nt)
-        
-        # final=[-0.020, 0.185]
-        # final = [0.06, 0.49] # AR6, SSP2-4.5
+            ascale=norm.ppf(fraction)
+            final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
+            final = final.reshape(self.nm, self.nt)
+            
+            # final=[-0.020, 0.185]
+            # final = [0.06, 0.49] # AR6, SSP2-4.5
 
-        # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
-        # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
+            # For SMB+dyn during 2005-2010 Table 4.6 gives 0.41+-0.24 mm yr-1 (5-95% range)
+            # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
 
         return self.time_projection(0.41, 0.20, final, fraction=fraction) + self.dant
   
