@@ -11,7 +11,7 @@ import pandas as pd
 import cartopy.crs as ccrs
 
 from profsea.config import settings
-from profsea.slr_pkg import cmip, cubeplot, cubeutils, cubedata, process
+from profsea.slr_pkg import cmip, cubeplot, cubeutils, cubedata, process, whichbox
 from profsea.directories import makefolder, read_dir
 
 
@@ -244,6 +244,7 @@ def plot_ij(cube, model, location, idx, lat, lon, save_map=True, rad=5):
     if targetlon > 180:
         targetlon -= 360
 
+    fig = plt.figure()
     ax = cubeplot.block(cube, land=False, region=region, cmin=-1, cmax=1,
                         plotcbar=True, nlevels=25, cent_lon=targetlon,
                         title='{} (1x1 grid) - SSH above geoid'.format(model))
@@ -265,7 +266,7 @@ def plot_ij(cube, model, location, idx, lat, lon, save_map=True, rad=5):
         SRC_CRS, orig_lons, orig_lats).T
 
     # Plot symbols showing the ocean point and the tide gauge
-    ax.plot(new_lons[0], new_lats[0], 'ok')
+    pred, = ax.plot(new_lons[0], new_lats[0], 'ok')
     ax.plot(new_lons[1], new_lats[1], 'xr')
 
     if save_map:
@@ -282,7 +283,54 @@ def plot_ij(cube, model, location, idx, lat, lon, save_map=True, rad=5):
         plt.savefig(figfile)
         plt.close()
     else:
+        selected_lat = cube.coord('latitude').points[j]
+        selected_lon = cube.coord('longitude').points[i]
+        
+        def onclick(event):
+            nonlocal selected_lat, selected_lon, pred
+            nonlocal i, j
+            selected_lon, selected_lat = event.xdata, event.ydata
+            
+            # Transform onto original projection
+            MAP_CRS = ccrs.PlateCarree(central_longitude=targetlon)
+            SRC_CRS = ccrs.PlateCarree()
+                
+            selected_lon, selected_lat = SRC_CRS.transform_point(
+                selected_lon, selected_lat, MAP_CRS)
+
+            (i, j), = whichbox.find_gridbox_indicies(cube,[(selected_lon, selected_lat)])
+            
+            selected_lon = cube.coord('longitude').points[i]
+            selected_lat = cube.coord('latitude').points[j]
+                
+            MAP_CRS = ccrs.PlateCarree(central_longitude=targetlon)
+            SRC_CRS = ccrs.PlateCarree()
+                
+            plot_lon, plot_lat = MAP_CRS.transform_point(
+                selected_lon, selected_lat, SRC_CRS)
+            
+            pred.remove()
+            pred, = ax.plot(plot_lon, plot_lat, 'ok')
+            fig.canvas.draw()
+            
+        cid = fig.canvas.mpl_connect('button_press_event', onclick)
         plt.show()
+        
+        
+        # Create the output file directory location
+        out_mapdir = read_dir()[1]
+        makefolder(out_mapdir)
+
+        # Abbreviate the site location name suitable to use as a filename
+        loc_abbrev = abbreviate_location_name(location)
+        figfile = os.path.join(out_mapdir,
+                               f'{loc_abbrev}_{model}_ij_figure.png')
+
+        # Save the CMIP grid box selection map to file
+        fig.savefig(figfile)
+        plt.close()
+        
+        return i, j, selected_lon, selected_lat
 
 
 def read_ar5_component(datadir, rcp, var, value='mid'):
