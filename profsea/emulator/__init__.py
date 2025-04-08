@@ -48,7 +48,7 @@ class GMSLREmulator:
     OHC_percentile_95: np.ndarray   
         95th percentile of ocean heat content change timeseries.
     cum_emissions_total: float
-        Total cumulative emissions from 2015 to scenario end.
+        Total cumulative emissions from 2015 to 2100.
     palmer_method: bool
         If True, allow integration to end in any year up to 2300, 
         with the contributions to GMLSR from ice-sheet dynamics, 
@@ -87,7 +87,7 @@ class GMSLREmulator:
         nt: int=450,
         nm: int=1000,
         tcv: float=1.0,
-        glaciermip: bool=False,
+        glaciermip: bool|int=False,
         input_ensemble: bool=True,
         T_percentile_95: np.ndarray=None,
         OHC_percentile_95: np.ndarray=None,
@@ -331,21 +331,27 @@ class GMSLREmulator:
 
         if self.glaciermip:
             if self.glaciermip==1:
-                glparm=[dict(name='SLA2012',factor=3.39,exponent=0.722,cvgl=0.15),\
-                    dict(name='MAR2012',factor=4.35,exponent=0.658,cvgl=0.13),\
-                    dict(name='GIE2013',factor=3.57,exponent=0.665,cvgl=0.13),\
-                    dict(name='RAD2014',factor=6.21,exponent=0.648,cvgl=0.17),\
+                glparm=[dict(name='SLA2012',factor=3.39,exponent=0.722,cvgl=0.15),
+                    dict(name='MAR2012',factor=4.35,exponent=0.658,cvgl=0.13),
+                    dict(name='GIE2013',factor=3.57,exponent=0.665,cvgl=0.13),
+                    dict(name='RAD2014',factor=6.21,exponent=0.648,cvgl=0.17),
                     dict(name='GloGEM',factor=2.88,exponent=0.753,cvgl=0.13)]
                 cvgl=0.15 # unnecessary default
             elif self.glaciermip==2:
-                glparm=[dict(name='GLIMB',factor=3.70,exponent=0.662,cvgl=0.206),\
-                    dict(name='GloGEM',factor=4.08,exponent=0.716,cvgl=0.161),\
-                    dict(name='JULES',factor=5.50,exponent=0.564,cvgl=0.188),\
-                    dict(name='Mar-12',factor=4.89,exponent=0.651,cvgl=0.141),\
-                    dict(name='OGGM',factor=4.26,exponent=0.715,cvgl=0.164),\
-                    dict(name='RAD2014',factor=5.18,exponent=0.709,cvgl=0.135),\
+                glparm=[dict(name='GLIMB',factor=3.70,exponent=0.662,cvgl=0.206),
+                    dict(name='GloGEM',factor=4.08,exponent=0.716,cvgl=0.161),
+                    dict(name='JULES',factor=5.50,exponent=0.564,cvgl=0.188),
+                    dict(name='Mar-12',factor=4.89,exponent=0.651,cvgl=0.141),
+                    dict(name='OGGM',factor=4.26,exponent=0.715,cvgl=0.164),
+                    dict(name='RAD2014',factor=5.18,exponent=0.709,cvgl=0.135),
                     dict(name='WAL2001',factor=2.66,exponent=0.730,cvgl=0.206)]
                 cvgl=0.20 # unnecessary default
+            elif self.glaciermip==3:
+                glparm=[dict(name='GLIMB',factor=3.70,exponent=0.662,cvgl=0.206),
+                    dict(name='GloGEMflow',factor=5.50,exponent=0.564,cvgl=0.188),
+                    dict(name='OGGMv1.6',factor=2.66,exponent=0.730,cvgl=0.206),
+                    dict(name='PyGEM-OGGMv1.3', factor=2.66, exponent=0.730, cvgl=0.206)]
+
             else: 
                 raise KeyError('glaciermip must be 1 or 2')
         else:
@@ -426,7 +432,7 @@ class GMSLREmulator:
         febound = [1, 1.15] # bounds of uniform pdf of SMB elevation feedback factor
 
         # random log-normal factor
-        fn = np.exp(np.random.standard_normal(self.nm)*fnlogsd)
+        fn = np.exp(np.random.standard_normal(self.nm) * fnlogsd)
         # elevation feedback factor
         fe = np.random.sample(self.nm) * (febound[1] - febound[0]) + febound[0]
         ff = fn * fe
@@ -542,12 +548,15 @@ class GMSLREmulator:
             upper = (0.000110 * self.cum_emissions_total) + 0.375 # in metres
             lower = (1.363e-05 * self.cum_emissions_total) +  0.0392 # in metres
             final = [lower, upper]
+            # print(final)
+            # final=[-0.020, 0.185]
         else:
             lcoeff=dict(rcp26=[-2.881, 0.923, 0.000],\
             rcp45=[-2.676, 0.850, 0.000],\
             rcp60=[-2.660, 0.870, 0.000],\
             rcp85=[-2.399, 0.860, 0.000])
             lcoeff = lcoeff[self.scenario]
+            print('hi')
 
             ascale=norm.ppf(fraction)
             final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
