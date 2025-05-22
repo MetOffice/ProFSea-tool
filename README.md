@@ -11,6 +11,9 @@ Users are advised to read this guide before using any products as it describes t
 
 The ProFSea tool user guide should be cited as: Perks, R. J. (2023). Met Office Projecting Future Sea Level (ProFSea) tool - User Guide (1.1). Met Office. https://doi.org/10.5281/zenodo.10245409
 
+---
+Once the `ProFSea-env` conda environment has been set up, users must also run `pip install -e .` from the root (top-most) directory in order to run the tool.
+
 ## Contributors
 Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks and Gregory Munday.
 
