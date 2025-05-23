@@ -189,9 +189,9 @@ def calculate_sl_components(mcdir, components, scenario, yrs, array_dims):
 
     for cc, comp in enumerate(components):
         # Monte Carlo for regional values (FPs applied) + GIA
-        montecarlo_R = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float16)
+        montecarlo_R = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32)
         # Monte Carlo for Global values (no FPs applied)
-        montecarlo_G = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float16)
+        montecarlo_G = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32)
 
         print(f'cc = {cc:d}, comp = {comp}')
         offset = G_offset * offset_slopes[comp]
@@ -230,7 +230,7 @@ def calculate_sl_components(mcdir, components, scenario, yrs, array_dims):
         elif comp == 'landwater':
             landwater_FP_interpolator = FPlist[0]['landwater']
             # Interpolate values
-            vals = da.from_array(landwater_FP_interpolator.values.astype(np.float16).data)
+            vals = da.from_array(landwater_FP_interpolator.values.astype(np.float32).data)
             vals = np.roll(vals, 180, axis=1)
             montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * vals[None, None, :, :]
         else:
@@ -252,7 +252,7 @@ def calculate_sl_components(mcdir, components, scenario, yrs, array_dims):
                     val = np.roll(val, 180, axis=1)
                     
                 FPvals.append(val)
-            FPvals = da.from_array(np.array(FPvals, dtype=np.float16))
+            FPvals = da.from_array(np.array(FPvals, dtype=np.float32))
             montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * FPvals[rfpi][:, None, :, :]
             del FPvals
 
