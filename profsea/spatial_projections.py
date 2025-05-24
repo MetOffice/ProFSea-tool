@@ -251,7 +251,8 @@ def calculate_sl_components(
         save_projections(montecarlo_R, comp, scenario)
 
 
-def create_FP_interpolator(datadir, dfile, method='linear'):
+def create_FP_interpolator(
+    datadir: str, dfile: str, method: str='linear') -> RegularGridInterpolator:
     """
     Generates a scipy Interpolator object from input NetCDF data of
     gravitational fingerprints (takes inputs of Latitude and Longitude).
@@ -272,7 +273,7 @@ def create_FP_interpolator(datadir, dfile, method='linear'):
     return interp_object
 
 
-def get_projection_info(indir, scenario):
+def get_projection_info(indir: str, scenario: str) -> tuple:
     """
     Read in the dimensions of the Monte-Carlo data. These files are all
     relative to midnight on 1st January 2007
@@ -294,7 +295,7 @@ def get_projection_info(indir, scenario):
     return nesm, nyrs, yrs
 
 
-def load_CMIP5_slope_coeffs(scenario):
+def load_CMIP5_slope_coeffs(scenario: str) -> np.ndarray:
     """
     Loads in the CMIP slope coefficients based on linear regression of
     'zos+zostoga' against 'zostoga' for the period 2005 to 2100.
@@ -317,7 +318,7 @@ def load_CMIP5_slope_coeffs(scenario):
     return coeffs
 
 
-def load_CMIP6_slopes(scenario):
+def load_CMIP6_slopes(scenario: str) -> np.ndarray:
     """
     Load in the CMIP6 slope coefficients.
     :param site_loc: name of the site location
@@ -334,7 +335,7 @@ def load_CMIP6_slopes(scenario):
     return slopes
 
 
-def read_gia_estimates():
+def read_gia_estimates() -> tuple:
     """
     Read in pre-processed interpolator objects of GIA estimates (Lambeck,
     ICE5G)
@@ -362,7 +363,7 @@ def read_gia_estimates():
     return nGIA, GIA_vals
 
 
-def setup_FP_interpolators(components):
+def setup_FP_interpolators(components: list) -> tuple:
     """
     Create 2D Interpolator objects for the Slangen, Spada and Klemann
     fingerprints
@@ -404,8 +405,9 @@ def setup_FP_interpolators(components):
     return nFPs, FPlist
 
 
-def read_csv_file(file_pattern: str, start_yr: int=2007, 
-                  end_yr: int=settings["projection_end_year"]):
+def read_csv_file(
+        file_pattern: str, start_yr: int=2007, 
+        end_yr: int=settings["projection_end_year"]) -> np.ndarray:
     file = glob.glob(
         os.path.join(
             settings["emulator_settings"]["emulator_input_dir"], 
@@ -427,49 +429,44 @@ def main():
 
     # Extract site data from station list (e.g. tide gauge location) or
     # construct based on user input
-    if settings["emulator_settings"]["emulator_mode"]:
-        print('\nInitiating ProFSea emulator')
-        if settings["projection_end_year"] > 2100:
-            palmer_method = True
-        else:
-            palmer_method = False
-            
-        makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
-        
-        # Get the metadata of either the site location or tide gauge location
-        for scenario in settings["emulator_settings"]["emulator_scenario"]:
-            # print(f'Projecting {scenario}...')
-            # T_change = read_csv_file(f'*{scenario}*_temperature*.csv')
-            # OHC_change = read_csv_file(f'*{scenario}*_ocean_heat_content_change*.csv')
-
-            # cum_emissions_file = 'cumulative_scenario_emissions.json'
-            # if glob.glob(os.path.join(settings["emulator_settings"]["emulator_input_dir"], cum_emissions_file)):
-            #     with open('ngfs_data/cumulative_scenario_emissions.json') as f:
-            #         cum_emissions_total = json.load(f)[scenario]
-            # else:
-            #     raise FileNotFoundError('For any non-RCP scenario, a cumulative emissions total must be provided.')
-            
-            # gmslr = GMSLREmulator(
-            #     T_change,
-            #     OHC_change,
-            #     scenario,
-            #     os.path.join(settings["baseoutdir"], 'emulator_output'),
-            #     settings["projection_end_year"],
-            #     palmer_method=palmer_method,
-            #     input_ensemble=settings["emulator_settings"]["use_input_ensemble"],
-            #     cum_emissions_total=cum_emissions_total)
-            # gmslr.project()
-            # print('Saving components...')
-            # gmslr.save_components(
-            #     os.path.join(settings["baseoutdir"], 'emulator_output'),
-            #     scenario)
-            # print('Saved!\n')
-
-            calc_future_sea_level(scenario)
+    print('\nInitiating ProFSea emulator')
+    if settings["projection_end_year"] > 2100:
+        palmer_method = True
     else:
-        scenarios = ['rcp26', 'rcp45', 'rcp85']
-        for scenario in scenarios:
-            calc_future_sea_level(scenario)
+        palmer_method = False
+        
+    makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
+    
+    # Get the metadata of either the site location or tide gauge location
+    for scenario in settings["emulator_settings"]["emulator_scenario"]:
+        # print(f'Projecting {scenario}...')
+        # T_change = read_csv_file(f'*{scenario}*_temperature*.csv')
+        # OHC_change = read_csv_file(f'*{scenario}*_ocean_heat_content_change*.csv')
+
+        # cum_emissions_file = 'cumulative_scenario_emissions.json'
+        # if glob.glob(os.path.join(settings["emulator_settings"]["emulator_input_dir"], cum_emissions_file)):
+        #     with open('ngfs_data/cumulative_scenario_emissions.json') as f:
+        #         cum_emissions_total = json.load(f)[scenario]
+        # else:
+        #     raise FileNotFoundError('For any non-RCP scenario, a cumulative emissions total must be provided.')
+        
+        # gmslr = GMSLREmulator(
+        #     T_change,
+        #     OHC_change,
+        #     scenario,
+        #     os.path.join(settings["baseoutdir"], 'emulator_output'),
+        #     settings["projection_end_year"],
+        #     palmer_method=palmer_method,
+        #     input_ensemble=settings["emulator_settings"]["use_input_ensemble"],
+        #     cum_emissions_total=cum_emissions_total)
+        # gmslr.project()
+        # print('Saving components...')
+        # gmslr.save_components(
+        #     os.path.join(settings["baseoutdir"], 'emulator_output'),
+        #     scenario)
+        # print('Saved!\n')
+
+        calc_future_sea_level(scenario)
 
 
 if __name__ == '__main__':
