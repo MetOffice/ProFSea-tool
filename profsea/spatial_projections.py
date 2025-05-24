@@ -6,7 +6,6 @@ All rights reserved.
 import os
 import iris
 import glob
-import json
 import pickle
 import numpy as np
 import pandas as pd
@@ -18,36 +17,23 @@ import dask.array as da
 from profsea.config import settings
 from profsea.slr_pkg import choose_montecarlo_dir  # found in __init.py__
 from profsea.directories import read_dir, makefolder
-from emulator import GMSLREmulator
 
 
-def calc_baseline_period(sci_method, yrs):
+def calc_baseline_period(yrs: np.array) -> float:
     """
-    Baseline years used for UKCP18 -- 1981-2000 (offset required)
     Baseline years used for IPCC AR5 and Palmer et al 2020 -- 1986-2005
-    :param sci_method: scientific method used to select GIA estimates, GRD
-    fingerprints and CMIP regression (based on user input)
     :param yrs: years of the projections
     :return: baseline years
     """
-    if sci_method == 'global':
-        byr1 = 1986.
-        byr2 = 2005.
-        # offset not required
-        G_offset = 0.0
-        print("Baseline period = ", byr1, "to", byr2)
-    elif sci_method == 'UK':
-        byr1 = 1981.
-        byr2 = 2000.
-        G_offset = 0.011
-        print("Baseline period = ", byr1, "to", byr2)
+    byr1 = 1986.
+    byr2 = 2005.
 
+    print("Baseline period = ", byr1, "to", byr2)
     midyr = (byr2 - byr1 + 1) * 0.5 + byr1
+    return yrs[0] - midyr
 
-    return yrs[0] - midyr, G_offset
 
-
-def calc_future_sea_level(scenario):
+def calc_future_sea_level(scenario: str) -> None:
     """
     Calculates future sea level at the given site and write to file.
     :param df: Data frame of all metadata (tide gauge or site specific) for
@@ -71,45 +57,35 @@ def calc_future_sea_level(scenario):
 
     # Select dimensions from sample file, [time, realisation]
     sample = np.load(os.path.join(mcdir, f'{scenario}_exp.npy'))
-    nesm = sample.shape[0]
+    nesm = sample.shape[0] # also number of samples to make
     nyrs = sample.shape[1]
     yrs = np.arange(2007, 2007 + nyrs)
 
-    grid_path = os.path.join(settings["baseoutdir"], "full_earth/data/zos_regression/zos_regression.npy")
-    grid_sample = np.load(grid_path)[0, 0]
-
-    # Determine the number of samples you wish to make CHOGOM
-    # project = 100000, UKCP18 = 200000
-    if nesm >= 200000:
-        nsmps = 200000
-    else:
-        nsmps = nesm
-        
-    array_dims = [nesm, nsmps, nyrs, grid_sample.shape[0], grid_sample.shape[1]]
+    grid_path = os.path.join(
+        settings["cmipinfo"]["sealevelbasedir"], 
+        "ACCESS-CM2/zos_regression_ssp245_ACCESS-CM2.npy")
+    grid_sample = np.load(grid_path)
+    array_dims = [nesm, nesm, nyrs, grid_sample.shape[0], grid_sample.shape[1]]
 
     # Get random samples of global and regional sea level components
     calculate_sl_components(mcdir, components, scenario, yrs, array_dims)
 
 
-def calc_gia_contribution(sci_method, yrs, nyrs, nsmps):
+def calc_gia_contribution(
+        yrs: np.array, nyrs: int, nsmps: int, scenario: str) -> None:
     """
     Calculate the glacial isostatic adjustment (GIA) contribution to the
     regional component of sea level rise.
     Option to use the generic global GIA estimates or use the GIA estimates
     developed for UK as part of UKCP18.
-    :param sci_method: scientific method used to select GIA estimates, GRD
-    fingerprints and CMIP regression (based on user input)
     :param yrs: years of the projections
     :param nyrs: number of years in each projection time series
     :param nsmps: determine the number of samples
     :param coords: coordinates of location of interest
     :return: GIA estimates converted to mm/yr
     """
-    print('running function calc_gia_contribution')
-
-    nGIA, GIA_vals = read_gia_estimates(sci_method)
-
-    Tdelta, G_offset = calc_baseline_period(sci_method, yrs)
+    nGIA, GIA_vals = read_gia_estimates()
+    Tdelta = calc_baseline_period(yrs)
 
     # Unit series of mm/yr expressed as m/yr
     unit_series = (np.arange(nyrs) + Tdelta) * 0.001
@@ -123,10 +99,103 @@ def calc_gia_contribution(sci_method, yrs, nyrs, nsmps):
 
     GIA_series = GIA_T[:, :, None, None] * GIA_vals[rgiai, None, :, :]
 
-    return GIA_series, G_offset
+    GIA_series = GIA_series.compute()
+
+    file_header = '_'.join(['gia', scenario, "projection", 
+                    f"{settings['projection_end_year']}"])
+    R_file = '_'.join([file_header, 'regional']) + '.npy'
+    
+    np.save(os.path.join(read_dir()[4], R_file), GIA_series)
+    del GIA_series
 
 
-def calculate_sl_components(mcdir, components, scenario, yrs, array_dims):
+def calc_expansion_contribution(
+        scenario: str, nsmps: int, nyrs: int) -> da.array:
+    """
+    Calculate the thermal expansion contribution to the regional component of
+    sea level rise.
+    :param scenario: emission scenario
+    :param nsmps: determine the number of samples
+    :param nyrs: number of years in each projection time series
+    :return: expansion estimates converted to mm/yr
+    """
+    # Select slope coefficients based on the MIP
+    if settings["cmipinfo"]["mip"] == "CMIP6":
+        coeffs = load_CMIP6_slopes('ssp585')
+    else:
+        coeffs = load_CMIP5_slope_coeffs('rcp85')
+
+    rand_samples = np.random.choice(
+        coeffs.shape[0], size=nsmps, replace=True)               
+    rand_coeffs = coeffs[rand_samples, :, :]
+    rand_coeffs = da.from_array(rand_coeffs)
+    return rand_coeffs
+
+
+def calc_landwater_contribution(interpolator: dict) -> da.array:
+    """
+    Calculate the regional landwater contribution to sea level rise.
+    :param interpolator: dictionary of interpolator objects
+    :return: numpy array of landwater values
+    """
+    landwater_FP_interpolator = interpolator['landwater']
+    landwater_vals = da.from_array(
+        landwater_FP_interpolator.values.astype(np.float32).data)
+    landwater_vals = da.roll(landwater_vals, 180, axis=1)
+    return landwater_vals
+
+
+def calc_fingerprint_contributions(
+    FPlist: list, comp: str, lats: int, lons: int) -> da.array:
+    # Initiate an empty list for fingerprint values
+    FPvals = []
+    for FP_dict in FPlist:
+        # Interpolate values to target lat/lon
+        val = FP_dict[comp].values
+        if val.shape != (lats, lons):
+            original_da = xr.DataArray(
+                val,
+                coords=[
+                    ("lat", np.linspace(90, -90, 360)), 
+                    ("lon", np.linspace(-180, 180, 720, endpoint=False))
+                ],
+                name="v")
+            target_lat = np.linspace(90, -90, 180)
+            target_lon = np.linspace(-180, 180, 360, endpoint=False)
+            val = original_da.interp(
+                lat=target_lat, lon=target_lon, method="linear").data
+            val = np.roll(val, 180, axis=1)
+        else:
+            val = np.roll(val, 180, axis=1)
+            
+        FPvals.append(val)
+
+    FPvals = da.from_array(np.array(FPvals, dtype=np.float32))
+    return FPvals
+
+
+def save_projections(
+        montecarlo_R: da.array, component: str, scenario: str) -> None:
+    """
+    Save the regional sea level projections to a file.
+    :param montecarlo_R: regional sea level projections
+    :param component: sea level component
+    :param scenario: emission scenario
+    """
+    sealev_ddir = read_dir()[4]
+    file_header = '_'.join([component, scenario, "projection", 
+                            f"{settings['projection_end_year']}"])
+    # G_file = '_'.join([file_header, 'global']) + '.npy'
+    R_file = '_'.join([file_header, 'regional']) + '.npy'
+
+    # Save the global and local projections
+    makefolder(sealev_ddir)
+    np.save(os.path.join(sealev_ddir, R_file), montecarlo_R)
+
+
+def calculate_sl_components(
+        mcdir: str, components: list, scenario: str, 
+        yrs: np.array, array_dims: list) -> None:
     """
     Calculates global and regional component part contributions to sea level
     change.
@@ -139,142 +208,47 @@ def calculate_sl_components(mcdir, components, scenario, yrs, array_dims):
         nsmps --> Determine the number of samples you wish to make
         nyrs --> Number of years in each projection time series
     :return: montecarlo_G (global contribution to sea level rise) and
-    montecarlo_R (regional contribution to sea level change)
-    """
-    print('running function calculate_sl_components')
-    
+        montecarlo_R (regional contribution to sea level change)
+    """    
     # Numbers of ensemble members, samples, years
     nesm, nsmps, nyrs, lats, lons = array_dims
-
-    # Scientific method
-    sci_method = settings["sciencemethod"]
-
-    # Set up fingerprint interpolators for each component of sea level change
-    # Note that the first entry in the list is the Slangen, which includes the
-    # land water estimate
-    nFPs, FPlist = setup_FP_interpolators(components, sci_method)
-
-    # Use the same resampling across all sea level components (to preserve
-    # correlations)
-    resamples = np.random.choice(nesm, nsmps)
+    nFPs, FPlist = setup_FP_interpolators(components)
+    resamples = np.random.choice(nesm, nsmps) # Preserve correlations across comps
     rfpi = np.random.randint(nFPs, size=nsmps)
 
-    # The "offset_slopes" scales the global_offset variables into the different
-    # sea level components.
-    # These offsets exist because a baseline period of 1981-2000 is used,
-    # rather than the AR5 baseline period of 1986-2005.
-    offset_slopes = {'exp': 0.405,
-                     'antnet': 0.095,
-                     'antsmb': -0.025,
-                     'antdyn': 0.120,
-                     'greennet': 0.125,
-                     'greensmb': 0.040,
-                     'greendyn': 0.085,
-                     'glacier': 0.270,
-                     'landwater': 0.105}
+    # Calculate GIA contribution and save it out
+    calc_gia_contribution(yrs, nyrs, nsmps, scenario)
 
-    # Calculate the GIA contribution to the regional component of sea level
-    # change
-    GIA_series, G_offset = calc_gia_contribution(sci_method, yrs, nyrs, nsmps)
+    for comp in components:
+        print(f'\nComponent: {comp}')
+        montecarlo_R = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32) # (FPs applied) + GIA
+        montecarlo_G = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32) # (no FPs applied)
 
-    GIA_series = GIA_series.compute()
-
-    sealev_ddir = read_dir()[4]
-    file_header = '_'.join(['gia', scenario, "projection", 
-                    f"{settings['projection_end_year']}"])
-    R_file = '_'.join([file_header, 'regional']) + '.npy'
-    
-    np.save(os.path.join(sealev_ddir, R_file), GIA_series)
-    del GIA_series
-
-    for cc, comp in enumerate(components):
-        # Monte Carlo for regional values (FPs applied) + GIA
-        montecarlo_R = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32)
-        # Monte Carlo for Global values (no FPs applied)
-        montecarlo_G = da.zeros((nsmps, nyrs, lats, lons), dtype=np.float32)
-
-        print(f'cc = {cc:d}, comp = {comp}')
-        offset = G_offset * offset_slopes[comp]
-
-        if settings["emulator_settings"]["emulator_mode"]:
-            # Input timeseries provided as numpy objects
-            mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
-            offset_mc = mc_timeseries[resamples, :nyrs] + offset
-            montecarlo_G[:, :] = da.from_array(offset_mc[:, :, None, None])
-        else:
-            cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
-            offset_mc = cube.data[:nyrs, resamples] + offset
-            montecarlo_G[:, :] = offset_mc[:, :, None, None]
+        # Load global projections in for the component
+        mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
+        sampled_mc = mc_timeseries[resamples, :nyrs]
+        montecarlo_G[:, :] = da.from_array(sampled_mc[:, :, None, None])
 
         if comp == 'exp':
-            if sci_method == 'global':
-                if settings["emulator_settings"]["emulator_mode"]:
-                    coeffs = load_CMIP5_slope_coeffs('rcp26')
-                else:
-                    coeffs = load_CMIP5_slope_coeffs(scenario)
-                rand_samples = np.random.choice(coeffs.shape[0], size=nsmps,
-                                               replace=True)                         
-                rand_coeffs = coeffs[rand_samples, :, :]
-                rand_coeffs = da.from_array(rand_coeffs)
-            elif sci_method == 'UK':
-                if settings["emulator_settings"]["emulator_mode"]:
-                    coeffs, weights = load_CMIP5_slope_coeffs_UK('rcp85')
-                else:
-                    coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
-                rand_coeffs = np.random.choice(coeffs, size=nsmps,
-                                               replace=True, p=weights)
-
-            montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * rand_coeffs[:, None, :, :]
-            del rand_coeffs
+            sampled_coeffs = calc_expansion_contribution(scenario, nsmps, nyrs)
+            montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * sampled_coeffs[:, None, :, :]
+            del sampled_coeffs
 
         elif comp == 'landwater':
-            landwater_FP_interpolator = FPlist[0]['landwater']
-            # Interpolate values
-            vals = da.from_array(landwater_FP_interpolator.values.astype(np.float32).data)
-            vals = np.roll(vals, 180, axis=1)
-            montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * vals[None, None, :, :]
+            landwater_vals = calc_landwater_contribution(FPlist[0])
+            montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * landwater_vals[None, None, :, :]
+            del landwater_vals
         else:
-            # Initiate an empty list for fingerprint values
-            FPvals = []
-            for FP_dict in FPlist:
-                # Interpolate values to target lat/lon
-                val = FP_dict[comp].values
-                if val.shape != (lats, lons):
-                    original_da = xr.DataArray(
-                        val,
-                        coords=[("lat", np.linspace(90, -90, 360)), ("lon", np.linspace(-180, 180, 720, endpoint=False))],
-                        name="v")
-                    target_lat = np.linspace(90, -90, 180)
-                    target_lon = np.linspace(-180, 180, 360, endpoint=False)
-                    val = original_da.interp(lat=target_lat, lon=target_lon, method="linear").data
-                    val = np.roll(val, 180, axis=1)
-                else:
-                    val = np.roll(val, 180, axis=1)
-                    
-                FPvals.append(val)
-            FPvals = da.from_array(np.array(FPvals, dtype=np.float32))
+            FPvals = calc_fingerprint_contributions(FPlist, comp, lats, lons)
             montecarlo_R[:, :, :, :] = montecarlo_G[:, :, :, :] * FPvals[rfpi][:, None, :, :]
             del FPvals
 
         # Take the 0th, 25th, 50th, 75th and 100th percentiles
         montecarlo_R = da.percentile(montecarlo_R, [0, 25, 50, 75, 100], axis=0)
-
         montecarlo_R = montecarlo_R.compute()
 
         # Create the output sea level projections file directory and filename
-        sealev_ddir = read_dir()[4]
-        file_header = '_'.join([comp, scenario, "projection", 
-                                f"{settings['projection_end_year']}"])
-        # G_file = '_'.join([file_header, 'global']) + '.npy'
-        R_file = '_'.join([file_header, 'regional']) + '.npy'
-
-        # Save the global and local projections
-        makefolder(sealev_ddir)
-        # montecarlo_R.to_netcdf(os.path.join(sealev_ddir, R_file))
-        # np.save(os.path.join(sealev_ddir, G_file), montecarlo_G)
-        np.save(os.path.join(sealev_ddir, R_file), montecarlo_R)
-
-    return montecarlo_R
+        save_projections(montecarlo_R, comp, scenario)
 
 
 def create_FP_interpolator(datadir, dfile, method='linear'):
@@ -291,10 +265,10 @@ def create_FP_interpolator(datadir, dfile, method='linear'):
     lat = cube.coord('latitude').points
 
     # Define linear interpolator object:
-    interp_object = RegularGridInterpolator((lat, lon), cube.data,
-                                            method=method, bounds_error=True,
-                                            fill_value=None)
-
+    interp_object = RegularGridInterpolator(
+        (lat, lon), cube.data,
+        method=method, bounds_error=True,
+        fill_value=None)
     return interp_object
 
 
@@ -317,7 +291,6 @@ def get_projection_info(indir, scenario):
     f.close()
 
     yrs = first_year + np.arange(nyrs)
-
     return nesm, nyrs, yrs
 
 
@@ -341,59 +314,39 @@ def load_CMIP5_slope_coeffs(scenario):
     coeffs[np.isnan(coeffs)] = 0
     coeffs[coeffs > 999] = 0
     coeffs[coeffs < -999] = 0
-    
     return coeffs
 
 
-def load_CMIP5_slope_coeffs_UK(scenario):
+def load_CMIP6_slopes(scenario):
     """
-    Loads in the CMIP5 slope coefficients developed for UKCP18
+    Load in the CMIP6 slope coefficients.
+    :param site_loc: name of the site location
     :param scenario: emissions scenario
-    :return: 1D array of slope coefficients and 1D array of weights
+    :return: 1D array of regression coefficients
     """
-    print('running function load_CMIP5_slope_coeffs_UK')
-    in_zosdir_uk = settings["cmipinfo"]["slopecoeffsuk"]
-    filename_uk = f'{scenario}_CMIP5_regress_coeffs_uk_mask_1.pickle'
+    # Read in the sea level regressions
+    cmip6_dir = settings["cmipinfo"]["sealevelbasedir"]
+    slope_files = glob.glob(cmip6_dir + f'/*/zos_regression_{scenario}_*.npy')
+    slopes = np.zeros((len(slope_files), 180, 360), dtype=np.float32)
+    for i, slope_file in enumerate(slope_files):
+        slopes[i, :, :] = np.load(slope_file)
 
-    try:
-        with open(os.path.join(in_zosdir_uk, filename_uk), 'rb') as f:
-            data = pickle.load(f, encoding='latin1')['uk_mask_1']
-    except FileNotFoundError:
-        raise FileNotFoundError(filename_uk,
-                                '- scenario selected does not exist')
-
-    # Keys are: 'coeffs', 'models', 'weights'
-    coeffs = data['coeffs']
-    weights = data['weights']
-
-    return coeffs, weights
+    return slopes
 
 
-def read_gia_estimates(sci_method):
+def read_gia_estimates():
     """
     Read in pre-processed interpolator objects of GIA estimates (Lambeck,
-    ICE5G or UK specific ones)
-    :param sci_method: scientific method used to select GIA estimates, GRD
-    fingerprints and CMIP regression (based on user input)
-    :param coords: latitude and longitude of tide gauge
+    ICE5G)
+    :param: none
     :return: length of GIA_vals and numpy array of pre-processed interpolator
     objects of GIA estimates
     """
-    print('running function read_gia_estimates')
-    # Directories containing GIA data (independent of scenario)
-    if sci_method == 'global':
-        gia_file = settings["giaestimates"]["global"]
-    elif sci_method == 'UK':
-        gia_file = settings["giaestimates"]["uk"]
-    else:
-        raise UnboundLocalError('The selected GIA estimate - ' +
-                                f'{sci_method} - is not available')
-
+    gia_file = settings["giaestimates"]["global"]
     with open(gia_file, "rb") as ifp:
-        GIA_dict = pickle.load(ifp, encoding='latin1')
+        GIA_dict = pickle.load(ifp, encoding='latin1') # Interp objects
 
     GIA_vals = []
-    # The GIA_dict contains interpolator objects
     for key in list(GIA_dict.keys()):
         val = GIA_dict[key].values
         GIA_vals.append(val)
@@ -403,19 +356,17 @@ def read_gia_estimates(sci_method):
 
      # Sort out the crazy values in the 0th GIA array
     GIA_vals[0][GIA_vals[0] < -99999] = 0
+
     # AND shift them from -180, 180 to 0, 360
     GIA_vals = np.roll(GIA_vals, 180, axis=2)
-
     return nGIA, GIA_vals
 
 
-def setup_FP_interpolators(components, sci_method):
+def setup_FP_interpolators(components):
     """
     Create 2D Interpolator objects for the Slangen, Spada and Klemann
     fingerprints
     :param components: list of sea level components
-    :param sci_method: scientific method used to select GIA estimates, GRD
-    fingerprints and CMIP regression (based on user input)
     :return nFPs: length of FPlist and interpolator objects of all sea level
     components
     """
@@ -448,17 +399,8 @@ def setup_FP_interpolators(components, sci_method):
         klemann_FPs[comp] = create_FP_interpolator(klemanndir,
                                                    comp + '_klemann_nomask.nc')
 
-    if sci_method == 'UK':
-        # Klemann fingerprints were not used in UKCP18
-        FPlist = [slangen_FPs, spada_FPs]
-    elif sci_method == 'global':
-        FPlist = [slangen_FPs, spada_FPs, klemann_FPs]
-    else:
-        raise UnboundLocalError('The selected GRD fingerprint method - ' +
-                                f'{sci_method} - is not available')
-
+    FPlist = [slangen_FPs, spada_FPs, klemann_FPs]
     nFPs = len(FPlist)
-
     return nFPs, FPlist
 
 
