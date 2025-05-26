@@ -122,6 +122,7 @@ def calc_expansion_contribution(
     # Select slope coefficients based on the MIP
     if settings["cmipinfo"]["mip"] == "CMIP6":
         coeffs = load_CMIP6_slopes('ssp585')
+        coeffs = np.roll(coeffs, 180, axis=2)
     else:
         coeffs = load_CMIP5_slope_coeffs('rcp85')
 

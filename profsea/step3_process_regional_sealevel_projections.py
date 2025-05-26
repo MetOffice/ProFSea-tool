@@ -592,14 +592,12 @@ def main():
                 settings["projection_end_year"],
                 palmer_method=palmer_method,
                 input_ensemble=settings["emulator_settings"]["use_input_ensemble"],
-                cum_emissions_total=cum_emissions_total
-            )
+                cum_emissions_total=cum_emissions_total)
             gmslr.project()
             print('Saving components...')
             gmslr.save_components(
                 os.path.join(settings["baseoutdir"], 'emulator_output'),
-                scenario
-            )
+                scenario)
             print('Saved!\n')
             for loc_name in df_site_data.index.values:
                 calc_future_sea_level_at_site(df_site_data, loc_name, scenario)

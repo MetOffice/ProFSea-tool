@@ -9,9 +9,11 @@ All rights reserved.
 import os
 import concurrent
 from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 from scipy.stats import norm
+import xarray as xr
 
 class GMSLREmulator:
     """Emulator for global mean sea level rise components.
@@ -77,23 +79,24 @@ class GMSLREmulator:
     """
     
     def __init__(
-        self, 
-        T_change: np.ndarray,
-        OHC_change: np.ndarray,
-        scenario: str,
-        output_dir: str,
-        end_yr: int,
-        seed: int=0,
-        nt: int=450,
-        nm: int=1000,
-        tcv: float=1.0,
-        glaciermip: bool|int=False,
-        input_ensemble: bool=True,
-        T_percentile_95: np.ndarray=None,
-        OHC_percentile_95: np.ndarray=None,
-        cum_emissions_total: np.ndarray=None,
-        palmer_method: bool=False):
+            self, 
+            T_change: np.ndarray,
+            OHC_change: np.ndarray,
+            scenario: str,
+            output_dir: str,
+            end_yr: int,
+            seed: int=42,
+            nt: int=450,
+            nm: int=1000,
+            tcv: float=1.0,
+            glaciermip: bool|int=False,
+            input_ensemble: bool=True,
+            T_percentile_95: np.ndarray=None,
+            OHC_percentile_95: np.ndarray=None,
+            cum_emissions_total: np.ndarray=None,
+            palmer_method: bool=False) -> None:
         
+        np.random.seed(None if seed is None else seed)
         self.T_change = T_change
         self.OHC_change = OHC_change
         self.scenario = scenario
@@ -133,7 +136,9 @@ class GMSLREmulator:
         self.mSLEoGt = 1e12 / 3.61e14 * 1e-3
 
         # Sensitivity of thermosteric SLR to ocean heat content change
-        self.exp_efficiency = 0.12e-24
+        # From Turner et al. (2023)
+        self.exp_efficiency = np.random.normal(
+            loc=0.113, scale=0.013, size=OHC_change.shape[0]) * 1e-24 # m/YJ
         
         if input_ensemble:
             self.nt = self.T_change.shape[0]
@@ -146,7 +151,8 @@ class GMSLREmulator:
                 'of the scenario using the cum_emissions_total keyword argument.\n'
                 'This is required to calculate the Antarctic dynamic contribution to GMSLR.')
             
-    def get_components(self):
+    def get_components(self) -> dict:
+        """Get all GMSLR components as a dictionary."""
         components_dict = {
             'exp': self.expansion,
             'glacier': self.glacier,
@@ -162,7 +168,7 @@ class GMSLREmulator:
         }
         return components_dict
     
-    def save_components(self, output_dir: str, scenario_name: str):
+    def save_components(self, output_dir: str, scenario_name: str) -> None:
         """Save all SLR components as .npy files to a directory.
         
         Parameters
@@ -184,14 +190,13 @@ class GMSLREmulator:
                 component.T # Transpose to match the shape of original Monte Carlo simulations
             )
         
-    def project(self):
+    def project(self) -> None:
         """Run the emulator to project GMSLR components.
 
         Returns
         -------
         None
         """
-        np.random.seed(self.seed)
         T_ens, Exp_ens, T_int_ens, T_int_med = self.calculate_drivers() 
 
         self.expansion = np.tile(Exp_ens, (self.nm, 1))
@@ -204,8 +209,9 @@ class GMSLREmulator:
         self.sheetdyn = self.greendyn + self.antdyn
         self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
             
-    def run_parallel_projections(self, T_int_med: np.ndarray, T_int_ens: np.ndarray, 
-                                 T_ens: np.ndarray, fraction: np.ndarray):
+    def run_parallel_projections(
+            self, T_int_med: np.ndarray, T_int_ens: np.ndarray, 
+            T_ens: np.ndarray, fraction: np.ndarray) -> None:
         """Run components of the emulator in parallel.
         
         Returns
@@ -236,7 +242,7 @@ class GMSLREmulator:
         self.antdyn = results['antdyn']
         self.landwater = results['landwater']
         
-    def calculate_drivers(self):
+    def calculate_drivers(self) -> tuple:
         """Calculate the drivers of GMSLR: temperature change and 
         thermosteric sea level rise.
         
@@ -258,7 +264,7 @@ class GMSLREmulator:
             if self.OHC_change.shape[1] != self.nyr: 
                 self.OHC_change = self.OHC_change.T
                 
-            therm_ens = self.OHC_change * self.exp_efficiency
+            therm_ens = self.OHC_change * self.exp_efficiency[:, None]
             T_int_ens = np.cumsum(self.T_change, axis=1)
             T_int_med = np.percentile(T_int_ens, 50, axis=0) # using median here instead of mean... CHECK THIS
 
@@ -305,7 +311,8 @@ class GMSLREmulator:
         return T_ens, therm_ens, T_int_ens, T_int_med
         
 
-    def project_glacier(self, T_int_med: np.ndarray, T_int_ens: np.ndarray):
+    def project_glacier(
+            self, T_int_med: np.ndarray, T_int_ens: np.ndarray) -> np.ndarray:
         """Project glacier contribution to GMSLR.
         
         Parameters
@@ -393,7 +400,9 @@ class GMSLREmulator:
 
         return glacier
 
-    def _project_glacier1(self, T_int: np.ndarray, factor: float, exponent: float):
+    def _project_glacier1(
+            self, T_int: np.ndarray, factor: float, 
+            exponent: float) -> np.ndarray:
         """Project glacier contribution by one glacier method.
         
         Parameters
@@ -413,7 +422,7 @@ class GMSLREmulator:
         scale=1e-3 # mm to m
         return scale * factor * (np.where(T_int<0, 0, T_int)**exponent)
 
-    def project_greensmb(self, T_ens: np.ndarray):
+    def project_greensmb(self, T_ens: np.ndarray) -> np.ndarray:
         """Project Greenland SMB contribution to GMSLR.
         
         Parameters
@@ -452,7 +461,7 @@ class GMSLREmulator:
 
         return greensmb
 
-    def _fettweis(self, ztgreen):
+    def _fettweis(self, ztgreen: np.ndarray) -> np.ndarray:
         """Calculate Greenland SMB in m yr-1 SLE from global mean temperature 
         anomaly, using Eq 2 of Fettweis et al. (2013).
         
@@ -468,7 +477,9 @@ class GMSLREmulator:
         """
         return (71.5*ztgreen+20.4*(ztgreen**2)+2.8*(ztgreen**3))*self.mSLEoGt
 
-    def project_antsmb(self, T_int_ens, fraction=None):
+    def project_antsmb(
+            self, T_int_ens: np.ndarray, 
+            fraction: np.ndarray=None) -> np.ndarray:
         """Project Antarctic SMB contribution to GMSLR.
         
         Parameters
@@ -510,7 +521,7 @@ class GMSLREmulator:
 
         return antsmb
 
-    def project_greendyn(self):
+    def project_greendyn(self) -> np.ndarray:
         """Project Greenland rapid ice-sheet dynamics contribution to GMSLR.
         
         Returns
@@ -528,7 +539,7 @@ class GMSLREmulator:
             0.63*self.fgreendyn, 0.17*self.fgreendyn, 
             finalrange) + self.fgreendyn*self.dgreen
 
-    def project_antdyn(self, fraction=None):
+    def project_antdyn(self, fraction: np.ndarray=None) -> np.ndarray:
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
         
         Parameters
@@ -556,7 +567,6 @@ class GMSLREmulator:
             rcp60=[-2.660, 0.870, 0.000],\
             rcp85=[-2.399, 0.860, 0.000])
             lcoeff = lcoeff[self.scenario]
-            print('hi')
 
             ascale=norm.ppf(fraction)
             final=np.exp(lcoeff[2]*ascale**2+lcoeff[1]*ascale+lcoeff[0])
@@ -569,9 +579,35 @@ class GMSLREmulator:
             # For dyn at 2100 Chapter 13 gives [-20,185] mm for all scenarios
 
         return self.time_projection(0.41, 0.20, final, fraction=fraction) + self.dant
-  
-    def project_landwater(self):
+
+    def project_landwater(self) -> np.ndarray:
         """Project land water storage contribution to GMSLR.
+        
+        Returns
+        -------
+        np.ndarray
+            Land water storage contribution to GMSLR.
+        """
+        # Read in AR6 landwater contributions
+        lw_ds = xr.open_dataset(
+            Path(__file__).parent / 'landwater_projections'
+            / 'ssp_global_landwater_projections.nc')
+
+        # Interpolate to annual projections
+        lw_ds = lw_ds.interp(years=np.arange(2005, 2301, 1), method='linear').squeeze()
+        lw = lw_ds['sea_level_change'].values * 1e-3  # mm to m
+        
+        # Go from shape (20000, 294) to (101000, 294)
+        full_repeats = (self.nt * self.nm) // lw.shape[0]
+        remainder = (self.nt * self.nm) % lw.shape[0]
+        lw = np.vstack([np.tile(lw, (full_repeats, 1)), lw[:remainder]])
+        lw = lw.reshape(self.nt * self.nm, lw.shape[1])
+        lw = lw[:, 1:-1] # Start at 2006, end at 2299
+        return lw
+  
+    def _project_landwater_ar5(self) -> np.ndarray:
+        """Old projection function. Project land water storage 
+        contribution to GMSLR.
         
         Returns
         -------
@@ -587,7 +623,7 @@ class GMSLREmulator:
     
     def time_projection(
         self, startratemean: float, startratepm: float, final,
-        nfinal: int=1, fraction: np.ndarray=None):
+        nfinal: int=1, fraction: np.ndarray=None) -> np.ndarray:
         """Project a quantity which is a quadratic function of time.
         
         Parameters
