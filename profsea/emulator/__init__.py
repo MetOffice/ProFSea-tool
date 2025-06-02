@@ -12,8 +12,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import norm
+from scipy.stats import norm, truncnorm
 import xarray as xr
+import pandas as pd
 
 class GMSLREmulator:
     """Emulator for global mean sea level rise components.
@@ -77,7 +78,7 @@ class GMSLREmulator:
     exp_efficiency: float
         Sensitivity of thermosteric SLR to ocean heat content change.
     """
-    
+
     def __init__(
             self, 
             T_change: np.ndarray,
@@ -85,7 +86,7 @@ class GMSLREmulator:
             scenario: str,
             output_dir: str,
             end_yr: int,
-            seed: int=42,
+            seed: int=1234,
             nt: int=450,
             nm: int=1000,
             tcv: float=1.0,
@@ -150,7 +151,7 @@ class GMSLREmulator:
                 'you must provide the total \ncumulative emissions from 2015 to the end '
                 'of the scenario using the cum_emissions_total keyword argument.\n'
                 'This is required to calculate the Antarctic dynamic contribution to GMSLR.')
-            
+    
     def get_components(self) -> dict:
         """Get all GMSLR components as a dictionary."""
         components_dict = {
@@ -189,7 +190,7 @@ class GMSLREmulator:
                     f'{scenario_name}_{name}.npy'), 
                 component.T # Transpose to match the shape of original Monte Carlo simulations
             )
-        
+
     def project(self) -> None:
         """Run the emulator to project GMSLR components.
 
@@ -204,10 +205,8 @@ class GMSLREmulator:
         
         self.run_parallel_projections(T_int_med, T_int_ens, T_ens, fraction)
         
-        self.greennet = self.greensmb + self.greendyn
         self.antnet = self.antsmb + self.antdyn
-        self.sheetdyn = self.greendyn + self.antdyn
-        self.gmslr = self.glacier + self.greennet + self.antnet + self.landwater + self.expansion
+        self.gmslr = self.glacier + self.greenland + self.antnet + self.landwater + self.expansion
             
     def run_parallel_projections(
             self, T_int_med: np.ndarray, T_int_ens: np.ndarray, 
@@ -221,9 +220,8 @@ class GMSLREmulator:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             futures = {
                 executor.submit(self.project_glacier, T_int_med, T_int_ens): 'glacier',
-                executor.submit(self.project_greensmb, T_ens): 'greensmb',
                 executor.submit(self.project_antsmb, T_int_ens, fraction): 'antsmb',
-                executor.submit(self.project_greendyn): 'greendyn',
+                executor.submit(self.project_greenland_AR6, T_ens): 'greenland',
                 executor.submit(self.project_antdyn, fraction): 'antdyn',
                 executor.submit(self.project_landwater): 'landwater'
             }
@@ -236,12 +234,11 @@ class GMSLREmulator:
                     print(f"{key} generated an exception: {e}")
 
         self.glacier = results['glacier']
-        self.greensmb = results['greensmb']
         self.antsmb = results['antsmb']
-        self.greendyn = results['greendyn']
+        self.greenland = results['greenland']
         self.antdyn = results['antdyn']
         self.landwater = results['landwater']
-        
+  
     def calculate_drivers(self) -> tuple:
         """Calculate the drivers of GMSLR: temperature change and 
         thermosteric sea level rise.
@@ -308,8 +305,7 @@ class GMSLREmulator:
         therm_ens = z[:, np.newaxis] * therm_std + therm_med
         T_int_ens = z[:, np.newaxis] * T_int_std + T_int_med
         
-        return T_ens, therm_ens, T_int_ens, T_int_med
-        
+        return T_ens, therm_ens, T_int_ens, T_int_med  
 
     def project_glacier(
             self, T_int_med: np.ndarray, T_int_ens: np.ndarray) -> np.ndarray:
@@ -422,7 +418,7 @@ class GMSLREmulator:
         scale=1e-3 # mm to m
         return scale * factor * (np.where(T_int<0, 0, T_int)**exponent)
 
-    def project_greensmb(self, T_ens: np.ndarray) -> np.ndarray:
+    def project_greensmb_AR5(self, T_ens: np.ndarray) -> np.ndarray:
         """Project Greenland SMB contribution to GMSLR.
         
         Parameters
@@ -521,7 +517,80 @@ class GMSLREmulator:
 
         return antsmb
 
-    def project_greendyn(self) -> np.ndarray:
+    def project_greenland_AR6(self, T_ens: np.ndarray) -> np.ndarray:
+        """Project Greenland ice-sheet contribution to GMSLR.
+        This follows the IPCC AR6 methodology as closely as possible.
+        
+        Returns
+        -------
+        np.ndarray
+            Total GIS contribution to GMSLR.
+        """
+        df = pd.read_csv(
+            Path(__file__).parent / "aux_data" / "ISMIP_GIS_calibration.csv")
+        b0 = df['b0'].values[None, :, None]
+        b1 = df['b1'].values[None, :, None]
+        b2 = df['b2'].values[None, :, None]
+        b3 = df['b3'].values[None, :, None]
+        b4 = df['b4'].values[None, :, None]
+        b5 = df['b5'].values[None, :, None]
+        sigma = df['sigma'].values
+        time_delta = np.arange(self.nyr)
+
+        # GIS trend values taken from FACTS GitHub repo
+        trend_mean = 0.19
+        trend_std = 0.1
+
+        # Calculate trend contribution distribution
+        rng = np.random.default_rng(self.seed)
+        trend = truncnorm.ppf(
+            rng.random(self.nm), 
+            a = 0.0,
+            b = 99999.9,
+            loc = trend_mean,
+            scale = trend_std
+        )
+        trend = trend[:, None] * time_delta[None, :]
+        trend = trend[:, None, :] 
+        trend /= 1e3 # convert mm to m SLE
+
+        # Calculate GIS contribution rate
+        dsle = b0 + (b1 * T_ens[:, None, :]) + (b2 * T_ens[:, None, :]**2) \
+            + (b3 * T_ens[:, None, :]**3) + (b4 * time_delta[None, None, :]) \
+            + (b5 * time_delta[None, None, :]**2)
+
+
+        # Now integrate
+        sle = np.cumsum(dsle, axis=2)  # mm SLE per K of global warming
+        sle = sle * 1e-3  # convert mm to m SLE
+
+        # Make a Monte Carlo ensemble of projections for each model in the calibration
+        sle_ens = np.zeros((self.nm, self.nt, self.nyr))
+        r_per_model = self.nm // sle.shape[1]
+        r_remainder = self.nm % sle.shape[1]
+
+        # We want to distribute the remainder evenly across the models
+        unc = np.random.normal(scale=sigma)
+        current_ensemble_idx = 0
+        for i in range(sle.shape[1]):
+            num_reals_for_model_i = r_per_model + 1 if i < r_remainder else r_per_model
+            ifirst = current_ensemble_idx
+            ilast = current_ensemble_idx + num_reals_for_model_i
+            model_term = sle[:, i, :] # Shape (nt, nyr)
+            uncertainty_term = model_term * unc[None, i, None] # Shape (num_reals_for_model_i, nt, nyr_param)
+                
+            sle_ens[ifirst:ilast, :, :] = model_term[None, :, :] + uncertainty_term
+            current_ensemble_idx = ilast
+
+        sle_ens += trend
+
+        # Persist 2100 rate of change
+        rate = np.diff(sle_ens, axis=2)[:, :, 94]
+        sle_ens[:, :, 95:] = sle_ens[:, :, 94:95] + (rate[:, :, None] * time_delta[None, None, 1:self.nyr - 94])
+        sle_ens = sle_ens.reshape((self.nm * self.nt, self.nyr))
+        return sle_ens
+
+    def project_greendyn_AR5(self) -> np.ndarray:
         """Project Greenland rapid ice-sheet dynamics contribution to GMSLR.
         
         Returns
@@ -590,7 +659,7 @@ class GMSLREmulator:
         """
         # Read in AR6 landwater contributions
         lw_ds = xr.open_dataset(
-            Path(__file__).parent / 'landwater_projections'
+            Path(__file__).parent / 'aux_data'
             / 'ssp_global_landwater_projections.nc')
 
         # Interpolate to annual projections
