@@ -6,6 +6,7 @@ All rights reserved.
 import numpy as np
 import pandas as pd
 import re
+import itertools
 
 from config import settings
 
@@ -126,6 +127,34 @@ def ukcp18_colours():
     return rcp_colours, comp_parts_colours
 
 
+def get_emulator_colors(num_scenarios, get_all=False):
+        colors = [
+            '#031326', '#13385a', '#45587a', '#6a5e76', 
+            '#8d616d', '#b86462', '#e37861', '#e8a077']
+        
+        def get_equidistant_indices(num_colors, num_iterations):
+            if num_iterations >= num_colors:
+                return list(range(num_colors))
+            
+            # Avoid first and last index if possible
+            if num_iterations > 1:
+                start = 1
+                stop = num_colors - 2
+                indices = np.linspace(start, stop, num=num_iterations, dtype=int)
+            else:
+                # If only one iteration, take the middle color
+                indices = [num_colors // 2]
+            
+            return indices
+        
+        # Return a cyclical color generator 
+        if (num_scenarios >= len(colors)) or get_all:
+            return itertools.cycle(colors)
+        
+        color_idxs = get_equidistant_indices(len(colors), num_scenarios)
+        return itertools.cycle([colors[i] for i in color_idxs])
+
+
 def ukcp18_labels():
     """
     Define sea level component labels as used in UKCP18 Marine Report
@@ -140,3 +169,61 @@ def ukcp18_labels():
                          'ocean': 'Ocean'}
 
     return comp_parts_labels
+
+
+def multi_index_values(df_list):
+    """
+    Get the values of the multi-index: years and percentile values.
+    :param df_list: DataFrame list of regional sea level projections
+    :return: years and percentile values
+    """
+    df = df_list[0]
+    proj_years = np.sort(list(set(list(df.index.get_level_values('year')))))
+    percentiles_all = np.sort(
+        [float(v) for v in list(set(list(
+            df.index.get_level_values('percentile'))))])
+
+    return proj_years, percentiles_all
+
+
+def extract_comp_sl(df, percentiles, comp):
+    """
+    Get the sums of all components of local sea level projections.
+    :param df: global or regional DataFrame of sea level projections
+    :param percentiles: specified percentiles
+    :param comp: components of sea level
+    :return: sum of sea level components at lower, middle and upper percentile
+    """
+    # 5th percentile - based on UKCP18 percentile levels
+    rlow = df.xs(percentiles[0], level='percentile')[comp].to_numpy(copy=True)
+    # 50th percentile
+    rmid = df.xs(percentiles[4], level='percentile')[comp].to_numpy(copy=True)
+    # 95th percentile
+    rupp = df.xs(percentiles[8], level='percentile')[comp].to_numpy(copy=True)
+
+    return rlow, rmid, rupp
+
+
+def plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name):
+    """
+    Plot the annual mean sea levels from the tide gauge data.
+    :param ax: subplot number
+    :param nflag: number of flagged years
+    :param flag: flagged data
+    :param tg_years: tide gauge years
+    :param non_missing: boolean to indicate NaN values
+    :param tg_amsl: annual mean sea level data
+    :param tg_name: tide gauge name
+    """
+    if nflag > 0:
+        # There are some years with less than min_valid_fraction of flag data;
+        # plot these annual means as open symbols.
+        print(f'Tide gauge data has been flagged for attention - ' +
+              f'{tg_years[(flag & non_missing)]}')
+        ax.plot(tg_years[(flag & non_missing)], tg_amsl[(flag & non_missing)],
+                marker='o', mec='black', mfc='None',
+                markersize=3, linestyle='None', label='TG flagged')
+    if nflag < len(flag):
+        ax.plot(tg_years[(~flag & non_missing)],
+                tg_amsl[(~flag & non_missing)], 'ko', markersize=3,
+                label=f'{location_string(tg_name)} TG')

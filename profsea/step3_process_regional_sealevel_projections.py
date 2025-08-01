@@ -5,6 +5,7 @@ All rights reserved.
 
 import os
 import iris
+import glob
 import pickle
 import numpy as np
 import pandas as pd
@@ -15,6 +16,7 @@ from profsea.config import settings
 from profsea.tide_gauge_locations import extract_site_info
 from profsea.slr_pkg import abbreviate_location_name, choose_montecarlo_dir  # found in __init.py__
 from profsea.directories import read_dir, makefolder
+from emulator import GMSLREmulator
 
 
 def calc_baseline_period(sci_method, yrs):
@@ -42,6 +44,7 @@ def calc_baseline_period(sci_method, yrs):
 
     return yrs[0] - midyr, G_offset
 
+
 def calc_future_sea_level_at_site(df, site_loc, scenario):
     """
     Calculates future sea level at the given site and write to file.
@@ -64,14 +67,20 @@ def calc_future_sea_level_at_site(df, site_loc, scenario):
     # calculated separately.
     components = ['exp', 'antdyn', 'antsmb', 'greendyn', 'greensmb',
                   'glacier', 'landwater']
-    # nesm, nyrs, yrs = get_projection_info(mcdir, scenario)
-    nesm = 450000
-    yrs = np.arange(2007, settings["projection_end_year"] + 1)
-    nyrs = yrs.size
+
+    # Select dimensions from sample file, [time, realisation]
+    sample = np.load(os.path.join(mcdir, f'{scenario}_exp.npy'))
+    nesm = sample.shape[1]
+    nyrs = sample.shape[0]
+    yrs = np.arange(2007, 2007 + nyrs)
 
     # Determine the number of samples you wish to make CHOGOM
     # project = 100000, UKCP18 = 200000
-    nsmps = 200000
+    if nesm >= 200000:
+        nsmps = 200000
+    else:
+        nsmps = nesm
+        
     array_dims = [nesm, nsmps, nyrs]
 
     # Get random samples of global and regional sea level components
@@ -203,16 +212,27 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
 
         offset = G_offset * offset_slopes[comp]
 
-        cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
-        montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
+        if settings["emulator_settings"]["emulator_mode"]:
+            # Input timeseries provided as numpy objects
+            mc_timeseries = np.load(os.path.join(mcdir, f'{scenario}_{comp}.npy'))
+            montecarlo_G[cc, :, :] = mc_timeseries[:nyrs, resamples] + offset
+        else:
+            cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
+            montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
 
         if comp == 'exp':
             if sci_method == 'global':
-                coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, 'rcp85')
+                else:
+                    coeffs = load_CMIP5_slope_coeffs(site_loc, scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True)
             elif sci_method == 'UK':
-                coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
+                if settings["emulator_settings"]["emulator_mode"]:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK('rcp85')
+                else:
+                    coeffs, weights = load_CMIP5_slope_coeffs_UK(scenario)
                 rand_coeffs = np.random.choice(coeffs, size=nsmps,
                                                replace=True, p=weights)
             montecarlo_R[cc, :, :] = montecarlo_G[cc, :, :] * rand_coeffs
@@ -501,6 +521,18 @@ def setup_FP_interpolators(components, sci_method):
     return nFPs, FPlist
 
 
+def read_csv_file(file_pattern: str, start_yr: int=2007, 
+                  end_yr: int=settings["projection_end_year"]):
+    file = glob.glob(
+        os.path.join(
+            settings["emulator_settings"]["emulator_input_dir"], 
+            file_pattern))
+    if not file:
+        raise FileNotFoundError(f'File {file_pattern} not found')
+    df = pd.read_csv(file[0])
+    return df.loc[:, str(start_yr):str(end_yr)].to_numpy()
+
+
 def main():
     """
     Reads in and calculates global and local (regional) sea level change
@@ -513,8 +545,8 @@ def main():
     print(f'User specified lat(s) and lon(s) is (are): '
           f'{settings["siteinfo"]["sitelatlon"]}')
     if settings["siteinfo"]["sitelatlon"] == [[]]:
-        print(f'    No lat lon specified - use tide gauge metadata if '
-              f'available')
+        print('    No lat lon specified - use tide gauge metadata if '
+              'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
     if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
@@ -531,11 +563,49 @@ def main():
                                      settings["siteinfo"]["sitename"],
                                      settings["siteinfo"]["sitelatlon"])
 
-    scenarios = ['rcp26', 'rcp45', 'rcp85']
-    for scenario in scenarios:
+    if settings["emulator_settings"]["emulator_mode"]:
+        print('\nInitiating ProFSea emulator')
+        if settings["projection_end_year"] > 2100:
+            palmer_method = True
+        else:
+            palmer_method = False
+            
+        makefolder(os.path.join(settings["baseoutdir"], 'emulator_output'))
+        
         # Get the metadata of either the site location or tide gauge location
-        for loc_name in df_site_data.index.values:
-            calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+        for scenario in settings["emulator_settings"]["emulator_scenario"]:
+            print(f'Projecting {scenario}...')
+            T_change = read_csv_file(f'*{scenario}*_temperature*.csv')
+            OHC_change = read_csv_file(f'*{scenario}*_ocean_heat_content_change*.csv')
+
+            cum_emissions_file = f'*{scenario}*_cumulative_emissions_total.txt'
+            if glob.glob(os.path.join(settings["emulator_settings"]["emulator_input_dir"], cum_emissions_file)):
+                cum_emissions_total = read_csv_file(cum_emissions_file)
+            else:
+                raise FileNotFoundError('For any non-RCP scenario, a cumulative emissions total must be provided.')
+            
+            gmslr = GMSLREmulator(
+                T_change,
+                OHC_change,
+                scenario,
+                os.path.join(settings["baseoutdir"], 'emulator_output'),
+                settings["projection_end_year"],
+                palmer_method=palmer_method,
+                input_ensemble=settings["emulator_settings"]["use_input_ensemble"],
+                cum_emissions_total=cum_emissions_total)
+            gmslr.project()
+            print('Saving components...')
+            gmslr.save_components(
+                os.path.join(settings["baseoutdir"], 'emulator_output'),
+                scenario)
+            print('Saved!\n')
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
+    else:
+        scenarios = ['rcp26', 'rcp45', 'rcp85']
+        for scenario in scenarios:
+            for loc_name in df_site_data.index.values:
+                calc_future_sea_level_at_site(df_site_data, loc_name, scenario)
 
 
 if __name__ == '__main__':
