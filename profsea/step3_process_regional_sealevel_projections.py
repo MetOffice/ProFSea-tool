@@ -203,7 +203,14 @@ def calculate_sl_components(mcdir, components, scenario, site_loc, loc_coords,
 
         offset = G_offset * offset_slopes[comp]
 
-        cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
+        try:
+            cube = iris.load_cube(os.path.join(mcdir, f'{scenario}_{comp}.nc'))
+        except IOError:
+            raise FileNotFoundError(os.path.join(mcdir, 
+                                                f'{scenario}_{comp}.nc'),
+                                    '- monte carlo file not found, please ' \
+                                    'check file path')            
+
         montecarlo_G[cc, :, :] = cube.data[:nyrs, resamples] + offset
 
         if comp == 'exp':
@@ -322,7 +329,13 @@ def create_FP_interpolator(datadir, dfile, method='linear'):
     :param method: interpolation type --> 'linear' or 'nearest'
     :return: 2D Interpolator object
     """
-    cube = iris.load_cube(os.path.join(datadir, dfile))
+    try:
+        cube = iris.load_cube(os.path.join(datadir, dfile))
+    except IOError:
+        raise FileNotFoundError(os.path.join(datadir, dfile),
+                                '- grd fingerprint file not found, ' \
+                                'please check file path')
+
     lon = cube.coord('longitude').points
     lat = cube.coord('latitude').points
 
@@ -396,7 +409,8 @@ def load_CMIP5_slope_coeffs_UK(scenario):
     """
     print('running function load_CMIP5_slope_coeffs_UK')
     if settings["datalocation"] != "":
-        in_zosdir_uk = os.path.join(settings["datalocation"],"uk_cmip_slope_coefficients")
+        in_zosdir_uk = os.path.join(settings["datalocation"],
+                                    "uk_cmip_slope_coefficients")
     else:
         in_zosdir_uk = settings["cmipinfo"]["slopecoeffsuk"]
 
@@ -406,8 +420,9 @@ def load_CMIP5_slope_coeffs_UK(scenario):
         with open(os.path.join(in_zosdir_uk, filename_uk), 'rb') as f:
             data = pickle.load(f, encoding='latin1')['uk_mask_1']
     except FileNotFoundError:
-        raise FileNotFoundError(filename_uk,
-                                '- scenario selected does not exist')
+        raise FileNotFoundError(os.path.join(in_zosdir_uk, filename_uk),
+                                '- CMIP5 Slope Coeffs not found, please' \
+                                ' check file path')
 
     # Keys are: 'coeffs', 'models', 'weights'
     coeffs = data['coeffs']
@@ -445,8 +460,13 @@ def read_gia_estimates(sci_method, coords):
         raise UnboundLocalError('The selected GIA estimate - ' +
                                 f'{sci_method} - is not available')
 
-    with open(gia_file, "rb") as ifp:
-        GIA_dict = pickle.load(ifp, encoding='latin1')
+    try:
+        with open(gia_file, "rb") as ifp:
+            GIA_dict = pickle.load(ifp, encoding='latin1')
+    except FileNotFoundError:
+        raise FileNotFoundError(os.path.join("gia_estimates", gia_file),
+                                '- gia estimates file not found, please ' \
+                                'check file path')
 
     GIA_vals = []
     lat, lon = coords
