@@ -395,7 +395,11 @@ def load_CMIP5_slope_coeffs_UK(scenario):
     :return: 1D array of slope coefficients and 1D array of weights
     """
     print('running function load_CMIP5_slope_coeffs_UK')
-    in_zosdir_uk = settings["cmipinfo"]["slopecoeffsuk"]
+    if settings["datalocation"] != "":
+        in_zosdir_uk = os.path.join(settings["datalocation"],"uk_cmip_slope_coefficients")
+    else:
+        in_zosdir_uk = settings["cmipinfo"]["slopecoeffsuk"]
+
     filename_uk = f'{scenario}_CMIP5_regress_coeffs_uk_mask_1.pickle'
 
     try:
@@ -425,9 +429,18 @@ def read_gia_estimates(sci_method, coords):
     print('running function read_gia_estimates')
     # Directories containing GIA data (independent of scenario)
     if sci_method == 'global':
-        gia_file = settings["giaestimates"]["global"]
+        if settings["datalocation"] != "":
+            gia_file = os.path.join(settings["datalocation"], "gia_estimates",
+                                    "global_GIA_interpolators.pickle")
+        else:
+            gia_file = settings["giaestimates"]["global"]
+        
     elif sci_method == 'UK':
-        gia_file = settings["giaestimates"]["uk"]
+        if settings["datalocation"] != "":
+            gia_file = os.path.join(settings["datalocation"], "gia_estimates",
+                                    "Bradley_GIA_interpolator.pickle")
+        else:
+            gia_file = settings["giaestimates"]["uk"]
     else:
         raise UnboundLocalError('The selected GIA estimate - ' +
                                 f'{sci_method} - is not available')
@@ -461,9 +474,18 @@ def setup_FP_interpolators(components, sci_method):
     print('running function setup_FP_interpolators')
 
     # Directories for the Slangen, Spada and Klemann fingerprints
-    slangendir = settings["fingerprints"]["slangendir"]
-    spadadir = settings["fingerprints"]["spadadir"]
-    klemanndir = settings["fingerprints"]["klemanndir"]
+    if settings["datalocation"] != "":
+        slangendir = os.path.join(settings["datalocation"],
+                                  "grd_fingerprints")
+        spadadir = os.path.join(settings["datalocation"],
+                                "grd_fingerprints")
+        klemanndir = os.path.join(settings["datalocation"],
+                                  "grd_fingerprints")
+    else:
+        slangendir = settings["fingerprints"]["slangendir"]
+        spadadir = settings["fingerprints"]["spadadir"]
+        klemanndir = settings["fingerprints"]["klemanndir"]
+   
 
     # Create empty dictionaries for the Slangen, Spada and Klemann fingerprints
     # interpolator objects.
@@ -516,9 +538,9 @@ def main():
         print(f'    No lat lon specified - use tide gauge metadata if '
               f'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
-    if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
+    if {settings["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
-    elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
+    elif {settings["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
 
     print(f'\nProjecting out to: {settings["projection_end_year"]}\n')
