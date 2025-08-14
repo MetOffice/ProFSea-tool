@@ -4,7 +4,7 @@ channels:
 dependencies:
   - numpy
   - pandas
-  - python=3.13
+  - python=3.13.5
   - scipy
   - pyyaml
   - netcdf4
