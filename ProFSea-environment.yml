@@ -12,3 +12,4 @@ dependencies:
   - libwebp>=1.3.2
   - cartopy
   - iris
+  - tqdm
