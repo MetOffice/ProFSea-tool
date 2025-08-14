@@ -140,7 +140,7 @@ def extract_ssh_data(cmip_sea):
     for model in model_names:
         print(f'Getting data for {model} model')
         cmip_date = cmip_dict[model]['historical']
-        cmip_file = f'{cmip_dir}zos_Omon_{model}_historical_{cmip_date}.nc'
+        cmip_file = os.path.join(cmip_dir, f'zos_Omon_{model}_historical_{cmip_date}.nc')
         cube = cubeutils.loadcube(cmip_file, ncvar='zos')[0]
         cubes.append(cube.slices(['latitude', 'longitude']).next())
 
