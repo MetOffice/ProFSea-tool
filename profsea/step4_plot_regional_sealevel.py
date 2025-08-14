@@ -259,7 +259,8 @@ def plot_figure_two(r_df_list, tg_name, nflag, flag, tg_years, non_missing,
     plot_zeroline(ax, xlim)
 
     # Plot the annual mean sea levels from the tide gauge data
-    plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name)
+    if settings['plot_tide_gauge_data']:
+        plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name)
 
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
