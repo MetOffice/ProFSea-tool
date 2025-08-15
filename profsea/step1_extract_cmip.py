@@ -145,7 +145,13 @@ def extract_ssh_data(cmip_sea):
         print(f'Getting data for {model} model')
         cmip_date = cmip_dict[model]['historical']
         cmip_file = os.path.join(cmip_dir, f'zos_Omon_{model}_historical_{cmip_date}.nc')
-        cube = cubeutils.loadcube(cmip_file, ncvar='zos')[0]
+        try:
+            cube = cubeutils.loadcube(cmip_file, ncvar='zos')[0]
+        except IOError:
+            raise FileNotFoundError(os.path.join(cmip_file),
+                                    '- CMIP5 sea level data not found, please' \
+                                    ' check file path')            
+        
         cubes.append(cube.slices(['latitude', 'longitude']).next())
 
     return model_names, cubes
