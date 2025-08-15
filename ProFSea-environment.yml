@@ -4,11 +4,11 @@ channels:
 dependencies:
   - numpy
   - pandas
-  - python=3.7.7
+  - python=3.13.5
   - scipy
   - pyyaml
   - netcdf4
   - matplotlib
-  - libwebp>=1.3.2
+  - libwebp
   - cartopy
   - iris

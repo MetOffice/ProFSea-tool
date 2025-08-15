@@ -470,9 +470,13 @@ def read_gia_estimates(sci_method, coords):
 
     GIA_vals = []
     lat, lon = coords
+
     # The GIA_dict contains interpolator objects
     for key in list(GIA_dict.keys()):
-        val = GIA_dict[key]([lat, lon])[0]
+        old_grid = GIA_dict[key].grid
+        old_vals = GIA_dict[key].values
+        new_rgi = RegularGridInterpolator(old_grid, old_vals)
+        val = np.squeeze(new_rgi([lat, lon]))
         GIA_vals.append(val)
 
     nGIA = len(GIA_vals)

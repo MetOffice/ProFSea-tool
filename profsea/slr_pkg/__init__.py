@@ -92,21 +92,21 @@ def extract_dyn_steric_regression(models, df, scenarios):
                 try:
                     # dynamic sea level (zos)
                     zos_date = zos_dict[model][scenario]['driftcorr']
-                    zos_file = f'{datadir}normalized_zos_Omon_{model}_' \
-                               f'{scenario}_{zos_date}_driftcorr.nc'
+                    zos_file = os.path.join(datadir, f'normalized_zos_Omon_{model}_' \
+                               f'{scenario}_{zos_date}_driftcorr.nc')
                     zos = cubedata.read_zos_cube(zos_file)[0][:, j, i]
                     # --------------------------------------------------------
                     # global mean thermosteric (zostoga)
                     # Extract, and drift-correct CMIP "zostoga" data
                     # Normal (concatenated)
                     zostoga_date = zos_dict[model][scenario]['zostoga']
-                    zostoga_file = f'{datadir}zostoga_Omon_{model}_' \
-                                   f'{scenario}_{zostoga_date}.nc'
+                    zostoga_file = os.path.join(datadir, f'zostoga_Omon_{model}_' \
+                                   f'{scenario}_{zostoga_date}.nc')
                     zostoga_raw = cubedata.read_zos_cube(zostoga_file)[0]
                     # piControl (concatenated)
                     piControl_date = zos_dict[model][scenario]['piControl']
-                    zostoga_pic_file = f'{datadir}zostoga_Omon_' \
-                                       f'{model}_piControl_{piControl_date}.nc'
+                    zostoga_pic_file = os.path.join(datadir, f'zostoga_Omon_' \
+                                       f'{model}_piControl_{piControl_date}.nc')
                     zostoga_pic = cubedata.read_zos_cube(zostoga_pic_file)[0]
 
                     regr = process.Regress('linear')
