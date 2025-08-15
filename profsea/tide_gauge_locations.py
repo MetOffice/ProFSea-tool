@@ -95,7 +95,7 @@ def extract_site_info(data_source, data_type, region, site_name, latlon):
                             keep='first')].transpose()
 
             df_temp = pd.DataFrame(site_data).transpose()
-            dfObj = dfObj.append(df_temp)
+            dfObj = dfObj._append(df_temp)
 
         elif latlon != [[]]:
             print(f'{site_to_check} - Site metadata taken from user input')
