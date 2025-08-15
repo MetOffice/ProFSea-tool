@@ -882,9 +882,9 @@ def main():
         print(f'    No lat lon specified - use tide gauge metadata if '
               f'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
-    if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
+    if {settings["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
-    elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
+    elif {settings["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
 
     # Extract site data from station list (e.g. tide gauge location) or

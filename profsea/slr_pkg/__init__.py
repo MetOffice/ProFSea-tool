@@ -42,7 +42,11 @@ def extract_dyn_steric_regression(models, df, scenarios):
     :param scenarios: list of RCP scenarios
     """
     # Base directory for CMIP "zos" and "zostoga" data
-    datadir = settings["cmipinfo"]["sealevelbasedir"]
+    if settings["datalocation"] != "":
+        datadir = os.path.join(settings["datalocation"],"cmip5/")
+    else:
+        datadir = settings["cmipinfo"]["sealevelbasedir"]
+
     # Dictionary of CMIP models and experiments
     zos_dict = cmip.zos_dictionary()
 
@@ -326,9 +330,18 @@ def choose_montecarlo_dir():
     """
     end_yr = settings["projection_end_year"]
     if (end_yr >= 2050) & (end_yr <= 2100):
-        mcdir = settings["short_montecarlodir"]
+        if settings["datalocation"] != "":
+            mcdir = os.path.join(settings["datalocation"],
+                                 "monte_carlo_timeseries")
+        else:
+            mcdir = settings["short_montecarlodir"]
+
     elif (end_yr > 2100) & (end_yr <= 2300):
-        mcdir = settings["long_montecarlodir"]
+        if settings["datalocation"] != "":
+            mcdir = os.path.join(settings["datalocation"], "slr")
+        else:
+            mcdir = settings["long_montecarlodir"]       
+    
     else:
         raise ValueError('Projection end year must be between 2050 and 2300')
     

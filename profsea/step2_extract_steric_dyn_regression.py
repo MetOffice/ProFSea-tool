@@ -20,14 +20,14 @@ def extract_cmip5_steric_dyn_regression(df):
     scenarios = ['rcp26', 'rcp45', 'rcp85']
 
     # Select CMIP5 models to use
-    if settings["cmipinfo"]["cmip_sea"] == 'all':
+    if settings["cmip_sea"] == 'all':
         model_names = models.cmip5_names()
-    elif settings["cmipinfo"]["cmip_sea"] == 'marginal':
+    elif settings["cmip_sea"] == 'marginal':
         model_names = models.cmip5_names_marginal()
     else:
         raise UnboundLocalError(
             'The selected CMIP5 models to use - cmip_sea = ' +
-            f'{settings["cmipinfo"]["cmip_sea"]} - ' +
+            f'{settings["cmip_sea"]} - ' +
             'is not recognised')
 
     # Calculate the regression parameters and plot the results
@@ -51,9 +51,9 @@ def main():
         print(f'    No lat lon specified - use tide gauge metadata if '
               f'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
-    if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
+    if {settings["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
-    elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
+    elif {settings["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
 
     # Extract site data from station list (e.g. tide gauge location) or
