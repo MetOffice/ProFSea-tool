@@ -63,8 +63,8 @@ cmipinfo:
 #   UKCP18 --> UK specific ones
 #   Global locations --> Lambeck, ICE5G
 giaestimates:
-    global: '/deposited2023/profsea_tool/gia_estimates /global_GIA_interpolators.pickle'
-    uk: '‘/deposited2023/profsea_tool/gia_estimates/Bradley_GIA_interpolator.pickle'
+    global: '/deposited2023/profsea_tool/gia_estimates/global_GIA_interpolators.pickle'
+    uk: '/deposited2023/profsea_tool/gia_estimates/Bradley_GIA_interpolator.pickle'
 
 # Directories for the Slangen, Spada and Klemann fingerprints
 fingerprints:
