@@ -421,8 +421,8 @@ def load_CMIP5_slope_coeffs_UK(scenario):
             data = pickle.load(f, encoding='latin1')['uk_mask_1']
     except FileNotFoundError:
         raise FileNotFoundError(os.path.join(in_zosdir_uk, filename_uk),
-                                '- CMIP5 Slope Coeffs not found, please' \
-                                ' check file path')
+                                '- CMIP5 UK Slope Coefficients not found, ' \
+                                'please check file path')
 
     # Keys are: 'coeffs', 'models', 'weights'
     coeffs = data['coeffs']
