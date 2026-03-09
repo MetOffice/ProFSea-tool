@@ -386,7 +386,7 @@ class Global:
             T_med = np.percentile(self.T_change, 50, axis=0)
             T_std = np.std(self.T_change, axis=0)
 
-            therm_med = np.percentile(self.OHC_change, 50, axis=0) * self.exp_efficiency
+            therm_med = np.percentile(self.OHC_change * self.exp_efficiency, 50, axis=0) 
             therm_std = np.std(self.OHC_change * self.exp_efficiency, axis=0)
 
         else:
