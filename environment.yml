@@ -1,8 +1,6 @@
 name: profsea-climate-docs
 
-channels:
-  - https://metoffice.jfrog.io/metoffice/api/conda/conda-forge
-  - nodefaults
+
 
 dependencies:
   - pre-commit
