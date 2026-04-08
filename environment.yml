@@ -1,4 +1,4 @@
-name: git-github-docs-env
+name: profsea-climate-docs
 
 channels:
   - https://metoffice.jfrog.io/metoffice/api/conda/conda-forge
@@ -8,7 +8,3 @@ dependencies:
   - pre-commit
   - sphinx-rtd-theme
   - sphinx
-  - sphinx-autobuild
-  - sphinx-copybutton
-  - sphinx-design
-  - sphinxcontrib-mermaid
