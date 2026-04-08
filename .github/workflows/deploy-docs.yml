@@ -48,7 +48,7 @@ jobs:
           cache-environment-key: env-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conda-env-linux-64.lock') }}
 
       - name: Build with Sphinx
-        run:  make --directory=docs html-all
+        run:  make --directory=docs html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
