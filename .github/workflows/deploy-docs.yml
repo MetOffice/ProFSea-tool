@@ -40,12 +40,12 @@ jobs:
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v6
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         with:
-          environment-file: conda-env-linux-64.lock
-          environment-name: git-github-docs-env
+          environment-file: environment.yml
+          environment-name: profsea-climate-docs
           cache-environment: true
-          cache-environment-key: env-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('conda-env-linux-64.lock') }}
+          cache-environment-key: env-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('environment.yml') }}
 
       - name: Build with Sphinx
         run:  make --directory=docs html
