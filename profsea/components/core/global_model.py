@@ -248,7 +248,7 @@ class Global:
         
         if self.input_ensemble and self.input_single:
             raise ValueError(
-                "input_ensemble and input_single cannot both be True or False. "
+                "input_ensemble and input_single cannot both be True or False."
                 "Choose only one option to be True and set the other to False."
                 "If input_ensemble is set to True, then T_change and OHC_change must be 2D arrays."
                 "If input_single is set to True, then T_change and OHC_change must be 1D arrays."
@@ -260,6 +260,12 @@ class Global:
         elif self.input_single:
             T_med = T_change
             T_std = 0. * T_med # dummy variable
+        else:
+            raise ValueError(
+                "Provide valid values for input_ensemble and input_single."
+                "input_ensemble and input_single cannot both be True or False."
+                "Choose only one option to be True and set the other to False."
+            )
     
         # Time-integral of temperature anomaly
         T_int_med = np.cumsum(T_med)
