@@ -34,10 +34,8 @@ class Global:
         If True, project SLR components in parallel.
     input_ensemble: bool
         If True, use an input ensemble of temperature and
-        ocean heat content change.
-    input_single: bool
-        If True, use a single timeseries of temperature and
-        ocean heat content change.
+        ocean heat content change. if False, use a single timeseries of 
+        temperature and ocean heat content change.
     output_percentiles: list|np.ndarray
         If not None, calculate percentiles from a 1D list/array for each
         component
@@ -69,7 +67,6 @@ class Global:
         tcv: float = 1.0,
         parallel: bool = True,
         input_ensemble: bool = True,
-        input_single: bool = False,
         output_percentiles: list | np.ndarray = None,
         palmer_method: bool = True,
         random_sample: bool = False,
@@ -81,7 +78,6 @@ class Global:
         self.tcv = tcv
         self.parallel = parallel
         self.input_ensemble = input_ensemble
-        self.input_single = input_single
         self.output_percentiles = output_percentiles
         self.palmer_method = palmer_method
         self.random_sample = random_sample
@@ -115,8 +111,7 @@ class Global:
 
         if self.input_ensemble:
             self.nt = T_change.shape[0]
-
-        if self.input_single:
+        else:
             self.nt = 1
 
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change, run_rng)
@@ -245,27 +240,13 @@ class Global:
         T_int_med: np.ndarray
             Median of time-integral temperature anomalies.
         """
-        
-        if self.input_ensemble and self.input_single:
-            raise ValueError(
-                "input_ensemble and input_single cannot both be True or False."
-                "Choose only one option to be True and set the other to False."
-                "If input_ensemble is set to True, then T_change and OHC_change must be 2D arrays."
-                "If input_single is set to True, then T_change and OHC_change must be 1D arrays."
-            )
-                             
+               
         if self.input_ensemble:
             T_med = sample_members_2D(T_change, [50])
             T_std = np.std(T_change, axis=0)
-        elif self.input_single:
+        else:
             T_med = T_change
             T_std = 0. * T_med # dummy variable
-        else:
-            raise ValueError(
-                "Provide valid values for input_ensemble and input_single."
-                "input_ensemble and input_single cannot both be True or False."
-                "Choose only one option to be True and set the other to False."
-            )
     
         # Time-integral of temperature anomaly
         T_int_med = np.cumsum(T_med)
