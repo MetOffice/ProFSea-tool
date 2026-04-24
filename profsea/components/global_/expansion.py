@@ -6,6 +6,14 @@ from profsea.utils import check_shapes, sample_members_2D
 
 
 class ThermalExpansion(Component):
+    """
+    Parameters & Attributes
+    ----------
+    OHC_change: np.ndarray
+        Array of ocean heat content change values.
+    exp_efficiency: float
+        Sensitivity of thermosteric SLR to ocean heat content change.
+    """
     def __init__(self, OHC_change: np.ndarray, distribution_scaler: float = 1.0):
         self.OHC_change = OHC_change
         self.distribution_scaler = distribution_scaler
@@ -20,9 +28,14 @@ class ThermalExpansion(Component):
         )  # m/YJ
         z = rng.standard_normal(state.nt) * self.distribution_scaler
 
-        therm_med = sample_members_2D(self.OHC_change, [50]) * exp_efficiency
-        therm_std = np.std(self.OHC_change, axis=0) * exp_efficiency
+        if state.nt > 1: # when input_ensemble = True
+            therm_med = sample_members_2D(self.OHC_change, [50]) * exp_efficiency
+            therm_std = np.std(self.OHC_change, axis=0) * exp_efficiency
+        else:
+            therm_med = self.OHC_change * exp_efficiency
+            therm_std = therm_med * 0. # dummary variable
 
         therm_ens = z[:, np.newaxis] * therm_std + therm_med
         expansion = np.tile(therm_ens, (state.nm, 1))
+        
         return expansion.reshape(state.nm * state.nt, state.nyr)
