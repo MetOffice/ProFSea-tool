@@ -15,6 +15,51 @@ console = Console()
 
 
 class Global:
+    """Global sea level rise component emulator.
+
+    Parameters
+    ----------
+    components: Dict
+        List of SLR components for projections
+    end_yr: int
+        End year of the projections.
+    nt: int
+        Number of realisations of the input timeseries
+    nm: int
+        Number of realisations of for each component.
+        Must be a multiple of the number of glacier methods.
+    tcv: float
+        Multiplier for the standard deviation in the input fields.
+    parallel: bool
+        If True, project SLR components in parallel.
+    input_ensemble: bool
+        If True, use an input ensemble of temperature and
+        ocean heat content change.
+    input_single: bool
+        If True, use a single timeseries of temperature and
+        ocean heat content change.
+    output_percentiles: list|np.ndarray
+        If not None, calculate percentiles from a 1D list/array for each
+        component
+    palmer_method: bool
+        If True, allow integration to end in any year up to 2300,
+        with the contributions to GMLSR from ice-sheet dynamics,
+        Greenland SMB and land water storage held at the 2100 rate
+        beyond 2100.
+    random_sample: bool
+        If True, randomly sample a single ensemble member across all
+        components
+
+    Attributes
+    ----------
+    endofhistory: int
+        First year of AR5 projections.
+    endofAR5: int
+        Last year of AR5 projections.
+    nyr: int
+        Length of projections.
+    """
+    
     def __init__(
         self,
         components: Dict[str, Component],
@@ -24,6 +69,7 @@ class Global:
         tcv: float = 1.0,
         parallel: bool = True,
         input_ensemble: bool = True,
+        input_single: bool = False,
         output_percentiles: list | np.ndarray = None,
         palmer_method: bool = True,
         random_sample: bool = False,
@@ -35,6 +81,7 @@ class Global:
         self.tcv = tcv
         self.parallel = parallel
         self.input_ensemble = input_ensemble
+        self.input_single = input_single
         self.output_percentiles = output_percentiles
         self.palmer_method = palmer_method
         self.random_sample = random_sample
@@ -49,7 +96,18 @@ class Global:
         T_change: np.ndarray,
         member_seed: int = 42,
     ) -> Dict[str, np.ndarray]:
-        """Run the emulator to project GMSLR components for a specific state."""
+
+        """Run the emulator to project GMSLR components for a specific state.
+        Parameters
+        ----------
+        scenario: str
+            Name of the scenario.
+        T_change: np.ndarray
+            Array of temperature change values.
+        member_seed: int
+            Seed for numpy.random.
+        """
+        
         seed_seq = np.random.SeedSequence(member_seed)
         run_rng = np.random.default_rng(seed_seq)
 
@@ -57,6 +115,9 @@ class Global:
 
         if self.input_ensemble:
             self.nt = T_change.shape[0]
+
+        if self.input_single:
+            self.nt = 1
 
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change, run_rng)
 
@@ -184,22 +245,22 @@ class Global:
         T_int_med: np.ndarray
             Median of time-integral temperature anomalies.
         """
+        
+        if self.input_ensemble and self.input_single:
+            raise ValueError(
+                "input_ensemble and input_single cannot both be True or False. "
+                "Choose only one option to be True and set the other to False."
+                "If input_ensemble is set to True, then T_change and OHC_change must be 2D arrays."
+                "If input_single is set to True, then T_change and OHC_change must be 1D arrays."
+            )
+                             
         if self.input_ensemble:
             T_med = sample_members_2D(T_change, [50])
             T_std = np.std(T_change, axis=0)
-        else:
-            if self.T_percentile_95 is not None:
-                T_med = T_change
-
-                T_std = (self.T_percentile_95 - T_change) / 1.645
-            else:
-                raise ValueError(
-                    "If input_ensemble is False, and T_change and OHC_change "
-                    "are not 2D arrays, you must provide a 95th percentile "
-                    "timeseries for T_change and OHC_change. Add this using "
-                    "T_percentile_95 and OHC_percentile_95 keyword arguments."
-                )
-
+        elif self.input_single:
+            T_med = T_change
+            T_std = 0. * T_med # dummy variable
+    
         # Time-integral of temperature anomaly
         T_int_med = np.cumsum(T_med)
         T_int_std = np.cumsum(T_std)
