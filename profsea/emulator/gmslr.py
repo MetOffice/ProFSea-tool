@@ -214,9 +214,9 @@ class Global:
 
         # Setup AIS emulator, if needed
         if "antarctica" in self.active_components:
-            wais_path = Path(__file__).parent / "aux_data" / "wais_params.nc"
-            eais_path = Path(__file__).parent / "aux_data" / "eais_params.nc"
-            aispen_path = Path(__file__).parent / "aux_data" / "aispen_params.nc"
+            wais_path = Path(__file__).parent / "aux_data" / "wais_params_APR_nodrift.nc"
+            eais_path = Path(__file__).parent / "aux_data" / "eais_params_APR_nodrift.nc"
+            aispen_path = Path(__file__).parent / "aux_data" / "pen_params_APR_nodrift.nc"
             self.wais_model = AntarcticaISMIP6(wais_path)
             self.eais_model = AntarcticaISMIP6(eais_path)
             self.aispen_model = AntarcticaISMIP6(aispen_path)
@@ -489,43 +489,48 @@ class Global:
             if self.OHC_change.shape[1] != self.nyr:
                 self.OHC_change = self.OHC_change.T
 
-            T_med = np.percentile(self.T_change, 50, axis=0)
-            T_std = np.std(self.T_change, axis=0)
+            T_ens = self.T_change
+            therm_ens = self.OHC_change * exp_efficiency
+            T_int_ens = np.cumsum(T_ens, axis=1)
+            T_int_med = np.percentile(T_int_ens, 50, axis=0)
 
-            therm_med = np.percentile(self.OHC_change, 50, axis=0) * exp_efficiency
-            therm_std = np.std(self.OHC_change * exp_efficiency, axis=0)
+        #     T_med = np.percentile(self.T_change, 50, axis=0)
+        #     T_std = np.std(self.T_change, axis=0)
 
-        else:
-            if self.T_percentile_95 is not None:
-                T_med = self.T_change
-                therm_med = self.OHC_change * exp_efficiency
+        #     therm_med = np.percentile(self.OHC_change, 50, axis=0) * exp_efficiency
+        #     therm_std = np.std(self.OHC_change * exp_efficiency, axis=0)
 
-                T_std = (self.T_percentile_95 - self.T_change) / 1.645
-                therm_std = (
-                    (self.OHC_percentile_95 - self.OHC_change) * exp_efficiency / 1.645
-                )
+        # else:
+        #     if self.T_percentile_95 is not None:
+        #         T_med = self.T_change
+        #         therm_med = self.OHC_change * exp_efficiency
 
-            else:
-                raise ValueError(
-                    "If input_ensemble is False, and T_change and OHC_change "
-                    "are not 2D arrays, you must provide a 95th percentile "
-                    "timeseries for T_change and OHC_change. Add this using "
-                    "T_percentile_95 and OHC_percentile_95 keyword arguments."
-                )
+        #         T_std = (self.T_percentile_95 - self.T_change) / 1.645
+        #         therm_std = (
+        #             (self.OHC_percentile_95 - self.OHC_change) * exp_efficiency / 1.645
+        #         )
+
+        #     else:
+        #         raise ValueError(
+        #             "If input_ensemble is False, and T_change and OHC_change "
+        #             "are not 2D arrays, you must provide a 95th percentile "
+        #             "timeseries for T_change and OHC_change. Add this using "
+        #             "T_percentile_95 and OHC_percentile_95 keyword arguments."
+        #         )
 
         # Time-integral of temperature anomaly
-        T_int_med = np.cumsum(T_med)
-        T_int_std = np.cumsum(T_std)
+        # T_int_med = np.cumsum(T_med)
+        # T_int_std = np.cumsum(T_std)
 
-        # Generate a sample of perfectly correlated timeseries fields of temperature,
-        # time-integral temperature and expansion, each of them [realisation,time]
-        z = self.rng.standard_normal(self.nt) * self.tcv
+        # # Generate a sample of perfectly correlated timeseries fields of temperature,
+        # # time-integral temperature and expansion, each of them [realisation,time]
+        # z = self.rng.standard_normal(self.nt) * self.tcv
 
-        # For each quantity, mean + standard deviation * normal random number
-        # reshape to [realisation,time]
-        T_ens = z[:, np.newaxis] * T_std + T_med
-        therm_ens = z[:, np.newaxis] * therm_std + therm_med
-        T_int_ens = z[:, np.newaxis] * T_int_std + T_int_med
+        # # For each quantity, mean + standard deviation * normal random number
+        # # reshape to [realisation,time]
+        # T_ens = z[:, np.newaxis] * T_std + T_med
+        # therm_ens = z[:, np.newaxis] * therm_std + therm_med
+        # T_int_ens = z[:, np.newaxis] * T_int_std + T_int_med
         return T_ens, therm_ens, T_int_ens, T_int_med
 
     def project_antarctica_ismip6(self, T_ens: np.ndarray, rng) -> np.ndarray:
@@ -533,7 +538,7 @@ class Global:
         eais_raw = self.eais_model.predict(T_ens.squeeze(), display_progress=False)
         aispen_raw = self.aispen_model.predict(T_ens.squeeze(), display_progress=False)
 
-        random_ais_idx = rng.integers(low=0, high=43)
+        random_ais_idx = rng.integers(low=0, high=17)
 
         # Match the correct output shape
         self.wais = np.repeat(wais_raw[random_ais_idx, :, :], self.nt, axis=0)

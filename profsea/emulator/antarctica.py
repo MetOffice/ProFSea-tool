@@ -57,6 +57,7 @@ class AntarcticaISMIP6:
             Slow response term for each sample (shape: n_samples x n_time).
         """
         n_time = tas.shape[0]
+        t_arr = np.arange(n_time)
 
         # Two slow coeffs
         alphas1 = params[:, 0]
@@ -66,13 +67,13 @@ class AntarcticaISMIP6:
         forcing_base = np.sign(tas) * (np.abs(tas) ** gamma)
 
         # Impulse response function for timescale 1
-        decay_factors1 = np.exp(-np.arange(n_time) * dt / tau1) * (dt / tau1)
+        decay_factors1 = (t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt
         rate_delayed1 = fftconvolve(forcing_base, decay_factors1, mode="full")[:n_time]
         t_conv1 = np.cumsum(rate_delayed1, axis=0) * dt
         term_slow1 = alphas1[:, None] * t_conv1[None, :]
 
         # Impulse response function for timescale 2
-        decay_factors2 = np.exp(-np.arange(n_time) * dt / tau2) * (dt / tau2)
+        decay_factors2 = (t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt
         rate_delayed2 = fftconvolve(forcing_base, decay_factors2, mode="full")[:n_time]
         t_conv2 = np.cumsum(rate_delayed2, axis=0) * dt
         term_slow2 = alphas2[:, None] * t_conv2[None, :]
@@ -146,9 +147,9 @@ class AntarcticaISMIP6:
             term_fast = betas[:, None] * tas_int[None, :]
 
             # Drift term
-            drift_coeffs = total_params[:, 3]
-            term_drift = drift_coeffs[:, None] * physical_time[None, :]
+            # drift_coeffs = total_params[:, 3]
+            # term_drift = drift_coeffs[:, None] * physical_time[None, :]
 
-            all_preds[model, :, :] = term_fast + term_slow + term_drift
+            all_preds[model, :, :] = term_fast + term_slow
 
         return all_preds

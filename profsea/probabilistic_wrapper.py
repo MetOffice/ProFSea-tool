@@ -231,8 +231,8 @@ def process_global_ensemble(components: list, percentiles: list, scenario: str) 
     for comp, data in components.items():
         # Since the spatial projections won't change the ensemble order
         # we can take percentiles here to pass to spatialise.py
-        sampled_ensemble = sample_members_2D(data, percentiles)
-        components[comp] = sampled_ensemble
+        # sampled_ensemble = sample_members_2D(data, percentiles)
+        components[comp] = data
     return components
 
 
@@ -360,7 +360,7 @@ def main(args):
 
     # Pre-generate the random ensemble member indices
     # Shape is # (scenario, ens, time)
-    n_iterations = 1000
+    n_iterations = 10000
     rng = np.random.default_rng()
     random_indices = rng.integers(0, high=tas.shape[1], size=n_iterations)
 
@@ -391,6 +391,15 @@ def main(args):
 
     sampled_tas = np.asarray(sampled_tas) # shape (nens, time, nscen)
     sampled_ohc = np.asarray(sampled_ohc)
+
+    # Save sampled_tas out as .nc 
+    print(sampled_tas.shape)
+    ds = xr.Dataset(
+        data_vars={
+            "tas": (["sample", "scenario", "year"], sampled_tas)
+        }
+    )
+    ds.to_netcdf("sampled_tas.nc", encoding={"tas": {"zlib": True, "complevel": 5}})
 
     plot_samples(sampled_tas[:, -1, :], sampled_ohc[:, -1, :])
 
