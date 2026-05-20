@@ -29,3 +29,5 @@ class SpatialState:
     grid_lons: np.ndarray
     n_years: int
     n_members: int
+    grid_interpolation: str
+    output_percentiles: list[int] | np.ndarray

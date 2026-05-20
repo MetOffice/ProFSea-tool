@@ -31,7 +31,10 @@ def interpolate(data: da.array, lats: int, lons: int) -> np.ndarray:
 
 
 def interpolate_to_grid(
-    data: da.array, target_lats: np.ndarray, target_lons: np.ndarray
+    data: da.array,
+    target_lats: np.ndarray,
+    target_lons: np.ndarray,
+    grid_interpolation: str = "linear",
 ) -> da.array:
     """
     Interpolate a dask array to a target grid defined by target_lats and target_lons.
@@ -56,7 +59,7 @@ def interpolate_to_grid(
     )
 
     data_interp = original_da.interp(
-        lat=target_lats, lon=target_lons, method="linear"
+        lat=target_lats, lon=target_lons, method=grid_interpolation
     ).data
 
     return da.from_array(data_interp, chunks=data.chunks)
