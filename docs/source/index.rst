@@ -17,5 +17,6 @@ documentation for details.
 
    user_guide
    development_guidelines
+   documentation
    references
 
