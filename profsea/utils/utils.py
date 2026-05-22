@@ -26,43 +26,31 @@ def interpolate(data: da.array, lats: int, lons: int) -> np.ndarray:
     data_interp = original_da.interp(
         lat=target_lat, lon=target_lon, method="linear"
     ).data
-
     return data_interp
 
 
 def interpolate_to_grid(
-    data: da.array,
+    data: xr.DataArray,
     target_lats: np.ndarray,
     target_lons: np.ndarray,
     grid_interpolation: str = "linear",
-) -> da.array:
+) -> xr.DataArray:
     """
-    Interpolate a dask array to a target grid defined by target_lats and target_lons.
-    Assumes the input data has dimensions (lat, lon) and coordinates named 'lat' and 'lon'.
+    Interpolate an xarray DataArray to a target grid defined by target_lats and target_lons.
+    Safely handles longitude wrapping mismatches (e.g., [0, 360) vs [-180, 180)).
+    """
+    # Normalize source longitudes to [-180, 180) and sort monotonically
+    data = data.assign_coords(lon=(((data.lon + 180) % 360) - 180))
+    data = data.sortby("lon")
 
-    Parameters
-    ----------
-    data: da.array
-        Input dask array with dimensions (lat, lon) and coordinates 'lat' and 'lon'.
-    target_lats: np.ndarray
-        1D array of target latitudes to interpolate to.
-    target_lons: np.ndarray
-        1D array of target longitudes to interpolate to.
-    Returns
-    -------
-    da.array        Interpolated dask array on the target grid.
-    """
-    original_da = xr.DataArray(
-        data.data,
-        coords=[("lat", data[data.dims[0]].values), ("lon", data[data.dims[1]].values)],
-        name="v",
+    # Normalize target longitudes to [-180, 180) and sort
+    target_lons_norm = np.sort(((target_lons + 180) % 360) - 180)
+
+    # Interpolate!
+    data_interp = data.interp(
+        lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
-
-    data_interp = original_da.interp(
-        lat=target_lats, lon=target_lons, method=grid_interpolation
-    ).data
-
-    return da.from_array(data_interp, chunks=data.chunks)
+    return data_interp
 
 
 def check_shapes(array: np.ndarray, n_time: int) -> None:
