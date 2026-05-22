@@ -21,14 +21,7 @@ class Spatial:
     def __init__(
         self,
         components: Dict[str, Component],
-        grid_config: dict = {
-            "start_lon": -179.5,
-            "end_lon": 179.5,
-            "step_lon": 1.0,
-            "start_lat": -89.5,
-            "end_lat": 89.5,
-            "step_lat": 1.0,
-        },
+        grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
         baseline_yrs: tuple = (1986, 2005),
@@ -37,26 +30,19 @@ class Spatial:
         """
         Parameters
         ----------
-        scenario: str
-            Name of the scenario.
-        expansion_patterns_dir: str
-            Directory path of regression patterns of thermal expansion component from cmip models.
-        fingerprint_dir: str
-            Directory path of GRD (Gravitational, Rotational, Deformational) fingerprint data
-        gia_dir: str
-            Directory path of GIA (Glacial Isostatic Adjustment) data
-        components_path: str
-            Path to global sea-level rise components (output of ProFSea's gmslr module)
-        component_list: list
-            Namelist of components for spatial projections
-        end_year: int
-            End year of the projections.
-        output_percentiles: int
-            List of percentiles for output
-        output_dir: str
-            Path to output directory for saving spatial projections.
-        random_seed: bool
-            Seed for numpy.random.
+        components: dict
+            Dictionary of spatial components to include in the model. Keys should be the component names and values should be instances of Component subclasses.
+        grid_config: dict, optional
+            Dictionary defining the grid configuration with keys 'start_lon', 'end_lon', 'step_lon
+            'start_lat', 'end_lat', 'step_lat'. If None, defaults to a 1-degree global grid.
+        grid_interpolation: str, optional
+            Interpolation method to use when interpolating patterns to the target grid. Default is 'linear'.
+        end_year: int, optional
+            The final year of the projections. Default is 2301.
+        baseline_yrs: tuple, optional
+            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1986, 2005).
+        output_percentiles: list or np.ndarray, optional
+            List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
         """
 
         self.components = components
@@ -69,7 +55,19 @@ class Spatial:
         if output_percentiles:
             self.num_members = len(output_percentiles)
         else:
-            self.num_members = next(iter(self.components.values())).global_projection.shape[0]
+            self.num_members = next(
+                iter(self.components.values())
+            ).global_projection.shape[0]
+
+        if grid_config is None:
+            grid_config: dict = {
+                "start_lon": -179.5,
+                "end_lon": 179.5,
+                "step_lon": 1.0,
+                "start_lat": -89.5,
+                "end_lat": 89.5,
+                "step_lat": 1.0,
+            }
 
         # Define the grid coordinates
         self.grid_lons = np.arange(
@@ -99,8 +97,7 @@ class Spatial:
                 )
             else:
                 comp_size = (
-                    comp.global_projection[: len(output_percentiles)].nbytes
-                    / 1e9
+                    comp.global_projection[: len(output_percentiles)].nbytes / 1e9
                 )
                 future_size = comp_size * len(self.grid_lats) * len(self.grid_lons)
 
@@ -114,7 +111,9 @@ class Spatial:
                     f"resolution or take percentiles.[/bold red]"
                 )
 
-    def _calc_baseline_period(self) -> float:
+    def _calc_baseline_period(
+        self,
+    ) -> float:  # TODO: move this to the GIA componenent once made.
         """
         Baseline years used for IPCC AR5 and Palmer et al 2020 -- 1986-2005
         :param yrs: years of the projections
@@ -186,8 +185,8 @@ class Spatial:
             coords={
                 "percentile": self.output_percentiles,
                 "time": np.arange(2006, montecarlo_R.shape[1] + 2006),
-                "lat": np.arange(-90, 90) + 0.5,
-                "lon": np.arange(0, 360) + 0.5,
+                "lat": self.grid_lats,
+                "lon": self.grid_lons,
             },
         )
         xr_dataArray.attrs["units"] = "m"

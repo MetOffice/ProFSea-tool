@@ -105,7 +105,7 @@ class SterodynamicCMIP6(SpatialComponent):
         sterodynamic_projection = (
             current_projection[:, :, None, None] * expansion_contribution[:, None, :, :]
         )
-        return sterodynamic_projection.compute()
+        return sterodynamic_projection
 
 
 class SterodynamicCMIP5(SpatialComponent):
