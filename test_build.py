@@ -27,7 +27,7 @@ projections = model.run(
 spatial_components = {
     "sterodynamic": SterodynamicCMIP6(
         projections["expansion"],
-        patterns_dir="", # Update this!
+        patterns_dir="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/cmip6",
     ),
 }
 
@@ -35,6 +35,8 @@ spatial_components = {
 model = Spatial(components=spatial_components)
 model.run(scenario="test", member_seed=42)
 
+total_rsl = model.sum_components(model.results)
+model.results["total_rsl"] = total_rsl
 model.save_components(
     model.results, 
     scenario_name="test", 

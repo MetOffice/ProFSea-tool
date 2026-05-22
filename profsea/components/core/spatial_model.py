@@ -116,9 +116,7 @@ class Spatial:
         self,
     ) -> float:  # TODO: move this to the GIA componenent once made.
         """
-        Baseline years used for IPCC AR5 and Palmer et al 2020 -- 1986-2005
-        :param yrs: years of the projections
-        :return: baseline years
+        Calculate the baseline period for anomalies based on the start year and the baseline years.
         """
         midyr = (
             self.baseline_yrs[1] - self.baseline_yrs[0] + 1
@@ -174,6 +172,24 @@ class Spatial:
 
         self.results = spatial_projections
         return spatial_projections
+
+    def sum_components(self, components: Dict[str, da.Array]) -> da.Array:
+        """
+        Sum the spatial components to get total sea-level change.
+
+        Parameters
+        ----------
+        components: Dict[str, da.Array]
+            Dictionary of spatial component Dask arrays.
+
+        Returns
+        -------
+        da.Array
+            Dask array of the summed spatial projections.
+        """
+        total_rsl = da.sum(da.stack(list(components.values()), axis=0), axis=0)
+        components["total_rsl"] = total_rsl
+        return total_rsl
 
     def save_components(
         self,
