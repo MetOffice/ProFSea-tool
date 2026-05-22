@@ -92,5 +92,4 @@ class Fingerprint(SpatialComponent):
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
         spatial_projection = global_proj[:, :, None, None] * selected_fps[:, None, :, :]
-
         return spatial_projection
