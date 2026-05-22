@@ -3,22 +3,44 @@ import matplotlib.pyplot as plt
 
 from profsea.components.core.global_model import Global
 from profsea.components.global_.greenland import GreenlandAR6
+from profsea.components.global_.expansion import ThermalExpansion
 from profsea.components.global_.antarctica import AntarcticaDynAR5, AntarcticaSMBAR5
+from profsea.components.core.spatial_model import Spatial
+from profsea.components.spatial.sterodynamic import SterodynamicCMIP6
 
 
 slr_components = {
-    "greenland": GreenlandAR6(),
-    "antdyn": AntarcticaDynAR5(cum_emissions_total=1000),
-    "antsmb": AntarcticaSMBAR5(),
+    "expansion": ThermalExpansion(
+        OHC_change=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
+    ),
 }
 
-model = Global(
-    components=slr_components,
-    end_yr=2301
+model = Global(components=slr_components, end_yr=2301)
+
+projections = model.run(
+    scenario="test",
+    T_change=np.linspace(1, 5, 295).reshape(1, -1),
+    member_seed=42,
 )
 
-projections = model.run(scenario="test", T_change=np.linspace(0, 5, 295).reshape(1, -1), OHC_change=np.linspace(0, 5, 295).reshape(1, -1)*1e24, member_seed=42)
-gmslr = model.sum_components(projections)
 
-plt.plot(np.arange(2006, 2301), gmslr[0], label="GMSLR")
+spatial_components = {
+    "sterodynamic": SterodynamicCMIP6(
+        projections["expansion"],
+        patterns_dir="", # Update this!
+    ),
+}
+
+# Now pass to the spatial model
+model = Spatial(components=spatial_components)
+model.run(scenario="test", member_seed=42)
+
+model.save_components(
+    model.results, 
+    scenario_name="test", 
+    output_format="zarr"
+)
+
+plt.pcolormesh(model.grid_lons, model.grid_lats, model.results["sterodynamic"][3, -1, :, :])
+plt.colorbar(label="Sterodynamic SLR contribution (mm/yr)")
 plt.show()
