@@ -35,8 +35,7 @@ spatial_components = {
 model = Spatial(components=spatial_components)
 model.run(scenario="test", member_seed=42)
 
-total_rsl = model.sum_components(model.results)
-model.results["total_rsl"] = total_rsl
+model.sum_components(model.results)
 model.save_components(
     model.results, 
     scenario_name="test", 
