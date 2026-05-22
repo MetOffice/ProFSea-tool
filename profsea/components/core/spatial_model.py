@@ -185,7 +185,7 @@ class Spatial:
         components: Dict[str, da.Array],
         scenario_name: str,
         output_dir: str = ".",
-        output_format: str = "netcdf",
+        output_format: str = "zarr",
     ) -> None:
         """
         Stream all regional sea level projections to disk in a single file/store.

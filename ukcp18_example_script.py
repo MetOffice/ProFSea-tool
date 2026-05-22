@@ -42,49 +42,49 @@ gmslr = global_model.results["gmslr"]
 spatial_components = {
     "sterodynamic": SterodynamicCMIP6(
         projections["expansion"],
-        patterns_dir="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/cmip6",
+        patterns_dir="data-minimal/cmip6",
     ),
     "greenland_dyn": Fingerprint(
         projections["greenland_dyn"],
         fingerprint_paths=
-        ["/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greendyn_klemann_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greendyn_slangen_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greendyn_spada_nomask.nc"],
+        ["data-minimal/grd_fingerprints/greendyn_klemann_nomask.nc",
+         "data-minimal/grd_fingerprints/greendyn_slangen_nomask.nc",
+         "data-minimal/grd_fingerprints/greendyn_spada_nomask.nc"],
     ),
     "greenland_smb": Fingerprint(
         projections["greenland_smb"],
         fingerprint_paths=
-        ["/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greensmb_klemann_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greensmb_slangen_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/greensmb_spada_nomask.nc"],
+        ["data-minimal/grd_fingerprints/greensmb_klemann_nomask.nc",
+         "data-minimal/grd_fingerprints/greensmb_slangen_nomask.nc",
+         "data-minimal/grd_fingerprints/greensmb_spada_nomask.nc"],
     ),
     "landwater": Fingerprint(
         projections["landwater"],
-        fingerprint_paths="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/landwater_slangen_nomask.nc",
+        fingerprint_paths="data-minimal/grd_fingerprints/landwater_slangen_nomask.nc",
     ),
     "antarctica_dyn": Fingerprint(
         projections["antarctica_dyn"],
         fingerprint_paths=
-        ["/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antdyn_klemann_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antdyn_slangen_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antdyn_spada_nomask.nc"],
+        ["data-minimal/grd_fingerprints/antdyn_klemann_nomask.nc",
+         "data-minimal/grd_fingerprints/antdyn_slangen_nomask.nc",
+         "data-minimal/grd_fingerprints/antdyn_spada_nomask.nc"],
     ),
     "antarctica_smb": Fingerprint(
         projections["antarctica_smb"],
         fingerprint_paths=
-        ["/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antsmb_klemann_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antsmb_slangen_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/antsmb_spada_nomask.nc"],
+        ["data-minimal/grd_fingerprints/antsmb_klemann_nomask.nc",
+         "data-minimal/grd_fingerprints/antsmb_slangen_nomask.nc",
+         "data-minimal/grd_fingerprints/antsmb_spada_nomask.nc"],
     ),
     "glacier": Fingerprint(
         projections["glacier"],
         fingerprint_paths=
-        ["/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/glacier_klemann_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/glacier_slangen_nomask.nc",
-         "/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/grd_fingerprints/glacier_spada_nomask.nc"],
+        ["data-minimal/grd_fingerprints/glacier_klemann_nomask.nc",
+         "data-minimal/grd_fingerprints/glacier_slangen_nomask.nc",
+         "data-minimal/grd_fingerprints/glacier_spada_nomask.nc"],
     ),
     "gia": GIA(
-        gia_paths="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/data/gia_clean/global_gia.nc",
+        gia_paths="data-minimal/gia_clean/global_gia.nc",
         sample_spatial=False,
     )
 }
