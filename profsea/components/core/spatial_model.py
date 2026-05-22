@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Dict
 import warnings
 
@@ -165,38 +166,117 @@ class Spatial:
         for name, comp in track(
             self.components.items(), description="Spatialising components..."
         ):
-            spatial_projections[name] = comp.project(state, comp_rngs[name])
+            lazy_projection = comp.project(state, comp_rngs[name])
+
+            # Rechunk before saving to optimize memory during writing
+            lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})
+            spatial_projections[name] = lazy_projection
 
         self.results = spatial_projections
         return spatial_projections
 
-    def _save_projections(self, montecarlo_R: da.array, component: str) -> None:
+    def save_components(
+        self,
+        components: Dict[str, da.Array],
+        scenario_name: str,
+        output_dir: str = ".",
+        output_format: str = "netcdf",
+    ) -> None:
         """
-        Save the regional sea level projections to a file.
-        :param montecarlo_R: regional sea level projections
-        :param component: sea level component
-        :param scenario: emission scenario
-        :param percentile: percentiles used for spatial projections
-        """
-        # Save data in netcdf format (Assuming first dimension is percentile, but can be more general percentile/ensemble)
-        xr_dataArray = xr.DataArray(
-            montecarlo_R,
-            dims=["percentile", "time", "lat", "lon"],
-            coords={
-                "percentile": self.output_percentiles,
-                "time": np.arange(2006, montecarlo_R.shape[1] + 2006),
-                "lat": self.grid_lats,
-                "lon": self.grid_lons,
-            },
-        )
-        xr_dataArray.attrs["units"] = "m"
-        xr_dataArray.attrs["long_name"] = f"Regional {component} sea-level projections"
-        xr_dataArray.attrs["source"] = "ProFSea-Climate v0.1"
-        ds = xr_dataArray.to_dataset(name=component)
+        Stream all regional sea level projections to disk in a single file/store.
 
-        file_header = f"{component}_{self.scenario}_projection_{self.end_year}"
-        R_file = "_".join([file_header, "regional"]) + ".nc"
-        encoding = {component: {"zlib": True, "complevel": 5, "dtype": "float32"}}
-        ds.to_netcdf(
-            os.path.join(self.output_dir, R_file), encoding=encoding, compute=True
+        Parameters
+        ----------
+        components: Dict[str, da.Array]
+            Dictionary of component names and their corresponding Dask arrays.
+        output_format: str
+            Format to save the output in. Must be either 'netcdf' or 'zarr'.
+        output_dir: str
+            Directory to save components to.
+        scenario_name: str
+            Name of the scenario you've run the emulator for.
+        """
+        output_format = output_format.lower()
+        if output_format not in ["netcdf", "zarr"]:
+            raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
+
+        # Create directory if it doesn't exist
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+        ds = xr.Dataset()
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
+
+        # Build the shared coordinates once to ensure alignment
+        # Extracting time dynamically based on the shape of the first component
+        sample_shape = next(iter(components.values())).shape
+
+        coords = {
+            member_dim: self.output_percentiles
+            if self.output_percentiles is not None
+            else np.arange(sample_shape[0]),
+            "time": np.arange(2006, sample_shape[1] + 2006),
+            "lat": self.grid_lats,
+            "lon": self.grid_lons,
+        }
+
+        encoding = {}
+        if output_format == "zarr":
+            import numcodecs
+
+            compressor = numcodecs.Blosc(
+                cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
+            )
+
+        # Loop through the isDask arrays and add them to the single Dataset
+        for name, component in components.items():
+            xr_dataArray = xr.DataArray(
+                component,
+                dims=[member_dim, "time", "lat", "lon"],
+                coords=coords,
+            )
+            xr_dataArray.attrs["units"] = "m"
+            xr_dataArray.attrs["long_name"] = f"Regional {name} sea-level projections"
+            xr_dataArray.attrs["source"] = "ProFSea-Climate v0.1"
+
+            ds[name] = xr_dataArray
+
+            # Populate the encoding dictionary variable-by-variable
+            if output_format == "netcdf":
+                encoding[name] = {"zlib": True, "complevel": 5, "dtype": "float32"}
+            elif output_format == "zarr":
+                encoding[name] = {"compressor": compressor, "dtype": "float32"}
+
+        # Define output paths
+        file_header = f"{scenario_name}_spatial_projection"
+
+        # Stream the computation and write to disk
+        if output_format == "netcdf":
+            out_path = os.path.join(output_dir, f"{file_header}.nc")
+
+            # The spinner will animate while to_netcdf is blocking
+            with console.status(
+                "[bold cyan]Streaming computation and saving NetCDF...[/bold cyan]",
+                spinner="dots",
+            ):
+                ds.to_netcdf(out_path, encoding=encoding, compute=True)
+
+            console.log(
+                f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
+            )
+
+        elif output_format == "zarr":
+            out_path = os.path.join(output_dir, f"{file_header}.zarr")
+
+            with console.status(
+                "[bold cyan]Streaming computation and saving Zarr...[/bold cyan]",
+                spinner="dots",
+            ):
+                ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
+
+            console.log(
+                f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}"
+            )
+
+        console.log(
+            "Output shape was " + str(ds[name].shape) + " (members, time, lat, lon)"
         )
