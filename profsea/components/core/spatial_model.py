@@ -112,17 +112,6 @@ class Spatial:
                     f"resolution or take percentiles.[/bold red]"
                 )
 
-    def _calc_baseline_period(
-        self,
-    ) -> float:  # TODO: move this to the GIA componenent once made.
-        """
-        Calculate the baseline period for anomalies based on the start year and the baseline years.
-        """
-        midyr = (
-            self.baseline_yrs[1] - self.baseline_yrs[0] + 1
-        ) * 0.5 + self.baseline_yrs[0]
-        return self.start_year - midyr
-
     def run(self, scenario: str, member_seed: int = 42) -> None:
         """
         Calculates global and regional component part contributions to sea level
