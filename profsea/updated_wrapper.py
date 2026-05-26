@@ -371,15 +371,9 @@ def main(args):
             "expansion": ThermalExpansion(OHC_change=ohc_scen),
             "greenland": GreenlandAR6(),
             "landwater": LandwaterAR6(),
-            "wais": AntarcticaISMIP6(
-                params_path=wais_params_path
-            ),
-            "eais": AntarcticaISMIP6(
-                params_path=eais_params_path
-            ),
-            "pen": AntarcticaISMIP6(
-                params_path=pen_params_path
-            ),
+            "wais": AntarcticaISMIP6(params_path=wais_params_path),
+            "eais": AntarcticaISMIP6(params_path=eais_params_path),
+            "pen": AntarcticaISMIP6(params_path=pen_params_path),
             "glacier": Glacier(),
         }
 
