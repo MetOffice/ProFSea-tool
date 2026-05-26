@@ -85,7 +85,7 @@ class Glacier(Component):
             ]
         )
         cvgl_all = np.array(
-            [glparm[igl]["cvgl"] if self.glaciermip else cvgl for igl in range(ngl)]
+            [glparm[igl]["cvgl"] for igl in range(ngl)]
         )
 
         # Make an ensemble of projections for each method
