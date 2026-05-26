@@ -48,8 +48,10 @@ class GreenlandAR6(Component):
         trend_std = 0.1
 
         # Calculate trend contribution distribution
+        a_bound = (0.0 - trend_mean) / trend_std
+        b_bound = (99999.9 - trend_mean) / trend_std # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random(state.nm), a=0.0, b=99999.9, loc=trend_mean, scale=trend_std
+            rng.random(state.nm), a=a_bound, b=b_bound, loc=trend_mean, scale=trend_std
         )
         trend = trend[:, None] * time_delta[None, :]
         trend = trend[:, None, :]
@@ -69,26 +71,22 @@ class GreenlandAR6(Component):
         sle = np.cumsum(dsle, axis=2)  # mm SLE per K of global warming
         sle = sle * 1e-3  # convert mm to m SLE
 
-        # Make a Monte Carlo ensemble of projections for each model in the calibration
-        sle_ens = np.zeros((state.nm, state.nt, state.nyr))
-        r_per_model = state.nm // sle.shape[1]
-        r_remainder = state.nm % sle.shape[1]
+        # Vectorized distribution of nm samples across the models
+        n_models = sle.shape[1]
+        r_per_model = state.nm // n_models
+        r_remainder = state.nm % n_models
+        
+        # Calculate exactly how many realizations each model should get
+        counts = [r_per_model + 1 if i < r_remainder else r_per_model for i in range(n_models)]
+        
+        # Create an array of indices and expand sle
+        model_indices = np.repeat(np.arange(n_models), counts)
+        sle_ens = sle[:, model_indices, :]  # Shape: (nt, nm, nyr)
+        
+        # Transpose to match the intended (nm, nt, nyr) shape
+        sle_ens = sle_ens.transpose(1, 0, 2)
 
-        # We want to distribute the remainder evenly across the models
-        unc = rng.normal(scale=sigma)
-        current_ensemble_idx = 0
-        for i in range(sle.shape[1]):
-            num_reals_for_model_i = r_per_model + 1 if i < r_remainder else r_per_model
-            ifirst = current_ensemble_idx
-            ilast = current_ensemble_idx + num_reals_for_model_i
-            model_term = sle[:, i, :]  # Shape (nt, nyr)
-            uncertainty_term = (
-                model_term * unc[None, i, None]
-            )  # Shape (num_reals_for_model_i, nt, nyr_param)
-
-            sle_ens[ifirst:ilast, :, :] = model_term[None, :, :] + uncertainty_term
-            current_ensemble_idx = ilast
-
+        # Add the trend uncertainty
         sle_ens += trend
 
         # Persist 2100 rate of change
