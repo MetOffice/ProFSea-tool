@@ -355,8 +355,10 @@ def main(args):
     tas_matrix = tas[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
     ohc_matrix = ohc[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
 
+    wais_params_path = Path("components") / "aux_data" / "wais_params_reduced.nc"
+    eais_params_path = Path("components") / "aux_data" / "eais_params_reduced.nc"
+    pen_params_path = Path("components") / "aux_data" / "pen_params_reduced.nc"
     sampled_components = {}
-
     for idx, scenario in track(
         enumerate(scenarios),
         total=len(scenarios),
@@ -370,13 +372,13 @@ def main(args):
             "greenland": GreenlandAR6(),
             "landwater": LandwaterAR6(),
             "wais": AntarcticaISMIP6(
-                params_path="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/profsea/components/aux_data/wais_params_APR_nodrift.nc"
+                params_path=wais_params_path
             ),
             "eais": AntarcticaISMIP6(
-                params_path="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/profsea/components/aux_data/eais_params_APR_nodrift.nc"
+                params_path=eais_params_path
             ),
             "pen": AntarcticaISMIP6(
-                params_path="/Users/gregorymunday/Documents/Papers/ProFSea/ProFSea-tool/profsea/components/aux_data/pen_params_APR_nodrift.nc"
+                params_path=pen_params_path
             ),
             "glacier": Glacier(),
         }
