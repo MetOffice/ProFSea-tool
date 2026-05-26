@@ -49,7 +49,7 @@ class GreenlandAR6(Component):
 
         # Calculate trend contribution distribution
         a_bound = (0.0 - trend_mean) / trend_std
-        b_bound = (99999.9 - trend_mean) / trend_std # Or just np.inf
+        b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
             rng.random(state.nm), a=a_bound, b=b_bound, loc=trend_mean, scale=trend_std
         )
@@ -75,21 +75,23 @@ class GreenlandAR6(Component):
         n_models = sle.shape[1]
         r_per_model = state.nm // n_models
         r_remainder = state.nm % n_models
-        
+
         # Calculate exactly how many realizations each model should get
-        counts = [r_per_model + 1 if i < r_remainder else r_per_model for i in range(n_models)]
-        
+        counts = [
+            r_per_model + 1 if i < r_remainder else r_per_model for i in range(n_models)
+        ]
+
         # Create an array of indices and expand sle
         model_indices = np.repeat(np.arange(n_models), counts)
         sle_ens = sle[:, model_indices, :]  # Shape: (nt, nm, nyr)
-        
+
         # Transpose to match the intended (nm, nt, nyr) shape
         sle_ens = sle_ens.transpose(1, 0, 2)
 
         # Add the trend uncertainty
         sle_ens += trend
 
-        # Persist 2100 rate of change
+        # Persist 2100 rate of changeg
         if state.end_yr >= 2100:
             rate = np.diff(sle_ens, axis=2)[:, :, 94]
             sle_ens[:, :, 95:] = sle_ens[:, :, 94:95] + (
