@@ -34,7 +34,7 @@ class Global:
         If True, project SLR components in parallel.
     input_ensemble: bool
         If True, use an input ensemble of temperature and
-        ocean heat content change. if False, use a single timeseries of 
+        ocean heat content change. if False, use a single timeseries of
         temperature and ocean heat content change.
     output_percentiles: list|np.ndarray
         If not None, calculate percentiles from a 1D list/array for each
@@ -57,12 +57,11 @@ class Global:
     nyr: int
         Length of projections.
     """
-    
+
     def __init__(
         self,
         components: Dict[str, Component],
         end_yr: int,
-        nt: int = 100,
         nm: int = 1000,
         tcv: float = 1.0,
         parallel: bool = True,
@@ -73,7 +72,6 @@ class Global:
     ):
         self.components = components
         self.end_yr = end_yr
-        self.nt = nt
         self.nm = nm
         self.tcv = tcv
         self.parallel = parallel
@@ -92,7 +90,6 @@ class Global:
         T_change: np.ndarray,
         member_seed: int = 42,
     ) -> Dict[str, np.ndarray]:
-
         """Run the emulator to project GMSLR components for a specific state.
         Parameters
         ----------
@@ -103,18 +100,21 @@ class Global:
         member_seed: int
             Seed for numpy.random.
         """
-        
+
         seed_seq = np.random.SeedSequence(member_seed)
         run_rng = np.random.default_rng(seed_seq)
 
         check_shapes(T_change, self.nyr)
 
-        if self.input_ensemble:
-            self.nt = T_change.shape[0]
-        else:
-            self.nt = 1
+        # Standardize T_change shape to (nt, nyr)
+        if T_change.ndim > 2:
+            T_change = np.squeeze(T_change)
+        if T_change.ndim == 1:
+            T_change = np.expand_dims(T_change, axis=0)
 
-        T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change, run_rng)
+        self.nt = T_change.shape[0]
+
+        T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
 
         # Shared physical correlation state
         fraction = run_rng.random(self.nm * self.nt)
@@ -160,7 +160,7 @@ class Global:
 
         # Random Sampling
         if self.random_sample:
-            random_idx = run_rng.integers(low=0, high=self.nm)
+            random_idx = run_rng.integers(low=0, high=self.nt * self.nm)
             for comp_name, data in results.items():
                 if data.ndim > 1:
                     results[comp_name] = data[random_idx][None, :]
@@ -179,7 +179,9 @@ class Global:
 
     def sum_components(self, components: Dict[str, np.ndarray]) -> np.ndarray:
         """Sum the components to get total GMSLR."""
-        components["gmslr"] = np.sum(list(components.values()), axis=0)
+        components["gmslr"] = np.sum(
+            [np.atleast_2d(c) for c in components.values()], axis=0
+        )
         return components["gmslr"]
 
     def save_components(
@@ -223,9 +225,7 @@ class Global:
             ds[name] = xr_dataArray
         ds.to_netcdf(os.path.join(output_dir, f"{scenario_name}_global.nc"))
 
-    def _calculate_drivers(
-        self, T_change: np.ndarray, rng: np.random.Generator
-    ) -> tuple:
+    def _calculate_drivers(self, T_change: np.ndarray) -> tuple:
         """Calculate the drivers of GMSLR: temperature change and
         thermosteric sea level rise.
 
@@ -233,31 +233,14 @@ class Global:
         -------
         T_ens: np.ndarray
             Ensemble of temperature changes.
-        therm_ens: np.ndarray
-            Ensemble of thermosteric sea level rise.
         T_int_ens: np.ndarray
             Ensemble of time-integral temperature anomalies.
         T_int_med: np.ndarray
             Median of time-integral temperature anomalies.
         """
-               
-        if self.input_ensemble:
-            T_med = sample_members_2D(T_change, [50])
-            T_std = np.std(T_change, axis=0)
-        else:
-            T_med = T_change
-            T_std = 0. * T_med # dummy variable
-    
+        T_ens = T_change.copy()
+
         # Time-integral of temperature anomaly
-        T_int_med = np.cumsum(T_med)
-        T_int_std = np.cumsum(T_std)
-
-        # Generate a sample of perfectly correlated timeseries fields of temperature,
-        # time-integral temperature and expansion, each of them [realisation,time]
-        z = rng.standard_normal(self.nt) * self.tcv
-
-        # For each quantity, mean + standard deviation * normal random number
-        # reshape to [realisation,time]
-        T_ens = z[:, np.newaxis] * T_std + T_med
-        T_int_ens = z[:, np.newaxis] * T_int_std + T_int_med
+        T_int_ens = np.cumsum(T_ens, axis=1)
+        T_int_med = np.cumsum(np.median(T_ens, axis=0))
         return T_ens, T_int_ens, T_int_med

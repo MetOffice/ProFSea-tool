@@ -9,11 +9,11 @@ from scipy.stats import truncnorm
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 
-class Glacier(Component):
 
-    def __init__(self, glaciermip: int=2):
+class Glacier(Component):
+    def __init__(self, glaciermip: int = 2):
         self.glaciermip = glaciermip
-    
+
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
         """Project glacier contribution to GMSLR.
 
@@ -22,6 +22,11 @@ class Glacier(Component):
         glacier: np.ndarray
             Glacier contribution to GMSLR.
         """
+        tas = state.T_ens
+        if tas.ndim > 2:
+            tas = np.squeeze(tas)
+        if tas.ndim == 1:
+            tas = np.expand_dims(tas, axis=0)
 
         # glaciermip -- False => AR5 parameters, 1 => fit to Hock et al. (2019),
         #   2 => fit to Marzeion et al. (2020)
@@ -42,93 +47,60 @@ class Glacier(Component):
             ]
         elif self.glaciermip == 2:
             glparm = [
-                dict(name="GLIMB",   factor=3.70, exponent=0.662, cvgl=0.206),
-                dict(name="GloGEM",  factor=4.08, exponent=0.716, cvgl=0.161),
-                dict(name="JULES",   factor=5.50, exponent=0.564, cvgl=0.188),
-                dict(name="Mar-12",  factor=4.89, exponent=0.651, cvgl=0.141),
-                dict(name="OGGM",    factor=4.26, exponent=0.715, cvgl=0.164),
+                dict(name="GLIMB", factor=3.70, exponent=0.662, cvgl=0.206),
+                dict(name="GloGEM", factor=4.08, exponent=0.716, cvgl=0.161),
+                dict(name="JULES", factor=5.50, exponent=0.564, cvgl=0.188),
+                dict(name="Mar-12", factor=4.89, exponent=0.651, cvgl=0.141),
+                dict(name="OGGM", factor=4.26, exponent=0.715, cvgl=0.164),
                 dict(name="RAD2014", factor=5.18, exponent=0.709, cvgl=0.135),
                 dict(name="WAL2001", factor=2.66, exponent=0.730, cvgl=0.206),
             ]
         elif not self.glaciermip:
             glparm = [
                 dict(name="Marzeion", factor=4.96, exponent=0.685, cvgl=0.20),
-                dict(name="Radic",    factor=5.45, exponent=0.676, cvgl=0.20),
-                dict(name="Slangen",  factor=3.44, exponent=0.742, cvgl=0.20),
-                dict(name="Giesen",   factor=3.02, exponent=0.733, cvgl=0.20),
+                dict(name="Radic", factor=5.45, exponent=0.676, cvgl=0.20),
+                dict(name="Slangen", factor=3.44, exponent=0.742, cvgl=0.20),
+                dict(name="Giesen", factor=3.02, exponent=0.733, cvgl=0.20),
             ]
         else:
-            raise KeyError("glaciermip must be False (AR5 parameters), 1 (Hock et al., 2019), or 2 (Marzeion et al., 2020)")
+            raise KeyError(
+                "glaciermip must be False (AR5 parameters), 1 (Hock et al., 2019), or 2 (Marzeion et al., 2020)"
+            )
 
         ngl = len(glparm)
-        r = rng.standard_normal(state.nm)[:, np.newaxis, np.newaxis]
-        glacier = np.full((state.nm, state.nt, state.nyr), np.nan)
+        model_indices = rng.integers(0, ngl, size=(state.nt, state.nm))
 
-        r_per_model = state.nm // ngl
-        r_remainder = state.nm % ngl
+        base_factors = np.array([p["factor"] for p in glparm])
+        base_exponents = np.array([p["exponent"] for p in glparm])
+        base_cvgls = np.array([p["cvgl"] for p in glparm])
 
-        # Precompute mgl and zgl for all glacier methods
-        mgl_all = np.array(
-            [
-                self._project_glacier1(
-                    state.T_int_med, glparm[igl]["factor"], glparm[igl]["exponent"]
-                )
-                for igl in range(ngl)
-            ]
-        )
-        zgl_all = np.array(
-            [
-                self._project_glacier1(
-                    state.T_int_ens, glparm[igl]["factor"], glparm[igl]["exponent"]
-                )
-                for igl in range(ngl)
-            ]
-        )
-        cvgl_all = np.array(
-            [glparm[igl]["cvgl"] for igl in range(ngl)]
-        )
+        factors = base_factors[model_indices][:, :, None]
+        exponents = base_exponents[model_indices][:, :, None]
+        cvgls = base_cvgls[model_indices][:, :, None]
 
-        # Make an ensemble of projections for each method
-        current_ensemble_idx = 0
-        for igl in range(ngl):
-            mgl = mgl_all[igl]
-            zgl = zgl_all[igl]
-            cvgl = cvgl_all[igl]
+        r = rng.standard_normal((state.nt, state.nm))[:, :, None]
 
-            num_reals_for_model_i = (
-                r_per_model + 1 if igl < r_remainder else r_per_model
-            )
-            ifirst = current_ensemble_idx
-            ilast = current_ensemble_idx + num_reals_for_model_i
+        T_int_ens_3d = state.T_int_ens[:, None, :]
+        # Median shape: (1, 1, nyr)
+        T_int_med_3d = state.T_int_med[None, None, :]
 
-            glacier[ifirst:ilast, ...] = zgl + (mgl * r[ifirst:ilast] * cvgl)
-            current_ensemble_idx = ilast
+        zgl = self._project_glacier1(T_int_ens_3d, factors, exponents)
 
+        # Passes (1, 1, nyr) + (nt, nm, 1) -> Returns (nt, nm, nyr)
+        mgl = self._project_glacier1(T_int_med_3d, factors, exponents)
+
+        # 6. Apply variance and clip using 3D matrix math
+        glacier = zgl + (mgl * r * cvgls)
         glacier += dmz
         np.clip(glacier, None, glmass, out=glacier)
 
-        glacier = glacier.reshape(glacier.shape[0] * glacier.shape[1], glacier.shape[2])
-        
-        return glacier
+        # 7. Flatten to standard 2D output for easy summation
+        return glacier.reshape(state.nt * state.nm, state.nyr)
 
-    def _project_glacier1(self, T_int: np.ndarray, factor: float, 
-                          exponent: float) -> np.ndarray:
-        """Project glacier contribution by one glacier method.
-
-        Parameters
-        ----------
-        T_int: np.ndarray
-            Time-integral temperature anomaly timeseries.
-        factor: float
-            Factor for the glacier method.
-        exponent: float
-            Exponent for the glacier method.
-
-        Returns
-        -------
-        np.ndarray
-            Projection of glacier contribution.
-        """
+    def _project_glacier1(
+        self, T_int: np.ndarray, factor: np.ndarray, exponent: np.ndarray
+    ) -> np.ndarray:
+        """Project glacier contribution by one glacier method."""
         scale = 1e-3  # mm to m
-        
+        # np.where works perfectly with n-dimensional broadcasting
         return scale * factor * (np.where(T_int < 0, 0, T_int) ** exponent)

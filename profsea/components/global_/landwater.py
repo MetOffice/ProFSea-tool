@@ -43,21 +43,21 @@ class LandwaterAR6(Component):
         interp_ds = lw_ds.interp(
             years=np.arange(2005, 2301, 1), method="linear"
         ).squeeze()
-        lw = interp_ds["sea_level_change"].values * 1e-3  # mm to m
+        interp_ds["sea_level_change"].values * 1e-3  # mm to m
 
-        del interp_ds
+        # Base array: Shape (n_samples_in_nc, 296)
+        lw_base = interp_ds["sea_level_change"].values * 1e-3
+        n_samples_nc = lw_base.shape[0]
 
-        # Make a Monte Carlo ensemble of projections
-        full_repeats = (state.nt * state.nm) // lw.shape[0]
-        remainder = (state.nt * state.nm) % lw.shape[0]
-        lw = np.vstack([np.tile(lw, (full_repeats, 1)), lw[:remainder]])
-        lw = lw.reshape(state.nt * state.nm, lw.shape[1])
-        lw = lw[:, 1 : state.nyr + 1]  # Start at 2006, end at end_yr
+        # Sample!
+        sample_indices = rng.integers(0, n_samples_nc, size=(state.nt, state.nm))
 
-        return lw
+        # Resulting shape: (nt, nm, nyr)
+        lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]
+        return lw_ens.reshape(state.nt * state.nm, state.nyr)
+
 
 class LandwaterAR5(Component):
-
     def __init__(self):
         self.startratemean = 0.38
         self.startratepm = 0.49 - 0.38
@@ -71,10 +71,14 @@ class LandwaterAR5(Component):
         np.ndarray
             Land water storage contribution to GMSLR.
         """
-        
+
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
-        nyr = state.endofAR5 - 2081 + 1  # number of years of the time-mean of the final amount
+        nyr = (
+            state.endofAR5 - 2081 + 1
+        )  # number of years of the time-mean of the final amount
         final = [-0.01, 0.09]  # AR5
-        
-        return time_projection(state, self.startratemean, self.startratepm, final, rng, nfinal=nyr)
+
+        return time_projection(
+            state, self.startratemean, self.startratepm, final, rng, nfinal=nyr
+        )

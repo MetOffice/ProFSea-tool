@@ -14,6 +14,7 @@ class ThermalExpansion(Component):
     exp_efficiency: float
         Sensitivity of thermosteric SLR to ocean heat content change.
     """
+
     def __init__(self, OHC_change: np.ndarray, distribution_scaler: float = 1.0):
         self.OHC_change = OHC_change
         self.distribution_scaler = distribution_scaler
@@ -23,19 +24,16 @@ class ThermalExpansion(Component):
         check_shapes(self.OHC_change, state.nyr)
         # Sensitivity of thermosteric SLR to ocean heat content change
         # From Turner et al. (2023)
+        mean_eff = 0.113
+        std_eff = 0.013 * self.distribution_scaler
+
         exp_efficiency = (
-            rng.normal(loc=0.113, scale=0.013, size=state.nt)[:, None] * 1e-24
+            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.nm)) * 1e-24
         )  # m/YJ
-        z = rng.standard_normal(state.nt) * self.distribution_scaler
 
-        if state.nt > 1: # when input_ensemble = True
-            therm_med = sample_members_2D(self.OHC_change, [50]) * exp_efficiency
-            therm_std = np.std(self.OHC_change, axis=0) * exp_efficiency
-        else:
-            therm_med = self.OHC_change * exp_efficiency
-            therm_std = therm_med * 0. # dummary variable
+        ohc_3d = self.OHC_change[:, None, :]
+        # Efficiency shape: (nt, nm, 1)
+        exp_efficiency_3d = exp_efficiency[:, :, None]
 
-        therm_ens = z[:, np.newaxis] * therm_std + therm_med
-        expansion = np.tile(therm_ens, (state.nm, 1))
-        
+        expansion = ohc_3d * exp_efficiency_3d
         return expansion.reshape(state.nm * state.nt, state.nyr)
