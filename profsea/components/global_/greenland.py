@@ -55,7 +55,7 @@ class GreenlandAR6(Component):
         )
         trend = trend[:, None] * time_delta[None, :]
         trend = trend[:, None, :]
-        trend /= 1e3  # convert mm to m SLE
+        trend *= 1e-3  # convert mm to m SLE
 
         # Calculate GIS contribution rate
         dsle = (
