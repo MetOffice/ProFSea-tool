@@ -32,7 +32,7 @@ If you are not using Conda, install the dependencies with ``pip``:
 
 .. code-block:: bash
 
-   pip install sphinx sphinx-rtd-theme 
+   pip install sphinx pydata-sphinx-theme
 
 3. Make Changes to the Documentation
 -------------------------------------

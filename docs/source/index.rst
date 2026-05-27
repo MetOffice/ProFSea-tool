@@ -18,5 +18,31 @@ documentation for details.
    user_guide
    development_guidelines
    documentation
+   api_reference
    references
+
+User Guide
+----------
+
+See :doc:`user_guide`.
+
+Development Guidelines
+----------------------
+
+See :doc:`development_guidelines`.
+
+Documentation Guide
+-------------------
+
+See :doc:`documentation`.
+
+API Reference
+-------------
+
+See :doc:`api_reference`.
+
+References
+----------
+
+See :doc:`references`.
 

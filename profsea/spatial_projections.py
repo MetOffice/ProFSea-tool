@@ -27,9 +27,18 @@ warnings.filterwarnings("ignore")
 
 def calc_baseline_period(yrs: np.array) -> float:
     """
-    Baseline years used for IPCC AR5 and Palmer et al 2020 -- 1986-2005
-    :param yrs: years of the projections
-    :return: baseline years
+    Calculate the offset between projection start and AR5 baseline midpoint.
+
+    Parameters
+    ----------
+    yrs : numpy.ndarray
+        Projection years.
+
+    Returns
+    -------
+    float
+        Difference between the first projection year and the midpoint of the
+        1986-2005 baseline period.
     """
     byr1 = 1986.
     byr2 = 2005.
@@ -41,11 +50,17 @@ def calc_baseline_period(yrs: np.array) -> float:
 
 def calc_future_sea_level(scenario: str) -> None:
     """
-    Calculates future sea level at the given site and write to file.
-    :param df: Data frame of all metadata (tide gauge or site specific) for
-               each(all) location(s)
-    :param site_loc: name of the site location
-    :param scenario: emission scenario
+    Calculate and save future spatial sea-level projections for a scenario.
+
+    Parameters
+    ----------
+    scenario : str
+        Emissions scenario identifier.
+
+    Returns
+    -------
+    None
+        Outputs are written to configured NetCDF files.
     """
     # Set the UKCP*18* random seed so results are reproducible
     np.random.seed(18)
@@ -87,15 +102,23 @@ def calc_gia_contribution(
         yrs: np.array, nyrs: int, nsmps: int, 
         scenario: str) -> None:
     """
-    Calculate the glacial isostatic adjustment (GIA) contribution to the
-    regional component of sea level rise.
-    Option to use the generic global GIA estimates or use the GIA estimates
-    developed for UK as part of UKCP18.
-    :param yrs: years of the projections
-    :param nyrs: number of years in each projection time series
-    :param nsmps: determine the number of samples
-    :param coords: coordinates of location of interest
-    :return: GIA estimates converted to mm/yr
+    Calculate and save glacial isostatic adjustment (GIA) regional projections.
+
+    Parameters
+    ----------
+    yrs : numpy.ndarray
+        Projection years.
+    nyrs : int
+        Number of years in each projection time series.
+    nsmps : int
+        Number of samples to generate.
+    scenario : str
+        Emissions scenario identifier.
+
+    Returns
+    -------
+    None
+        GIA projections are written to a NetCDF output file.
     """
     console.log('Calculating GIA contribution...')
     nGIA, GIA_vals = read_gia_estimates()
@@ -142,11 +165,19 @@ def calc_gia_contribution(
 def calc_expansion_contribution(
         scenario: str, nsmps: int) -> da.array:
     """
-    Calculate the thermal expansion contribution to the regional component of
-    sea level rise.
-    :param scenario: emission scenario
-    :param nsmps: determine the number of samples
-    :return: expansion estimates converted to mm/yr
+    Sample thermal expansion coefficients for regional projections.
+
+    Parameters
+    ----------
+    scenario : str
+        Emissions scenario identifier.
+    nsmps : int
+        Number of samples to draw.
+
+    Returns
+    -------
+    dask.array.Array
+        Sampled expansion coefficients on the target grid.
     """
     # Select slope coefficients based on the MIP
     if settings["emulator_settings"]["emulator_mode"]:
@@ -166,9 +197,21 @@ def calc_expansion_contribution(
 
 def calc_landwater_contribution(data: dict, lats: int, lons: int) -> da.array:
     """
-    Calculate the regional landwater contribution to sea level rise.
-    :param interpolator: dictionary of interpolator objects
-    :return: numpy array of landwater values
+    Interpolate and re-grid landwater contribution fields.
+
+    Parameters
+    ----------
+    data : dict
+        Landwater input data used for interpolation.
+    lats : int
+        Number of latitude points in the target grid.
+    lons : int
+        Number of longitude points in the target grid.
+
+    Returns
+    -------
+    dask.array.Array
+        Landwater contribution values on the target grid.
     """
     landwater_vals = interpolate(data, lats, lons)
     landwater_vals = da.roll(landwater_vals, 180, axis=1)
@@ -177,6 +220,25 @@ def calc_landwater_contribution(data: dict, lats: int, lons: int) -> da.array:
 
 def calc_fingerprint_contributions(
     FPlist: list, comp: str, lats: int, lons: int) -> da.array:
+    """
+    Interpolate and stack fingerprints for a selected component.
+
+    Parameters
+    ----------
+    FPlist : list
+        List of fingerprint dictionaries.
+    comp : str
+        Component key to extract from each fingerprint dictionary.
+    lats : int
+        Number of latitude points in the target grid.
+    lons : int
+        Number of longitude points in the target grid.
+
+    Returns
+    -------
+    dask.array.Array
+        Stacked fingerprint values for the selected component.
+    """
     # Initiate an empty list for fingerprint values
     fp_vals = []
     for FP_dict in FPlist:
@@ -190,12 +252,19 @@ def calc_fingerprint_contributions(
 
 
 def calc_greenland_fingerprint_ar6(lats: int, lons: int) -> da.array:
-    """Load and prepare the GIS fingerprint.
+    """Load and prepare the AR6 Greenland fingerprint.
 
-    This fingerprint was/is used by FACTS for AR6 projections, and was 
-    originally calculated by Mitrovica et al., (2011).
-    
-    :return dask array containing GIS fingerprint
+    Parameters
+    ----------
+    lats : int
+        Number of latitude points in the target grid.
+    lons : int
+        Number of longitude points in the target grid.
+
+    Returns
+    -------
+    dask.array.Array
+        Greenland fingerprint on the target grid.
     """
     # Load in the fingerprint
     fp_path = Path(settings["fingerprints"]) / "greenland_ar6.nc"
@@ -216,11 +285,23 @@ def calc_greenland_fingerprint_ar6(lats: int, lons: int) -> da.array:
 def save_projections(
         montecarlo_R: da.array, component: str, scenario: str, percentile: da.array) -> None:
     """
-    Save the regional sea level projections to a file.
-    :param montecarlo_R: regional sea level projections
-    :param component: sea level component
-    :param scenario: emission scenario
-    :param percentile: percentiles used for spatial projections
+    Save regional sea-level projections for one component to NetCDF.
+
+    Parameters
+    ----------
+    montecarlo_R : dask.array.Array
+        Regional sea-level projections.
+    component : str
+        Sea-level component name.
+    scenario : str
+        Emissions scenario identifier.
+    percentile : dask.array.Array or numpy.ndarray
+        Percentiles represented in the first dimension.
+
+    Returns
+    -------
+    None
+        Data are written to a component-specific NetCDF file.
     """
     sealev_ddir = os.path.join(settings["baseoutdir"],settings["experiment_name"],
                                settings['emulator_settings']['spatial_output_dir'])
@@ -247,18 +328,25 @@ def calculate_sl_components(
         mcdir: str, components: list, scenario: str, 
         yrs: np.array, array_dims: list) -> None:
     """
-    Calculates global and regional component part contributions to sea level
-    change.
-    :param mcdir: location of Monte Carlo time series for new projections
-    :param components: sea level components
-    :param scenario: emission scenario
-    :param yrs: years of the projections
-    :param array_dims: Array of nesm, nsmps and nyrs
-        nesm --> Number of ensemble members in time series
-        nsmps --> Determine the number of samples you wish to make
-        nyrs --> Number of years in each projection time series
-    :return: montecarlo_G (global contribution to sea level rise) and
-        montecarlo_R (regional contribution to sea level change)
+    Calculate regional contributions for all selected sea-level components.
+
+    Parameters
+    ----------
+    mcdir : str
+        Directory containing Monte Carlo time series inputs.
+    components : list
+        Sea-level components to project.
+    scenario : str
+        Emissions scenario identifier.
+    yrs : numpy.ndarray
+        Projection years.
+    array_dims : list
+        Dimensions in the order [nesm, nsmps, nyrs, lats, lons].
+
+    Returns
+    -------
+    None
+        Component-specific NetCDF outputs are written to disk.
     """  
     # Numbers of ensemble members, samples, years
     nesm, nsmps, nyrs, lats, lons = array_dims
@@ -310,12 +398,19 @@ def calculate_sl_components(
 
 def get_projection_info(indir: str, scenario: str) -> tuple:
     """
-    Read in the dimensions of the Monte-Carlo data. These files are all
-    relative to midnight on 1st January 2007
-    :param indir: directory of Monte Carlo time series for new projections
-    :param scenario: emission scenarios to be considered
-    :return: Number of ensemble members in time series, number of years in
-    each projection time series and the years of the projections
+    Read dimensions and years from a Monte Carlo NetCDF sample file.
+
+    Parameters
+    ----------
+    indir : str
+        Input directory containing Monte Carlo files.
+    scenario : str
+        Emissions scenario identifier.
+
+    Returns
+    -------
+    tuple
+        Tuple of (number of ensemble members, number of years, years array).
     """
     sample_file = f'{scenario}_exp.nc'
     f = Dataset(f'{indir}{sample_file}', 'r')
@@ -332,13 +427,17 @@ def get_projection_info(indir: str, scenario: str) -> tuple:
 
 def load_CMIP5_slope_coeffs(scenario: str) -> np.ndarray:
     """
-    Loads in the CMIP slope coefficients based on linear regression of
-    'zos+zostoga' against 'zostoga' for the period 2005 to 2100.
-    Some models are missing regression slopes for RCP2.6. If so, use RCP4.5
-    values instead.
-    :param site_loc: name of the site location
-    :param scenario: emissions scenario
-    :return: 1D array of regression coefficients
+    Load CMIP5 slope coefficients for a selected scenario.
+
+    Parameters
+    ----------
+    scenario : str
+        Emissions scenario identifier.
+
+    Returns
+    -------
+    numpy.ndarray
+        Regression slope coefficients on the spatial grid.
     """
     # Read in the sea level regressions
     in_zosddir = read_dir()[2]
@@ -354,10 +453,17 @@ def load_CMIP5_slope_coeffs(scenario: str) -> np.ndarray:
 
 def load_CMIP6_slopes(scenario: str) -> np.ndarray:
     """
-    Load in the CMIP6 slope coefficients.
-    :param site_loc: name of the site location
-    :param scenario: emissions scenario
-    :return: 1D array of regression coefficients
+    Load CMIP6 slope coefficients for a selected scenario.
+
+    Parameters
+    ----------
+    scenario : str
+        Emissions scenario identifier.
+
+    Returns
+    -------
+    dask.array.Array
+        Stacked slope coefficients across available models.
     """
     # Read in the sea level regressions
     cmip6_dir = settings["cmipinfo"]["sealevelbasedir"]
@@ -377,11 +483,12 @@ def load_CMIP6_slopes(scenario: str) -> np.ndarray:
 
 def read_gia_estimates() -> tuple:
     """
-    Read in pre-processed interpolator objects of GIA estimates (Lambeck,
-    ICE5G)
-    :param: none
-    :return: length of GIA_vals and numpy array of pre-processed interpolator
-    objects of GIA estimates
+    Read and prepare pre-processed GIA estimate fields.
+
+    Returns
+    -------
+    tuple
+        Tuple of (number of GIA fields, array of GIA values).
     """
     gia_file = settings["giaestimates"]["global"]
     with open(gia_file, "rb") as ifp:
@@ -405,11 +512,17 @@ def read_gia_estimates() -> tuple:
 
 def load_fingerprints(components: list) -> tuple:
     """
-    Create 2D Interpolator objects for the Slangen, Spada and Klemann
-    fingerprints
-    :param components: list of sea level components
-    :return nFPs: length of FPlist and interpolator objects of all sea level
-    components
+    Load component fingerprints from multiple fingerprint datasets.
+
+    Parameters
+    ----------
+    components : list
+        Sea-level components to load.
+
+    Returns
+    -------
+    tuple
+        Tuple of (number of fingerprint sets, list of fingerprint dictionaries).
     """
     # Create empty dictionaries for the Slangen, Spada and Klemann fingerprints
     # interpolator objects.
@@ -445,10 +558,19 @@ def load_fingerprints(components: list) -> tuple:
 
 def calculate_global_components(scenario: str, palmer_method: bool) -> None:
     """
-    Calculate the global contributions for each of the sea-level components
-    using the GMSLR module.
-    :param scenario: string representing the scenario being simulated
-    :param palmer_method: boolean to determine whether to use the palmer_method
+    Calculate global component projections using the GMSLR emulator.
+
+    Parameters
+    ----------
+    scenario : str
+        Scenario being simulated.
+    palmer_method : bool
+        Whether to apply the Palmer method beyond 2100.
+
+    Returns
+    -------
+    None
+        Global component outputs are saved to disk.
     """
     # Check inputs are correctly set up
     if not (os.path.exists(settings["scm_data"]["temperature"]) and 
@@ -505,10 +627,12 @@ def calculate_global_components(scenario: str, palmer_method: bool) -> None:
 
 def main():
     """
-    Reads in and calculates global and local (regional) sea level change
-    (sum total), based on the different contributing factors e.g. thermal
-    expansion, GIA and mass balance. Writes out the selected emissions scenario
-    estimates of the various components and their sums.
+    Run end-to-end global and regional sea-level projection workflows.
+
+    Returns
+    -------
+    None
+        Projection files are generated in configured output directories.
     """
     console.log(f'\nProjecting out to: {settings["projection_end_year"]}\n')
 

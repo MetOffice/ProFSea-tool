@@ -4,5 +4,5 @@ name: profsea-climate-docs
 
 dependencies:
   - pre-commit
-  - sphinx-rtd-theme
+  - pydata-sphinx-theme
   - sphinx
