@@ -25,7 +25,7 @@ class Spatial:
         grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
-        baseline_yrs: tuple = (1986, 2005),
+        baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
     ):
         """
@@ -41,7 +41,7 @@ class Spatial:
         end_year: int, optional
             The final year of the projections. Default is 2301.
         baseline_yrs: tuple, optional
-            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1986, 2005).
+            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
         """
@@ -88,7 +88,7 @@ class Spatial:
 
         # Log the size of each component and provide an estimate of their memory usage
         for name, comp in self.components.items():
-            if not self.output_percentiles:
+            if self.output_percentiles is not None and len(self.output_percentiles) > 0:
                 comp_size = comp.global_projection.nbytes / 1e9
                 future_size = (
                     comp_size
@@ -138,6 +138,7 @@ class Spatial:
             grid_lons=self.grid_lons,
             grid_interpolation="linear",
             output_percentiles=self.output_percentiles,
+            baseline_yrs=self.baseline_yrs,
         )
 
         child_seeds = seed_seq.spawn(len(self.components))

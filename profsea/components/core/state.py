@@ -30,3 +30,4 @@ class SpatialState:
     n_members: int
     grid_interpolation: str
     output_percentiles: list[int] | np.ndarray
+    baseline_yrs: tuple[int, int]

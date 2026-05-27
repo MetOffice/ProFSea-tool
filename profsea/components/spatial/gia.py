@@ -19,10 +19,16 @@ class GIA(SpatialComponent):
     def __init__(
         self,
         gia_paths: str | Path | list[str | Path],
-        baseline_yrs: tuple = (1995, 2014),
         sample_spatial: bool = False,
     ):
-        self.baseline_yrs = baseline_yrs
+        """
+        Parameters
+        ----------
+        gia_paths: str, Path, or list of str/Path
+            Path to a single GIA file, a list of GIA files, or a directory containing GIA files.
+        sample_spatial: bool, optional
+            Whether to sample spatial patterns probabilistically. Default is False.
+        """
         self.sample_spatial = sample_spatial
 
         if isinstance(gia_paths, (str, Path)):
@@ -78,8 +84,8 @@ class GIA(SpatialComponent):
 
         # Calculate the accumulation time vector (mm/yr to m/yr)
         midyr = (
-            self.baseline_yrs[1] - self.baseline_yrs[0] + 1
-        ) * 0.5 + self.baseline_yrs[0]
+            state.baseline_yrs[1] - state.baseline_yrs[0] + 1
+        ) * 0.5 + state.baseline_yrs[0]
         Tdelta = 2006 - midyr
         unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
 

@@ -24,10 +24,14 @@ class Fingerprint(SpatialComponent):
         """
         Parameters
         ----------
-        global_projection: 2D array (members x years) of global projections to apply the fingerprints to.
-        fingerprint_paths: Path(s) to NetCDF files containing the spatial fingerprint patterns. Each file should contain a DataArray with dimensions (lat, lon).
-        scaling_factor: Optional multiplier to apply to the fingerprint patterns (e.g., to convert from m to mm).
-        sample_spatial: If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode).
+        global_projection: np.ndarray
+             A 2D array (members x years) of global projections to apply the fingerprints to.
+        fingerprint_paths: str, Path, or list of str/Path
+             Path(s) to NetCDF files containing the spatial fingerprint patterns. Each file should contain a DataArray with dimensions (lat, lon).
+        scaling_factor: float, optional
+             Optional multiplier to apply to the fingerprint patterns (e.g., to convert from m to mm). Default is 1.0 (no scaling).
+        sample_spatial: bool, optional
+             If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
         self._global_projection = da.from_array(global_projection, chunks="auto")
         self.scaling_factor = scaling_factor
