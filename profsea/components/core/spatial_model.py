@@ -230,10 +230,9 @@ class Spatial:
         encoding = {}
         if output_format == "zarr":
             import numcodecs
+            from numcodecs.zarr3 import Blosc
 
-            compressor = numcodecs.Blosc(
-                cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
-            )
+            compressor = Blosc(cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
 
         # Loop through the isDask arrays and add them to the single Dataset
         for name, component in components.items():
