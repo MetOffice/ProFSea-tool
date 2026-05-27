@@ -112,7 +112,7 @@ class SterodynamicCMIP6(SpatialComponent):
             return coeffs[rand_samples, :, :]
         else:
             # Calc pattern ensemble mean
-            mean_coeff = da.nanmean(coeffs, axis=0)
+            mean_coeff = da.mean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
                 (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
