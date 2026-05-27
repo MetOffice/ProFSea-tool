@@ -4,6 +4,7 @@ channels:
 dependencies:
   - cartopy
   - dask
+  - ipykernel
   - iris
   - matplotlib
   - netcdf4
