@@ -20,7 +20,7 @@ class GIA(SpatialComponent):
         self,
         gia_paths: str | Path | list[str | Path],
         sample_spatial: bool = False,
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -60,6 +60,16 @@ class GIA(SpatialComponent):
         """
         Lazily loads all GIA files, regrids them, and stacks them into a
         single 3D array of shape (total_models, lat, lon).
+
+        Parameters
+        ----------
+        state: SpatialState
+            The spatial state containing the target grid information.
+
+        Returns
+        -------
+        da.Array
+            A Dask array of shape (total_models, lat, lon) containing the regridded GIA rates.
         """
         grids = []
         for path in self.gia_paths:
@@ -79,6 +89,21 @@ class GIA(SpatialComponent):
         return da.concatenate(grids, axis=0)
 
     def project(self, state: SpatialState, rng: np.random.Generator) -> da.Array:
+        """
+        Project the GIA component by multiplying the accumulation time vector with the spatial rates.
+
+        Parameters
+        ----------
+        state: SpatialState
+            The spatial state containing the target grid information.
+        rng: np.random.Generator
+            Random number generator for sampling GIA models if sample_spatial is True.
+
+        Returns
+        -------
+        da.Array
+            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+        """
         gia_rates = self._load_and_interpolate_rates(state)
         n_patterns = gia_rates.shape[0]
 

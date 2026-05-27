@@ -20,7 +20,7 @@ class Fingerprint(SpatialComponent):
         fingerprint_paths: str | Path | list[str | Path],
         scaling_factor: float = 1.0,
         sample_spatial: bool = False,
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -52,7 +52,18 @@ class Fingerprint(SpatialComponent):
         return self._global_projection
 
     def _load_and_interpolate(self, state: SpatialState) -> da.Array:
-        """Lazily load and regrid all provided fingerprints."""
+        """
+        Lazily load and regrid all provided fingerprints.
+
+        Parameters
+        ----------
+        state: SpatialState
+            The state object containing the target grid information.
+
+        Returns
+        -------
+        da.Array
+        """
         grids = []
         for path in self.fp_paths:
             fp_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
@@ -63,6 +74,21 @@ class Fingerprint(SpatialComponent):
         return da.stack(grids, axis=0)
 
     def project(self, state: SpatialState, rng: np.random.Generator) -> da.Array:
+        """
+        Calculate the spatial projection by applying the fingerprints to the global projection.
+
+        Parameters
+        ----------
+        state: SpatialState
+            The state object containing the target grid information and number of members.
+        rng: np.random.Generator
+            Random number generator for sampling fingerprints if sample_spatial is True.
+
+        Returns
+        -------
+        da.Array
+            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+        """
         fps = self._load_and_interpolate(state)  # Shape: (n_fps, lat, lon)
 
         # Handle the global projection

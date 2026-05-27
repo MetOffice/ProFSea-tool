@@ -27,7 +27,7 @@ class Spatial:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -115,6 +115,7 @@ class Spatial:
     def run(self, member_seed: int = 42) -> None:
         """
         Run the spatial model to generate regional sea level projections for each component.
+
         Parameters
         ----------
         member_seed: int, optional
@@ -198,6 +199,10 @@ class Spatial:
             Directory to save components to.
         scenario_name: str
             Name of the scenario you've run the emulator for.
+
+        Returns
+        -------
+        None
         """
         output_format = output_format.lower()
         if output_format not in ["netcdf", "zarr"]:
