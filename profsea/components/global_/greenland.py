@@ -87,7 +87,7 @@ class GreenlandAR6(Component):
         # Persist 2100 rate of changeg
         if state.end_yr >= 2100:
             idx_2100 = 94
-            rate = np.diff(sle_ens, axis=2)[:, :, idx_2100]
+            rate = np.diff(sle_ens, axis=2)[:, :, idx_2100 - 1]
             sle_ens[:, :, idx_2100 + 1 :] = sle_ens[:, :, idx_2100 : idx_2100 + 1] + (
                 rate[:, :, None] * time_delta[None, None, 1 : state.nyr - idx_2100]
             )

@@ -285,14 +285,14 @@ def plot_component(
         ax.fill_between(
             time,
             component_dict[scenario][component][1],
-            component_dict[scenario][component][3],
+            component_dict[scenario][component][5],
             color=scenario_colors[scenario],
             edgecolor="none",
             alpha=0.3,
         )
         ax.plot(
             time,
-            component_dict[scenario][component][2],
+            component_dict[scenario][component][3],
             label=f"{scenario}",
             color=scenario_colors[scenario],
         )
@@ -312,6 +312,15 @@ def main(args):
     else:
         # Defaulting to an SSP list to avoid UnboundLocalError
         scenarios = ["ssp119", "ssp126", "ssp245", "ssp370", "ssp534-over", "ssp585"]
+        # scenarios = [
+        #     "Very Low - SSP1 (Marker)",
+        #     "Low-to-Negative - SSP2 (Marker)",
+        #     "Low - SSP2 (Marker)",
+        #     "Medium-to-Low - SSP2 (Marker)",
+        #     "Medium - SSP2 (Marker)",
+        #     "High-to-Low - SSP5 (Marker)",
+        #     "High - SSP3 (Marker)",
+        # ]
 
     console.log(f"Using scenarios: {scenarios}")
 
@@ -355,9 +364,9 @@ def main(args):
     tas_matrix = tas[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
     ohc_matrix = ohc[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
 
-    wais_params_path = Path("components") / "aux_data" / "wais_params_reduced.nc"
-    eais_params_path = Path("components") / "aux_data" / "eais_params_reduced.nc"
-    pen_params_path = Path("components") / "aux_data" / "pen_params_reduced.nc"
+    wais_params_path = Path("components") / "aux_data" / "wais_params_expanded.nc"
+    eais_params_path = Path("components") / "aux_data" / "eais_params_expanded.nc"
+    pen_params_path = Path("components") / "aux_data" / "pen_params_expanded.nc"
     sampled_components = {}
     for idx, scenario in track(
         enumerate(scenarios),
