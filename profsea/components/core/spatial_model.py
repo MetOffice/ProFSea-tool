@@ -53,8 +53,8 @@ class Spatial:
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
 
-        if output_percentiles:
-            self.num_members = len(output_percentiles)
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            self.num_members = len(self.output_percentiles)
         else:
             self.num_members = next(
                 iter(self.components.values())
@@ -88,7 +88,7 @@ class Spatial:
 
         # Log the size of each component and provide an estimate of their memory usage
         for name, comp in self.components.items():
-            if not output_percentiles:
+            if not self.output_percentiles:
                 comp_size = comp.global_projection.nbytes / 1e9
                 future_size = (
                     comp_size
@@ -98,7 +98,7 @@ class Spatial:
                 )
             else:
                 comp_size = (
-                    comp.global_projection[: len(output_percentiles)].nbytes / 1e9
+                    comp.global_projection[: len(self.output_percentiles)].nbytes / 1e9
                 )
                 future_size = comp_size * len(self.grid_lats) * len(self.grid_lons)
 
@@ -112,20 +112,18 @@ class Spatial:
                     f"resolution or take percentiles.[/bold red]"
                 )
 
-    def run(self, scenario: str, member_seed: int = 42) -> None:
+    def run(self, member_seed: int = 42) -> None:
         """
-        Calculates global and regional component part contributions to sea level
-        change.
-        :param mcdir: location of Monte Carlo time series for new projections
-        :param components: sea level components
-        :param scenario: emission scenario
-        :param yrs: years of the projections
-        :param array_dims: Array of nesm, nsmps and nyrs
-            nesm --> Number of ensemble members in time series
-            nsmps --> Determine the number of samples you wish to make
-            nyrs --> Number of years in each projection time series
-        :return: montecarlo_G (global contribution to sea level rise) and
-            montecarlo_R (regional contribution to sea level change)
+        Run the spatial model to generate regional sea level projections for each component.
+        Parameters
+        ----------
+        member_seed: int, optional
+            Seed for random number generation to ensure reproducibility of member sampling. Default is 42.
+
+        Returns
+        -------
+        Dict[str, da.Array]
+            Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
         """
         seed_seq = np.random.SeedSequence(member_seed)
 
@@ -134,7 +132,6 @@ class Spatial:
         )
 
         state = SpatialState(
-            scenario=scenario,
             n_years=self.n_years,
             n_members=self.num_members,
             grid_lats=self.grid_lats,
@@ -260,10 +257,11 @@ class Spatial:
 
             # The spinner will animate while to_netcdf is blocking
             with console.status(
-                "[bold cyan]Streaming computation and saving NetCDF...[/bold cyan]",
+                "[bold cyan]Computing and saving NetCDF...[/bold cyan]",
                 spinner="dots",
             ):
-                ds.to_netcdf(out_path, encoding=encoding, compute=True)
+                ds.compute()  # Compute before saving, for speed
+                ds.to_netcdf(out_path, encoding=encoding)
 
             console.log(
                 f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"

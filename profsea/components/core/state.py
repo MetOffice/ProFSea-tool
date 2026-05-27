@@ -24,7 +24,6 @@ class ClimateState:
 class SpatialState:
     """SpatialState context object to hold relevant state information for spatial SLR projections."""
 
-    scenario: str
     grid_lats: np.ndarray
     grid_lons: np.ndarray
     n_years: int
