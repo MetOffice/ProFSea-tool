@@ -132,14 +132,14 @@ class Spatial:
         for name, arr in arr_dict.items():
             xr_dict[name] = xr.DataArray(
                 arr,
-                dims=[member_dim, "time", "latitude", "longitude"],
+                dims=[member_dim, "time", "lat", "lon"],
                 coords={
                     member_dim: self.output_percentiles
                     if self.output_percentiles is not None
                     else np.arange(arr.shape[0]),
                     "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
-                    "latitude": self.grid_lats,
-                    "longitude": self.grid_lons,
+                    "lat": self.grid_lats,
+                    "lon": self.grid_lons,
                 },
                 attrs={
                     "units": "m",

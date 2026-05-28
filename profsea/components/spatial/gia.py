@@ -73,7 +73,7 @@ class GIA(SpatialComponent):
         """
         grids = []
         for path in self.gia_paths:
-            gia_da = xr.open_dataarray(path, chunks={"latitude": 45, "longitude": 45})
+            gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
             interp_da = interpolate_to_grid(gia_da, state.grid_lats, state.grid_lons)
 
             data = interp_da.data

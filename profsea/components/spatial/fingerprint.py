@@ -66,7 +66,7 @@ class Fingerprint(SpatialComponent):
         """
         grids = []
         for path in self.fp_paths:
-            fp_da = xr.open_dataarray(path, chunks={"latitude": 45, "longitude": 45})
+            fp_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
             fp_interp = interpolate_to_grid(fp_da, state.grid_lats, state.grid_lons)
             grids.append(fp_interp.data * self.scaling_factor)
 
