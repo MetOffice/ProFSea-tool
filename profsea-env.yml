@@ -13,6 +13,7 @@ dependencies:
   - pandas
   - python=3.12
   - pyyaml
+  - requests
   - rich
   - scipy
   - xarray
