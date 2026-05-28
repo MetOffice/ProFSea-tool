@@ -42,12 +42,5 @@ class ThermalExpansion(Component):
         # Efficiency shape: (nt, nm, 1)
         exp_efficiency_3d = exp_efficiency[:, :, None]
 
-<<<<<<< HEAD
         expansion = ohc_3d * exp_efficiency_3d
         return expansion.reshape(state.nm * state.nt, state.nyr)
-=======
-        therm_ens = z[:, np.newaxis] * therm_std + therm_med
-        expansion = np.tile(therm_ens, (state.num_members, 1))
-        
-        return expansion.reshape(state.num_members * state.nt, state.nyr)
->>>>>>> profsea-climate-v2
