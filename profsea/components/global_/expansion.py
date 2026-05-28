@@ -22,6 +22,13 @@ class ThermalExpansion(Component):
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
         # check the shape here
         check_shapes(self.OHC_change, state.nyr)
+
+        # Ensure OHC_change is 2D
+        if self.OHC_change.ndim > 2:
+            self.OHC_change = np.squeeze(self.OHC_change)
+        if self.OHC_change.ndim == 1:
+            self.OHC_change = np.expand_dims(self.OHC_change, axis=0)
+
         # Sensitivity of thermosteric SLR to ocean heat content change
         # From Turner et al. (2023)
         mean_eff = 0.113
