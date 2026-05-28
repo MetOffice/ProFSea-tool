@@ -8,6 +8,9 @@ from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
 from profsea.utils import interpolate_to_grid, sample_members_2D
 
+PROFSEA_DIR = Path(__file__).resolve().parents[2]
+PATTERNS_DIR = PROFSEA_DIR / "profsea-assets" / "cmip6-patterns"
+
 
 class SterodynamicCMIP6(SpatialComponent):
     """
@@ -38,7 +41,7 @@ class SterodynamicCMIP6(SpatialComponent):
         self.sample_spatial = sample_spatial
 
         if patterns_dir is None:
-            self.patterns_dir = Path("./profsea/profsea-assets/cmip6-patterns")
+            self.patterns_dir = PATTERNS_DIR
         else:
             self.patterns_dir = Path(patterns_dir)
 
