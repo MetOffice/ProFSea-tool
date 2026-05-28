@@ -38,10 +38,7 @@ class SterodynamicCMIP6(SpatialComponent):
         self.sample_spatial = sample_spatial
 
         if patterns_dir is None:
-            raise FileNotFoundError(
-                "Please specify the path to the CMIP6 sterodynamic "
-                "patterns using the 'patterns_dir' argument."
-            )
+            self.patterns_dir = Path("./profsea/profsea-assets/cmip6-patterns")
         else:
             self.patterns_dir = Path(patterns_dir)
 

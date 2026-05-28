@@ -25,7 +25,7 @@ slr_components = {
     "landwater": LandwaterAR5(),
     "antarctica_dyn": AntarcticaDynAR5(),
     "antarctica_smb": AntarcticaSMBAR5(),
-    "glacier": Glacier()
+    "glacier": Glacier(),
 }
 
 # Pass to the global model
@@ -42,51 +42,33 @@ gmslr = global_model.results["gmslr"]
 spatial_components = {
     "sterodynamic": SterodynamicCMIP6(
         projections["expansion"],
-        patterns_dir="data-minimal/cmip6",
     ),
     "greenland_dyn": Fingerprint(
-        projections["greenland_dyn"],
-        fingerprint_paths=
-        ["data-minimal/grd_fingerprints/greendyn_klemann_nomask.nc",
-         "data-minimal/grd_fingerprints/greendyn_slangen_nomask.nc",
-         "data-minimal/grd_fingerprints/greendyn_spada_nomask.nc"],
+        projections["greenland_dyn"], fingerprint_component="greendyn"
     ),
     "greenland_smb": Fingerprint(
         projections["greenland_smb"],
-        fingerprint_paths=
-        ["data-minimal/grd_fingerprints/greensmb_klemann_nomask.nc",
-         "data-minimal/grd_fingerprints/greensmb_slangen_nomask.nc",
-         "data-minimal/grd_fingerprints/greensmb_spada_nomask.nc"],
+        fingerprint_component="greensmb",
     ),
     "landwater": Fingerprint(
         projections["landwater"],
-        fingerprint_paths="data-minimal/grd_fingerprints/landwater_slangen_nomask.nc",
+        fingerprint_component="landwater",
     ),
     "antarctica_dyn": Fingerprint(
         projections["antarctica_dyn"],
-        fingerprint_paths=
-        ["data-minimal/grd_fingerprints/antdyn_klemann_nomask.nc",
-         "data-minimal/grd_fingerprints/antdyn_slangen_nomask.nc",
-         "data-minimal/grd_fingerprints/antdyn_spada_nomask.nc"],
+        fingerprint_component="antdyn",
     ),
     "antarctica_smb": Fingerprint(
         projections["antarctica_smb"],
-        fingerprint_paths=
-        ["data-minimal/grd_fingerprints/antsmb_klemann_nomask.nc",
-         "data-minimal/grd_fingerprints/antsmb_slangen_nomask.nc",
-         "data-minimal/grd_fingerprints/antsmb_spada_nomask.nc"],
+        fingerprint_component="antsmb",
     ),
     "glacier": Fingerprint(
         projections["glacier"],
-        fingerprint_paths=
-        ["data-minimal/grd_fingerprints/glacier_klemann_nomask.nc",
-         "data-minimal/grd_fingerprints/glacier_slangen_nomask.nc",
-         "data-minimal/grd_fingerprints/glacier_spada_nomask.nc"],
+        fingerprint_component="glacier",
     ),
     "gia": GIA(
-        gia_paths="data-minimal/gia_clean/global_gia.nc",
         sample_spatial=False,
-    )
+    ),
 }
 
 # Pass to the spatial model
@@ -94,7 +76,9 @@ spatial_model = Spatial(components=spatial_components)
 spatial_model.run(member_seed=42)
 
 spatial_model.sum_components(spatial_model.results)
-spatial_model.save_components(spatial_model.results, scenario_name="rcp85", output_format="zarr")
+spatial_model.save_components(
+    spatial_model.results, scenario_name="rcp85", output_format="zarr"
+)
 
 
 ### Plot example ###
@@ -108,7 +92,12 @@ ax = fig.add_subplot(121)
 
 # Global projections
 yrs = np.arange(2006, 2301)
-ax.plot(yrs, np.median(global_model.results["gmslr"], axis=0), label="Global Projection", color="royalblue")
+ax.plot(
+    yrs,
+    np.median(global_model.results["gmslr"], axis=0),
+    label="Global Projection",
+    color="royalblue",
+)
 # fill between 1 and 4 members
 ax.fill_between(
     yrs,
@@ -132,5 +121,10 @@ ax.pcolormesh(
     vmax=vmax,
 )
 ax.coastlines()
-fig.colorbar(mappable=ax.collections[0], label="Relative Sea Level (m)", orientation="horizontal", pad=0.02)
+fig.colorbar(
+    mappable=ax.collections[0],
+    label="Relative Sea Level (m)",
+    orientation="horizontal",
+    pad=0.02,
+)
 plt.show()
