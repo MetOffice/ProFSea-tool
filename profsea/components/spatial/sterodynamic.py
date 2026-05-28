@@ -22,7 +22,17 @@ class SterodynamicCMIP6(SpatialComponent):
         global_projection: np.ndarray,
         patterns_dir: str = None,
         sample_spatial: bool = False,
-    ):
+    ) -> None:
+        """
+        Parameters
+        ----------
+        global_projection: np.ndarray
+             A 2D array (members x years) of global projections to apply the fingerprints to.
+        patterns_dir: str, optional
+             Path to directory containing CMIP6 sterodynamic patterns.
+        sample_spatial: bool, optional
+             If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
+        """
         # Convert to dask array for cheap as possible compute
         self._global_projection = da.from_array(global_projection, chunks="auto")
         self.sample_spatial = sample_spatial
@@ -42,7 +52,15 @@ class SterodynamicCMIP6(SpatialComponent):
     def _load_CMIP6_slopes(self) -> da.Array:
         """
         Load in the CMIP6 slope coefficients.
-        :return: 3D Dask array of regression coefficients (model, lat, lon)
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        da.Array
+            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
         """
         slope_files = list(Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"))
 
@@ -53,7 +71,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Lazily load all files keeping metadata intact
         datasets = [
-            xr.open_dataarray(f, chunks={"lat": 45, "lon": 45}) for f in slope_files
+            xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_zostoga_regression_slope"] for f in slope_files
         ]
 
         # Concatenate along a new dimension (representing the ensemble/models)
@@ -67,9 +85,18 @@ class SterodynamicCMIP6(SpatialComponent):
         """
         Calculate the thermal expansion contribution to the regional component of
         sea level rise.
-        :param scenario: emission scenario
-        :param nsmps: determine the number of samples
-        :return: expansion estimates converted to mm/yr
+
+        Parameters
+        ----------
+        rng: np.random.Generator
+            Random number generator for sampling spatial patterns if needed.
+        state: ClimateState
+            The state object containing the target grid information and number of members.
+
+        Returns
+        -------
+        da.Array
+            A dask array of shape (members, years, lat, lon) containing the thermal expansion contribution to the sterodynamic component for each member and year.
         """
         # Select slope coefficients based on the MIP
         coeffs_da = self._load_CMIP6_slopes()
@@ -85,13 +112,28 @@ class SterodynamicCMIP6(SpatialComponent):
             return coeffs[rand_samples, :, :]
         else:
             # Calc pattern ensemble mean
-            mean_coeff = da.nanmean(coeffs, axis=0)
+            mean_coeff = da.mean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
                 (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
             )
 
     def project(self, state: ClimateState, rng) -> np.ndarray:
+        """
+        Project the sterodynamic component by applying the CMIP6 patterns to the global expansion projection.
+
+        Parameters
+        ----------
+        state: ClimateState
+            The state object containing the target grid information and number of members.
+        rng: np.random.Generator
+            Random number generator for sampling spatial patterns if needed.
+
+        Returns
+        -------
+        np.ndarray
+            A numpy array of shape (members, years, lat, lon) containing the sterodynamic component for each member and year.
+        """
         # Calculate percentiles locally without mutating self
         if state.output_percentiles is not None:
             current_projection = sample_members_2D(

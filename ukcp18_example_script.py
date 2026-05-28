@@ -91,7 +91,7 @@ spatial_components = {
 
 # Pass to the spatial model
 spatial_model = Spatial(components=spatial_components)
-spatial_model.run(scenario="rcp85", member_seed=42)
+spatial_model.run(member_seed=42)
 
 spatial_model.sum_components(spatial_model.results)
 spatial_model.save_components(spatial_model.results, scenario_name="rcp85", output_format="zarr")

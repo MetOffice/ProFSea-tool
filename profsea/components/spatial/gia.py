@@ -19,10 +19,16 @@ class GIA(SpatialComponent):
     def __init__(
         self,
         gia_paths: str | Path | list[str | Path],
-        baseline_yrs: tuple = (1995, 2014),
         sample_spatial: bool = False,
-    ):
-        self.baseline_yrs = baseline_yrs
+    ) -> None:
+        """
+        Parameters
+        ----------
+        gia_paths: str, Path, or list of str/Path
+            Path to a single GIA file, a list of GIA files, or a directory containing GIA files.
+        sample_spatial: bool, optional
+            Whether to sample spatial patterns probabilistically. Default is False.
+        """
         self.sample_spatial = sample_spatial
 
         if isinstance(gia_paths, (str, Path)):
@@ -54,6 +60,16 @@ class GIA(SpatialComponent):
         """
         Lazily loads all GIA files, regrids them, and stacks them into a
         single 3D array of shape (total_models, lat, lon).
+
+        Parameters
+        ----------
+        state: SpatialState
+            The spatial state containing the target grid information.
+
+        Returns
+        -------
+        da.Array
+            A Dask array of shape (total_models, lat, lon) containing the regridded GIA rates.
         """
         grids = []
         for path in self.gia_paths:
@@ -73,13 +89,28 @@ class GIA(SpatialComponent):
         return da.concatenate(grids, axis=0)
 
     def project(self, state: SpatialState, rng: np.random.Generator) -> da.Array:
+        """
+        Project the GIA component by multiplying the accumulation time vector with the spatial rates.
+
+        Parameters
+        ----------
+        state: SpatialState
+            The spatial state containing the target grid information.
+        rng: np.random.Generator
+            Random number generator for sampling GIA models if sample_spatial is True.
+
+        Returns
+        -------
+        da.Array
+            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+        """
         gia_rates = self._load_and_interpolate_rates(state)
         n_patterns = gia_rates.shape[0]
 
         # Calculate the accumulation time vector (mm/yr to m/yr)
         midyr = (
-            self.baseline_yrs[1] - self.baseline_yrs[0] + 1
-        ) * 0.5 + self.baseline_yrs[0]
+            state.baseline_yrs[1] - state.baseline_yrs[0] + 1
+        ) * 0.5 + state.baseline_yrs[0]
         Tdelta = 2006 - midyr
         unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
 

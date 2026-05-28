@@ -25,9 +25,9 @@ class Spatial:
         grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
-        baseline_yrs: tuple = (1986, 2005),
+        baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -41,7 +41,7 @@ class Spatial:
         end_year: int, optional
             The final year of the projections. Default is 2301.
         baseline_yrs: tuple, optional
-            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1986, 2005).
+            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
         """
@@ -53,8 +53,8 @@ class Spatial:
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
 
-        if output_percentiles:
-            self.num_members = len(output_percentiles)
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            self.num_members = len(self.output_percentiles)
         else:
             self.num_members = next(
                 iter(self.components.values())
@@ -88,7 +88,7 @@ class Spatial:
 
         # Log the size of each component and provide an estimate of their memory usage
         for name, comp in self.components.items():
-            if not output_percentiles:
+            if self.output_percentiles is not None and len(self.output_percentiles) > 0:
                 comp_size = comp.global_projection.nbytes / 1e9
                 future_size = (
                     comp_size
@@ -98,7 +98,7 @@ class Spatial:
                 )
             else:
                 comp_size = (
-                    comp.global_projection[: len(output_percentiles)].nbytes / 1e9
+                    comp.global_projection[: len(self.output_percentiles)].nbytes / 1e9
                 )
                 future_size = comp_size * len(self.grid_lats) * len(self.grid_lons)
 
@@ -112,20 +112,57 @@ class Spatial:
                     f"resolution or take percentiles.[/bold red]"
                 )
 
-    def run(self, scenario: str, member_seed: int = 42) -> None:
+    def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
         """
-        Calculates global and regional component part contributions to sea level
-        change.
-        :param mcdir: location of Monte Carlo time series for new projections
-        :param components: sea level components
-        :param scenario: emission scenario
-        :param yrs: years of the projections
-        :param array_dims: Array of nesm, nsmps and nyrs
-            nesm --> Number of ensemble members in time series
-            nsmps --> Determine the number of samples you wish to make
-            nyrs --> Number of years in each projection time series
-        :return: montecarlo_G (global contribution to sea level rise) and
-            montecarlo_R (regional contribution to sea level change)
+        Convert a dictionary of Dask arrays to a dictionary of xarray DataArrays with appropriate coordinates and metadata.
+
+        Parameters
+        ----------
+        arr_dict: Dict[str, da.Array]
+            Dictionary where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
+
+        Returns
+        -------
+        Dict[str, xr.DataArray]
+            Dictionary where keys are component names and values are xarray DataArrays with dimensions (member, time, lat, lon) and appropriate coordinates.
+        """
+        xr_dict = {}
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
+
+        for name, arr in arr_dict.items():
+            xr_dict[name] = xr.DataArray(
+                arr,
+                dims=[member_dim, "time", "lat", "lon"],
+                coords={
+                    member_dim: self.output_percentiles
+                    if self.output_percentiles is not None
+                    else np.arange(arr.shape[0]),
+                    "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
+                    "lat": self.grid_lats,
+                    "lon": self.grid_lons,
+                },
+                attrs={
+                    "units": "m",
+                    "long_name": f"Regional {name} sea-level projections",
+                    "source": "ProFSea-Climate v0.1",
+                },
+            )
+
+        return xr_dict
+
+    def run(self, member_seed: int = 42) -> None:
+        """
+        Run the spatial model to generate regional sea level projections for each component.
+
+        Parameters
+        ----------
+        member_seed: int, optional
+            Seed for random number generation to ensure reproducibility of member sampling. Default is 42.
+
+        Returns
+        -------
+        Dict[str, da.Array]
+            Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
         """
         seed_seq = np.random.SeedSequence(member_seed)
 
@@ -134,13 +171,13 @@ class Spatial:
         )
 
         state = SpatialState(
-            scenario=scenario,
             n_years=self.n_years,
             n_members=self.num_members,
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
             grid_interpolation="linear",
             output_percentiles=self.output_percentiles,
+            baseline_yrs=self.baseline_yrs,
         )
 
         child_seeds = seed_seq.spawn(len(self.components))
@@ -159,30 +196,42 @@ class Spatial:
             lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})
             spatial_projections[name] = lazy_projection
 
-        self.results = spatial_projections
-        return spatial_projections
+        # Put into xarray datasets for easier saving and metadata handling
+        spatial_projections_xr = self._arr_to_xr(spatial_projections)
+        self.results = spatial_projections_xr
+        return self.results
 
-    def sum_components(self, components: Dict[str, da.Array]) -> da.Array:
+    def sum_components(self, components: Dict[str, xr.DataArray]) -> xr.DataArray:
         """
         Sum the spatial components to get total sea-level change.
 
         Parameters
         ----------
-        components: Dict[str, da.Array]
-            Dictionary of spatial component Dask arrays.
+        components: Dict[str, xr.DataArray]
+            Dictionary of spatial component DataArrays.
 
         Returns
         -------
-        da.Array
-            Dask array of the summed spatial projections.
+        xr.DataArray
+            DataArray of the summed spatial projections.
         """
-        total_rsl = da.sum(da.stack(list(components.values()), axis=0), axis=0)
+        # Using xr.concat preserves all dimensions and coordinates, and summing
+        # along the new dimension handles the underlying dask arrays cleanly.
+        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component")
+
+        # Optionally, apply attributes so it matches the other DataArrays
+        total_rsl.attrs = {
+            "units": "m",
+            "long_name": "Regional total sea-level projections",
+            "source": "ProFSea-Climate v0.1",
+        }
+
         components["total_rsl"] = total_rsl
         return total_rsl
 
     def save_components(
         self,
-        components: Dict[str, da.Array],
+        components: Dict[str, xr.DataArray],
         scenario_name: str,
         output_dir: str = ".",
         output_format: str = "zarr",
@@ -192,15 +241,22 @@ class Spatial:
 
         Parameters
         ----------
-        components: Dict[str, da.Array]
-            Dictionary of component names and their corresponding Dask arrays.
+        components: Dict[str, xr.DataArray]
+            Dictionary of component names and their corresponding Xarray DataArrays.
         output_format: str
             Format to save the output in. Must be either 'netcdf' or 'zarr'.
         output_dir: str
             Directory to save components to.
         scenario_name: str
             Name of the scenario you've run the emulator for.
+
+        Returns
+        -------
+        None
         """
+        # Wrap dataarrays in a single Dataset for saving
+        ds = xr.Dataset(components)
+
         output_format = output_format.lower()
         if output_format not in ["netcdf", "zarr"]:
             raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
@@ -208,43 +264,17 @@ class Spatial:
         # Create directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        ds = xr.Dataset()
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
-
-        # Build the shared coordinates once to ensure alignment
-        # Extracting time dynamically based on the shape of the first component
-        sample_shape = next(iter(components.values())).shape
-
-        coords = {
-            member_dim: self.output_percentiles
-            if self.output_percentiles is not None
-            else np.arange(sample_shape[0]),
-            "time": np.arange(2006, sample_shape[1] + 2006),
-            "lat": self.grid_lats,
-            "lon": self.grid_lons,
-        }
-
         encoding = {}
         if output_format == "zarr":
             import numcodecs
+            from numcodecs.zarr3 import Blosc
 
-            compressor = numcodecs.Blosc(
+            compressor = Blosc(
                 cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
             )
 
-        # Loop through the isDask arrays and add them to the single Dataset
+        # Loop through the xrDataarrays and add them to the single Dataset
         for name, component in components.items():
-            xr_dataArray = xr.DataArray(
-                component,
-                dims=[member_dim, "time", "lat", "lon"],
-                coords=coords,
-            )
-            xr_dataArray.attrs["units"] = "m"
-            xr_dataArray.attrs["long_name"] = f"Regional {name} sea-level projections"
-            xr_dataArray.attrs["source"] = "ProFSea-Climate v0.1"
-
-            ds[name] = xr_dataArray
-
             # Populate the encoding dictionary variable-by-variable
             if output_format == "netcdf":
                 encoding[name] = {"zlib": True, "complevel": 5, "dtype": "float32"}
@@ -260,10 +290,11 @@ class Spatial:
 
             # The spinner will animate while to_netcdf is blocking
             with console.status(
-                "[bold cyan]Streaming computation and saving NetCDF...[/bold cyan]",
+                "[bold cyan]Computing and saving NetCDF...[/bold cyan]",
                 spinner="dots",
             ):
-                ds.to_netcdf(out_path, encoding=encoding, compute=True)
+                ds.compute()  # Compute before saving, for speed
+                ds.to_netcdf(out_path, encoding=encoding)
 
             console.log(
                 f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
