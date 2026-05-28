@@ -22,7 +22,10 @@ FP_PATH_MAP = {
         FP_DIR / "greensmb_slangen.nc",
         FP_DIR / "greensmb_spada.nc",
     ],
+    "greenland": [FP_DIR / "greenland_ar6.nc"],
     "landwater": [FP_DIR / "landwater_slangen.nc"],
+    "wais": [FP_DIR / "wais.nc"],
+    "eais": [FP_DIR / "eais.nc"],
     "antdyn": [
         FP_DIR / "antdyn_klemann.nc",
         FP_DIR / "antdyn_slangen.nc",
