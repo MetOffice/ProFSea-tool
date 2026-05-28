@@ -13,9 +13,7 @@ from profsea.components.core.time_projection import time_projection
 @functools.lru_cache(maxsize=1)
 def load_greenland_calibration():
     """Loads the CSV once and keeps it in memory."""
-    # path = Path(__file__).parent / "aux_data" / "ISMIP_GIS_calibration.csv"
-    # Path is actually relative to the project root, not the component file
-    path = Path(__file__).parent.parent / "aux_data" / "ISMIP_GIS_calibration.csv"
+    path = Path(__file__).parents[3] / "aux_data" / "ISMIP_GIS_calibration.csv"
     return pd.read_csv(path)
 
 
@@ -51,7 +49,11 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random(state.nm), a=a_bound, b=b_bound, loc=trend_mean, scale=trend_std
+            rng.random(state.num_members),
+            a=a_bound,
+            b=b_bound,
+            loc=trend_mean,
+            scale=trend_std,
         )
         trend = trend[:, None] * time_delta[None, :]
         trend = trend[:, None, :]
@@ -71,10 +73,10 @@ class GreenlandAR6(Component):
         sle = np.cumsum(dsle, axis=2)  # mm SLE per K of global warming
         sle = sle * 1e-3  # convert mm to m SLE
 
-        # Vectorized distribution of nm samples across the models
+        # Vectorized distribution of num_members samples across the models
         n_models = sle.shape[1]
-        r_per_model = state.nm // n_models
-        r_remainder = state.nm % n_models
+        r_per_model = state.num_members // n_models
+        r_remainder = state.num_members % n_models
 
         # Calculate exactly how many realizations each model should get
         counts = [
@@ -83,9 +85,9 @@ class GreenlandAR6(Component):
 
         # Create an array of indices and expand sle
         model_indices = np.repeat(np.arange(n_models), counts)
-        sle_ens = sle[:, model_indices, :]  # Shape: (nt, nm, nyr)
+        sle_ens = sle[:, model_indices, :]  # Shape: (nt, num_members, nyr)
 
-        # Transpose to match the intended (nm, nt, nyr) shape
+        # Transpose to match the intended (num_members, nt, nyr) shape
         sle_ens = sle_ens.transpose(1, 0, 2)
 
         # Add the trend uncertainty
@@ -98,7 +100,7 @@ class GreenlandAR6(Component):
                 rate[:, :, None] * time_delta[None, None, 1 : state.nyr - 94]
             )
 
-        sle_ens = sle_ens.reshape((state.nm * state.nt, state.nyr))
+        sle_ens = sle_ens.reshape((state.num_members * state.nt, state.nyr))
         return sle_ens
 
 
@@ -133,9 +135,9 @@ class GreenlandSMBAR5(Component):
         febound = [1, 1.15]  # bounds of uniform pdf of SMB elevation feedback factor
 
         # random log-normal factor
-        fn = np.exp(rng.standard_normal(state.nm) * fnlogsd)
+        fn = np.exp(rng.standard_normal(state.num_members) * fnlogsd)
         # elevation feedback factor
-        fe = rng.random(state.nm) * (febound[1] - febound[0]) + febound[0]
+        fe = rng.random(state.num_members) * (febound[1] - febound[0]) + febound[0]
         ff = fn * fe
 
         ztgreen = state.T_ens - dtgreen

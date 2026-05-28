@@ -13,9 +13,7 @@ from profsea.components.core.time_projection import time_projection
 def load_landwater_projection():
     """Loads the NetCDF once and keeps the VALUES in memory."""
     path = (
-        Path(__file__).parent.parent
-        / "aux_data"
-        / "ssp_global_landwater_projections.nc"
+        Path(__file__).parents[3] / "aux_data" / "ssp_global_landwater_projections.nc"
     )
     with xr.open_dataset(path) as ds:
         ds.load()
@@ -48,16 +46,16 @@ class LandwaterAR6(Component):
         del interp_ds
 
         # Make a Monte Carlo ensemble of projections
-        full_repeats = (state.nt * state.nm) // lw.shape[0]
-        remainder = (state.nt * state.nm) % lw.shape[0]
+        full_repeats = (state.nt * state.num_members) // lw.shape[0]
+        remainder = (state.nt * state.num_members) % lw.shape[0]
         lw = np.vstack([np.tile(lw, (full_repeats, 1)), lw[:remainder]])
-        lw = lw.reshape(state.nt * state.nm, lw.shape[1])
+        lw = lw.reshape(state.nt * state.num_members, lw.shape[1])
         lw = lw[:, 1 : state.nyr + 1]  # Start at 2006, end at end_yr
 
         return lw
 
-class LandwaterAR5(Component):
 
+class LandwaterAR5(Component):
     def __init__(self):
         self.startratemean = 0.38
         self.startratepm = 0.49 - 0.38
@@ -71,10 +69,14 @@ class LandwaterAR5(Component):
         np.ndarray
             Land water storage contribution to GMSLR.
         """
-        
+
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.
-        nyr = state.endofAR5 - 2081 + 1  # number of years of the time-mean of the final amount
+        nyr = (
+            state.endofAR5 - 2081 + 1
+        )  # number of years of the time-mean of the final amount
         final = [-0.01, 0.09]  # AR5
-        
-        return time_projection(state, self.startratemean, self.startratepm, final, rng, nfinal=nyr)
+
+        return time_projection(
+            state, self.startratemean, self.startratepm, final, rng, nfinal=nyr
+        )

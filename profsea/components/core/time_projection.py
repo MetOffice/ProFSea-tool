@@ -38,11 +38,11 @@ def time_projection(
         time = np.arange(state.end_yr - state.endofhistory) + 1
 
         if fraction is None:
-            fraction = rng.random((state.nm, state.nt))
-        elif fraction.size != state.nm * state.nt:
+            fraction = rng.random((state.num_members, state.nt))
+        elif fraction.size != state.num_members * state.nt:
             raise ValueError("fraction is the wrong size")
 
-        fraction = fraction.reshape(state.nm, state.nt)
+        fraction = fraction.reshape(state.num_members, state.nt)
 
         # Convert inputs to startrate (m yr-1) and afinal (m), where both are
         # arrays with the size of fraction
