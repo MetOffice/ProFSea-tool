@@ -13,7 +13,7 @@ from profsea.components.core.time_projection import time_projection
 @functools.lru_cache(maxsize=1)
 def load_greenland_calibration():
     """Loads the CSV once and keeps it in memory."""
-    path = Path(__file__).parents[3] / "aux_data" / "ISMIP_GIS_calibration.csv"
+    path = Path(__file__).parents[2] / "aux_data" / "ISMIP_GIS_calibration.csv"
     return pd.read_csv(path)
 
 
@@ -43,7 +43,7 @@ class GreenlandAR6(Component):
         df = self.df
         n_models = len(df)
 
-        model_indices = rng.integers(0, n_models, size=(nt, state.nm))
+        model_indices = rng.integers(0, n_models, size=(nt, state.num_members))
 
         # Extract parameters and reshape to 3D: (nt, nm, 1)
         b0 = df["b0"].values[model_indices][:, :, None]
@@ -61,7 +61,7 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random(state.num_members),
+            rng.random((nt, state.num_members)),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,

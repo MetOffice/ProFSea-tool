@@ -13,7 +13,7 @@ from profsea.components.core.time_projection import time_projection
 def load_landwater_projection():
     """Loads the NetCDF once and keeps the VALUES in memory."""
     path = (
-        Path(__file__).parents[3] / "aux_data" / "ssp_global_landwater_projections.nc"
+        Path(__file__).parents[2] / "aux_data" / "ssp_global_landwater_projections.nc"
     )
     with xr.open_dataset(path) as ds:
         ds.load()
