@@ -61,15 +61,11 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-<<<<<<< HEAD
-            rng.random((nt, state.nm)), a=a_bound, b=b_bound, loc=trend_mean, scale=trend_std
-=======
             rng.random(state.num_members),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,
             scale=trend_std,
->>>>>>> profsea-climate-v2
         )
         trend_sle = (trend[:, :, None] * time_delta[None, None, :]) * 1e-3
 
@@ -88,29 +84,7 @@ class GreenlandAR6(Component):
         # Now integrate
         sle_ens = np.cumsum(dsle, axis=2) * 1e-3  # convert from mm to m
 
-<<<<<<< HEAD
         sle_ens += trend_sle
-=======
-        # Vectorized distribution of num_members samples across the models
-        n_models = sle.shape[1]
-        r_per_model = state.num_members // n_models
-        r_remainder = state.num_members % n_models
-
-        # Calculate exactly how many realizations each model should get
-        counts = [
-            r_per_model + 1 if i < r_remainder else r_per_model for i in range(n_models)
-        ]
-
-        # Create an array of indices and expand sle
-        model_indices = np.repeat(np.arange(n_models), counts)
-        sle_ens = sle[:, model_indices, :]  # Shape: (nt, num_members, nyr)
-
-        # Transpose to match the intended (num_members, nt, nyr) shape
-        sle_ens = sle_ens.transpose(1, 0, 2)
-
-        # Add the trend uncertainty
-        sle_ens += trend
->>>>>>> profsea-climate-v2
 
         # Persist 2100 rate of changeg
         if state.end_yr >= 2100:
@@ -119,13 +93,9 @@ class GreenlandAR6(Component):
             sle_ens[:, :, idx_2100 + 1 :] = sle_ens[:, :, idx_2100 : idx_2100 + 1] + (
                 rate[:, :, None] * time_delta[None, None, 1 : state.nyr - idx_2100]
             )
-<<<<<<< HEAD
-        return sle_ens.reshape(nt * state.nm, state.nyr)
-=======
 
         sle_ens = sle_ens.reshape((state.num_members * state.nt, state.nyr))
         return sle_ens
->>>>>>> profsea-climate-v2
 
 
 class GreenlandSMBAR5(Component):
