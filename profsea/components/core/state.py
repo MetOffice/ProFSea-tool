@@ -17,7 +17,7 @@ class ClimateState:
     end_yr: int
     nyr: int
     nt: int
-    nm: int
+    num_members: int
 
 
 @dataclass

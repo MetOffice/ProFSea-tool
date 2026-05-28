@@ -163,7 +163,7 @@ class AntarcticaDynAR5(Component):
 
             ascale = norm.ppf(state.fraction)
             final = np.exp(lcoeff[2] * ascale**2 + lcoeff[1] * ascale + lcoeff[0])
-            final = final.reshape(state.nm, state.nt)
+            final = final.reshape(state.num_members, state.nt)
         return (
             time_projection(state, 0.41, 0.20, final, rng, fraction=state.fraction)
             + self.d_ant
@@ -207,8 +207,8 @@ class AntarcticaSMBAR5(Component):
         KoKg = [1.1, 0.2]  # ratio of Antarctic warming to global warming from G&H06
 
         # Generate a distribution of products of the above two factors
-        pcoKg = (pcoK[0] + rng.standard_normal([state.nm, state.nt]) * pcoK[1]) * (
-            KoKg[0] + rng.standard_normal([state.nm, state.nt]) * KoKg[1]
+        pcoKg = (pcoK[0] + rng.standard_normal([state.num_members, state.nt]) * pcoK[1]) * (
+            KoKg[0] + rng.standard_normal([state.num_members, state.nt]) * KoKg[1]
         )
         meansmb = 1923  # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
         moaoKg = (
@@ -216,11 +216,11 @@ class AntarcticaSMBAR5(Component):
         )  # m yr-1 of SLE per K of global warming
 
         if state.fraction is None:
-            fraction = rng.random((state.nm, state.nt))
-        elif state.fraction.size != state.nm * state.nt:
+            fraction = rng.random((state.num_members, state.nt))
+        elif state.fraction.size != state.num_members * state.nt:
             raise ValueError("fraction is the wrong size")
         else:
-            fraction = state.fraction.reshape((state.nm, state.nt))
+            fraction = state.fraction.reshape((state.num_members, state.nt))
 
         smax = 0.35  # max value of S in 13.SM.1.5
         ainterfactor = 1 - fraction * smax

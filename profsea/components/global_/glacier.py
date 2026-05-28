@@ -68,11 +68,19 @@ class Glacier(Component):
             )
 
         ngl = len(glparm)
+<<<<<<< HEAD
         model_indices = rng.integers(0, ngl, size=(state.nt, state.nm))
 
         base_factors = np.array([p["factor"] for p in glparm])
         base_exponents = np.array([p["exponent"] for p in glparm])
         base_cvgls = np.array([p["cvgl"] for p in glparm])
+=======
+        r = rng.standard_normal(state.num_members)[:, np.newaxis, np.newaxis]
+        glacier = np.full((state.num_members, state.nt, state.nyr), np.nan)
+
+        r_per_model = state.num_members // ngl
+        r_remainder = state.num_members % ngl
+>>>>>>> profsea-climate-v2
 
         factors = base_factors[model_indices][:, :, None]
         exponents = base_exponents[model_indices][:, :, None]

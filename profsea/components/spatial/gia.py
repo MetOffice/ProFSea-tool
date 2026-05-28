@@ -8,6 +8,9 @@ from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.utils import interpolate_to_grid
 
+PROFSEA_DIR = Path(__file__).resolve().parents[2]
+GIA_DIR = PROFSEA_DIR / "profsea-assets" / "gia"
+
 
 class GIA(SpatialComponent):
     """
@@ -18,7 +21,7 @@ class GIA(SpatialComponent):
 
     def __init__(
         self,
-        gia_paths: str | Path | list[str | Path],
+        gia_paths: str | Path | list[str | Path] = None,
         sample_spatial: bool = False,
     ) -> None:
         """
@@ -31,19 +34,21 @@ class GIA(SpatialComponent):
         """
         self.sample_spatial = sample_spatial
 
-        if isinstance(gia_paths, (str, Path)):
+        if gia_paths is None:
+            self.gia_paths = list(GIA_DIR.glob("*.nc"))
+        elif isinstance(gia_paths, (str, Path)):
             path_obj = Path(gia_paths)
             if path_obj.is_dir():
-                # If it's a folder, grab all NetCDF files inside
                 self.gia_paths = list(path_obj.glob("*.nc"))
             else:
                 self.gia_paths = [path_obj]
         else:
             self.gia_paths = [Path(p) for p in gia_paths]
 
-        # Validation
         if not self.gia_paths:
-            raise FileNotFoundError(f"No GIA NetCDF files found for input: {gia_paths}")
+            raise FileNotFoundError(
+                f"No GIA NetCDF files found. Looked in: {GIA_DIR if gia_paths is None else gia_paths}"
+            )
 
         for p in self.gia_paths:
             if not p.exists():
