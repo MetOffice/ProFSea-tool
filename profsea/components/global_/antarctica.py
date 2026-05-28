@@ -1,5 +1,4 @@
 from pathlib import Path
-from rich.progress import track
 import numpy as np
 from scipy.signal import fftconvolve
 from scipy.stats import norm
@@ -76,7 +75,6 @@ class AntarcticaISMIP6:
 
         preds = np.zeros((nm, n_time))
         tas_int = np.cumsum(tas, axis=1) * dt
-        physical_time = np.arange(n_time) * dt
 
         # Randomly assign an ISMIP6 model and residual draw to each ensemble member
         model_indices = rng.integers(0, self.n_models, size=nm)
@@ -105,10 +103,6 @@ class AntarcticaISMIP6:
             # Fast response
             beta = total_params[2]
             term_fast = beta * tas_int[i]
-
-            # Drift term
-            # drift_coeff = total_params[3]
-            # term_drift = drift_coeff * physical_time
 
             # Combine
             preds[i, :] = term_fast + term_slow

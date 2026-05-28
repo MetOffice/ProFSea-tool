@@ -30,6 +30,7 @@ ZENODO_DOWNLOAD_LINK = (
     "https://zenodo.org/records/20427061/files/profsea-assets.zip?download=1"
 )
 
+
 class Spatial:
     """Spatial sea level rise component emulator."""
 
@@ -110,7 +111,7 @@ class Spatial:
         # Log the size of each component and provide an estimate of their memory usage
         # Output shape will be (num_members, n_years, n_lats, n_lons)
         bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
-        
+
         future_size = (
             self.num_members
             * self.n_years
@@ -355,9 +356,7 @@ def fetch_zenodo_fingerprints(
 
     # 1. Check if data already exists
     if target_dir.exists() and any(target_dir.iterdir()):
-        console.log(
-            f"[bold green]✓ Fingerprint data already found locally at {target_dir}[/bold green]"
-        )
+        console.log("[bold green]✓ ProFSea assets found locally![/bold green]")
         return
 
     # Create the base directory if it doesn't exist
@@ -402,12 +401,15 @@ def fetch_zenodo_fingerprints(
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             # Filter out the __MACOSX directory and its contents
             valid_members = [
-                member for member in zip_ref.namelist() 
+                member
+                for member in zip_ref.namelist()
                 if not member.startswith("__MACOSX/") and not member.startswith("._")
             ]
             zip_ref.extractall(data_dir, members=valid_members)
-            
-        console.log(f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]")
+
+        console.log(
+            f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
+        )
     except zipfile.BadZipFile:
         console.log(
             "[bold red]Error: Downloaded file is not a valid zip archive.[/bold red]"
