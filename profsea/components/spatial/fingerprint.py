@@ -8,6 +8,38 @@ from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.utils import interpolate_to_grid, sample_members_2D
 
+PROFSEA_DIR = Path(__file__).resolve().parents[2]
+FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
+
+FP_PATH_MAP = {
+    "greendyn": [
+        FP_DIR / "greendyn_klemann.nc",
+        FP_DIR / "greendyn_slangen.nc",
+        FP_DIR / "greendyn_spada.nc",
+    ],
+    "greensmb": [
+        FP_DIR / "greensmb_klemann.nc",
+        FP_DIR / "greensmb_slangen.nc",
+        FP_DIR / "greensmb_spada.nc",
+    ],
+    "landwater": [FP_DIR / "landwater_slangen.nc"],
+    "antdyn": [
+        FP_DIR / "antdyn_klemann.nc",
+        FP_DIR / "antdyn_slangen.nc",
+        FP_DIR / "antdyn_spada.nc",
+    ],
+    "antsmb": [
+        FP_DIR / "antsmb_klemann.nc",
+        FP_DIR / "antsmb_slangen.nc",
+        FP_DIR / "antsmb_spada.nc",
+    ],
+    "glacier": [
+        FP_DIR / "glacier_klemann.nc",
+        FP_DIR / "glacier_slangen.nc",
+        FP_DIR / "glacier_spada.nc",
+    ],
+}
+
 
 class Fingerprint(SpatialComponent):
     """
@@ -17,7 +49,8 @@ class Fingerprint(SpatialComponent):
     def __init__(
         self,
         global_projection: np.ndarray,
-        fingerprint_paths: str | Path | list[str | Path],
+        fingerprint_component: str,
+        fingerprint_paths: str | Path | list[str | Path] = None,
         scaling_factor: float = 1.0,
         sample_spatial: bool = False,
     ) -> None:
@@ -36,16 +69,27 @@ class Fingerprint(SpatialComponent):
         self._global_projection = da.from_array(global_projection, chunks="auto")
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial
+        self.fingerprint_component = fingerprint_component
 
+        # Default paths if not provided (can be overridden by user input)
+        if fingerprint_paths is None:
+            # Determine default paths based on the component type
+            try:
+                self.fp_paths = [Path(p) for p in FP_PATH_MAP[fingerprint_component]]
+            except KeyError:
+                raise ValueError(
+                    f"No default fingerprint paths found for fingerprint component '{fingerprint_component}'. Please provide explicit paths."
+                )
         # Normalize the input to always be a list of Path objects
-        if isinstance(fingerprint_paths, (str, Path)):
+        elif isinstance(fingerprint_paths, (str, Path)):
             self.fp_paths = [Path(fingerprint_paths)]
         else:
             self.fp_paths = [Path(p) for p in fingerprint_paths]
 
-        for p in self.fp_paths:
-            if not p.exists():
-                raise FileNotFoundError(f"Missing fingerprint file: {p}")
+        if fingerprint_paths is not None:
+            for p in self.fp_paths:
+                if not p.exists():
+                    raise FileNotFoundError(f"Missing fingerprint file: {p}")
 
     @property
     def global_projection(self):

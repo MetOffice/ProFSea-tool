@@ -36,6 +36,6 @@ class ThermalExpansion(Component):
             therm_std = therm_med * 0. # dummary variable
 
         therm_ens = z[:, np.newaxis] * therm_std + therm_med
-        expansion = np.tile(therm_ens, (state.nm, 1))
+        expansion = np.tile(therm_ens, (state.num_members, 1))
         
-        return expansion.reshape(state.nm * state.nt, state.nyr)
+        return expansion.reshape(state.num_members * state.nt, state.nyr)

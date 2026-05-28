@@ -61,11 +61,11 @@ class Glacier(Component):
             raise KeyError("glaciermip must be False (AR5 parameters), 1 (Hock et al., 2019), or 2 (Marzeion et al., 2020)")
 
         ngl = len(glparm)
-        r = rng.standard_normal(state.nm)[:, np.newaxis, np.newaxis]
-        glacier = np.full((state.nm, state.nt, state.nyr), np.nan)
+        r = rng.standard_normal(state.num_members)[:, np.newaxis, np.newaxis]
+        glacier = np.full((state.num_members, state.nt, state.nyr), np.nan)
 
-        r_per_model = state.nm // ngl
-        r_remainder = state.nm % ngl
+        r_per_model = state.num_members // ngl
+        r_remainder = state.num_members % ngl
 
         # Precompute mgl and zgl for all glacier methods
         mgl_all = np.array(

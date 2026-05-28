@@ -25,7 +25,7 @@ class Global:
         End year of the projections.
     nt: int
         Number of realisations of the input timeseries
-    nm: int
+    num_members: int
         Number of realisations of for each component.
         Must be a multiple of the number of glacier methods.
     tcv: float
@@ -63,7 +63,7 @@ class Global:
         components: Dict[str, Component],
         end_yr: int,
         nt: int = 100,
-        nm: int = 1000,
+        num_members: int = 1000,
         tcv: float = 1.0,
         parallel: bool = True,
         input_ensemble: bool = True,
@@ -74,7 +74,7 @@ class Global:
         self.components = components
         self.end_yr = end_yr
         self.nt = nt
-        self.nm = nm
+        self.num_members = num_members
         self.tcv = tcv
         self.parallel = parallel
         self.input_ensemble = input_ensemble
@@ -117,7 +117,7 @@ class Global:
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change, run_rng)
 
         # Shared physical correlation state
-        fraction = run_rng.random(self.nm * self.nt)
+        fraction = run_rng.random(self.num_members * self.nt)
 
         state = ClimateState(
             scenario=scenario,
@@ -131,7 +131,7 @@ class Global:
             end_yr=self.end_yr,
             nyr=self.nyr,
             nt=self.nt,
-            nm=self.nm,
+            num_members=self.num_members,
         )
 
         # Child RNGs for each component
@@ -160,7 +160,7 @@ class Global:
 
         # Random Sampling
         if self.random_sample:
-            random_idx = run_rng.integers(low=0, high=self.nm)
+            random_idx = run_rng.integers(low=0, high=self.num_members)
             for comp_name, data in results.items():
                 if data.ndim > 1:
                     results[comp_name] = data[random_idx][None, :]
