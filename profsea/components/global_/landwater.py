@@ -47,27 +47,14 @@ class LandwaterAR6(Component):
         lw_base = interp_ds["sea_level_change"].values * 1e-3
         n_samples_nc = lw_base.shape[0]
 
-<<<<<<< HEAD
         # Sample!
-        sample_indices = rng.integers(0, n_samples_nc, size=(state.nt, state.nm))
+        sample_indices = rng.integers(0, n_samples_nc, size=(state.nt, state.num_members))
 
         # Resulting shape: (nt, nm, nyr)
         lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]
-        return lw_ens.reshape(state.nt * state.nm, state.nyr)
-=======
-        # Make a Monte Carlo ensemble of projections
-        full_repeats = (state.nt * state.num_members) // lw.shape[0]
-        remainder = (state.nt * state.num_members) % lw.shape[0]
-        lw = np.vstack([np.tile(lw, (full_repeats, 1)), lw[:remainder]])
-        lw = lw.reshape(state.nt * state.num_members, lw.shape[1])
-        lw = lw[:, 1 : state.nyr + 1]  # Start at 2006, end at end_yr
->>>>>>> profsea-climate-v2
+        return lw_ens.reshape(state.nt * state.num_members, state.nyr)
 
 
-<<<<<<< HEAD
-=======
-
->>>>>>> profsea-climate-v2
 class LandwaterAR5(Component):
     def __init__(self):
         self.startratemean = 0.38
