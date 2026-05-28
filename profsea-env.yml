@@ -1,12 +1,14 @@
-name: profsea-emu
+name: profsea
 channels:
   - conda-forge
 dependencies:
   - cartopy
   - dask
+  - ipykernel
   - iris
   - matplotlib
   - netcdf4
+  - numcodecs
   - numpy
   - pandas
   - python=3.12
@@ -14,3 +16,4 @@ dependencies:
   - rich
   - scipy
   - xarray
+  - zarr
