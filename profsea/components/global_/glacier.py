@@ -68,7 +68,7 @@ class Glacier(Component):
             )
 
         ngl = len(glparm)
-        model_indices = rng.integers(0, ngl, size=(state.nt, state.nm))
+        model_indices = rng.integers(0, ngl, size=(state.nt, state.num_members))
 
         base_factors = np.array([p["factor"] for p in glparm])
         base_exponents = np.array([p["exponent"] for p in glparm])
@@ -78,7 +78,7 @@ class Glacier(Component):
         exponents = base_exponents[model_indices][:, :, None]
         cvgls = base_cvgls[model_indices][:, :, None]
 
-        r = rng.standard_normal((state.nt, state.nm))[:, :, None]
+        r = rng.standard_normal((state.nt, state.num_members))[:, :, None]
 
         T_int_ens_3d = state.T_int_ens[:, None, :]
         # Median shape: (1, 1, nyr)
@@ -95,7 +95,7 @@ class Glacier(Component):
         np.clip(glacier, None, glmass, out=glacier)
 
         # 7. Flatten to standard 2D output for easy summation
-        return glacier.reshape(state.nt * state.nm, state.nyr)
+        return glacier.reshape(state.nt * state.num_members, state.nyr)
 
     def _project_glacier1(
         self, T_int: np.ndarray, factor: np.ndarray, exponent: np.ndarray

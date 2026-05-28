@@ -2,7 +2,7 @@ import numpy as np
 
 from profsea.components.core.base import Component
 from profsea.components.core.state import ClimateState
-from profsea.utils import check_shapes, sample_members_2D
+from profsea.utils import check_shapes
 
 
 class ThermalExpansion(Component):
@@ -35,12 +35,12 @@ class ThermalExpansion(Component):
         std_eff = 0.013 * self.distribution_scaler
 
         exp_efficiency = (
-            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.nm)) * 1e-24
+            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members)) * 1e-24
         )  # m/YJ
 
         ohc_3d = self.OHC_change[:, None, :]
-        # Efficiency shape: (nt, nm, 1)
+        # Efficiency shape: (nt, num_members, 1)
         exp_efficiency_3d = exp_efficiency[:, :, None]
 
         expansion = ohc_3d * exp_efficiency_3d
-        return expansion.reshape(state.nm * state.nt, state.nyr)
+        return expansion.reshape(state.num_members * state.nt, state.nyr)
