@@ -32,10 +32,6 @@ class Global:
         Multiplier for the standard deviation in the input fields.
     parallel: bool
         If True, project SLR components in parallel.
-    input_ensemble: bool
-        If True, use an input ensemble of temperature and
-        ocean heat content change. if False, use a single timeseries of
-        temperature and ocean heat content change.
     output_percentiles: list|np.ndarray
         If not None, calculate percentiles from a 1D list/array for each
         component
@@ -66,7 +62,6 @@ class Global:
         num_members: int = 1000,
         tcv: float = 1.0,
         parallel: bool = True,
-        input_ensemble: bool = True,
         output_percentiles: list | np.ndarray = None,
         palmer_method: bool = True,
         random_sample: bool = False,
@@ -77,7 +72,6 @@ class Global:
         self.num_members = num_members
         self.tcv = tcv
         self.parallel = parallel
-        self.input_ensemble = input_ensemble
         self.output_percentiles = output_percentiles
         self.palmer_method = palmer_method
         self.random_sample = random_sample
