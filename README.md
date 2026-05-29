@@ -1,4 +1,4 @@
-# ProFSea 
+# ProFSea <img src="logo.png" width="100" />
 
 [![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
 
@@ -11,7 +11,9 @@ We simulate sea-level change contributions from:
 - Thermal expansion 🌡️
 - Landwater ⛰️
 
-ProFSea can calculate projections of both global mean sea-level rise and spatially-resolved sea-level change fields.
+ProFSea can calculate projections of both global mean sea-level rise and spatially-resolved sea-level change fields:
+
+
 
 ## Developments
 
