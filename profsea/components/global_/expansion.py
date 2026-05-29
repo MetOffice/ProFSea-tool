@@ -7,8 +7,8 @@ from profsea.utils import check_shapes
 
 class ThermalExpansion(Component):
     """
-    Parameters & Attributes
-    ----------
+    Parameters and Attributes
+    -------------------------
     OHC_change: np.ndarray
         Array of ocean heat content change values.
     exp_efficiency: float

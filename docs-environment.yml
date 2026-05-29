@@ -1,0 +1,8 @@
+name: profsea-climate-docs
+
+
+
+dependencies:
+  - pre-commit
+  - pydata-sphinx-theme
+  - sphinx

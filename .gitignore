@@ -2,5 +2,7 @@
 *__pycache__*
 profsea.egg-info
 data/
+# Ignore the documentation build directory
+docs/build
 *.DS_Store
 .ipynb_checkpoints/
