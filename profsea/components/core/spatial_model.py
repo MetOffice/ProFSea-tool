@@ -284,6 +284,7 @@ class Spatial:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         encoding = {}
+        # Sort out Zarr encoding
         if output_format == "zarr":
             import numcodecs
             from numcodecs.zarr3 import Blosc
@@ -292,28 +293,24 @@ class Spatial:
                 cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
             )
 
-        # Loop through the xrDataarrays and add them to the single Dataset
+        # Set the encoding/compression for each variable based on the output format
         for name, component in components.items():
-            # Populate the encoding dictionary variable-by-variable
             if output_format == "netcdf":
-                encoding[name] = {"zlib": True, "complevel": 5, "dtype": "float32"}
+                encoding[name] = {"zlib": True, "complevel": 1, "dtype": "float32"}
             elif output_format == "zarr":
                 encoding[name] = {"compressor": compressor, "dtype": "float32"}
 
-        # Define output paths
         file_header = f"{scenario_name}_spatial_projection"
 
         # Stream the computation and write to disk
         if output_format == "netcdf":
             out_path = os.path.join(output_dir, f"{file_header}.nc")
 
-            # The spinner will animate while to_netcdf is blocking
             with console.status(
                 "[bold cyan]Computing and saving NetCDF...[/bold cyan]",
                 spinner="dots",
             ):
-                ds.compute()  # Compute before saving, for speed
-                ds.to_netcdf(out_path, encoding=encoding)
+                ds.compute().to_netcdf(out_path, encoding=encoding)
 
             console.log(
                 f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
