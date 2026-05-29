@@ -1,22 +1,28 @@
-# ProFSea-Climate
+# ProFSea 
 
 [![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
 
-🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 <br />
-**Projections created using this branch are currently not fit for any use other than in the development of this repository.** <br />
-🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧 &emsp; 🚧
+ProFSea is sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature. It's modular, easy to setup and self-contained - all you need is global mean surface temperature and ocean heat content forcing anomalies, using any baseline period, and you're good to go.
 
-## About
-This is the experimental science branch of ProFSea, dedicated to extending the capabilities of the existing ProFSea-tool. These extensions have not yet been published or peer-reviewed.
+We simulate sea-level change contributions from:
+- Antartic Ice Sheet 🇦🇶
+- Greenland Ice Sheet 🧊
+- Glacier melt 🏔️
+- Thermal expansion 🌡️
+- Landwater ⛰️
+
+ProFSea can calculate projections of both global mean sea-level rise and spatially-resolved sea-level change fields.
+
+## Developments
 
 Ongoing developments include:
 
 - [x] 🛠️ Full spatial field projections of regional sea-level change
 - [x] 🛠️ Use any input climate forcing to produce ProFSea projections
-- [ ] 🛠️ Updates to sea-level components based on the latest evidence in the literature
+- [x] 🛠️ Updates to sea-level components based on the latest evidence in the literature
 - [ ] 🛠️ Observational constraints to projection ensembles
-- [ ] 🛠️ Structural enhancements such as updated workflows, GitHub Actions and general reformatting
-- [ ] 🛠️ Full code documentation
+- [x] 🛠️ Structural enhancements such as updated workflows, GitHub Actions and general reformatting
+- [x] 🛠️ Full code documentation
 
 ## Contributors
 Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks and Gregory Munday.
