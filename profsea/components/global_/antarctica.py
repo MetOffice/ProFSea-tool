@@ -1,5 +1,4 @@
 from pathlib import Path
-from rich.progress import track
 import numpy as np
 from scipy.signal import fftconvolve
 from scipy.stats import norm
@@ -9,8 +8,17 @@ from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
 
+PROFSEA_DIR = Path(__file__).resolve().parents[2]
+AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
 
-class AntarcticaISMIP6:
+PARAMS_MAP = {
+    "wais": AUX_DATA_DIR / "wais_params_expanded.nc",
+    "eais": AUX_DATA_DIR / "eais_params_expanded.nc",
+    "peninsula": AUX_DATA_DIR / "pen_params_expanded.nc",
+}
+
+
+class AntarcticaISMIP6(Component):
     """
     ISMIP6 2300 Antarctic ice-sheet emulator with two-timescale response.
 
@@ -27,136 +35,187 @@ class AntarcticaISMIP6:
     different response characteristics to warming.
     """
 
-    def __init__(self, params_path: Path, samples: int = 1000):
+    def __init__(self, ais_region: str):
+        """
+        Parameters
+        ----------
+        ais_region: str
+            The Antarctic region to model. Must be one of "wais", "eais", or "peninsula".
+        """
+        params_path = PARAMS_MAP.get(ais_region.lower())
+        if not params_path:
+            raise ValueError(f"Invalid region calibration: {ais_region}")
+
         self.param_ds = xr.load_dataset(params_path)
-        self.n_samples = samples
         self.n_models = self.param_ds.coords["model"].shape[0]
 
     def _impulse_response_term(
         self,
-        tas: np.ndarray,
+        tas_1d: np.ndarray,
         tau1: float,
         tau2: float,
         gamma: float,
-        params: np.ndarray,
+        params_1d: np.ndarray,
         dt: float,
     ) -> np.ndarray:
-        """Computes the slow response term using convolution with two exponential decay kernels.
-        Parameters
-        ----------
-        tas : np.ndarray
-            Time series of global mean surface air temperature anomalies (shape: n_time).
-        tau1 : float
-            Timescale of the first response component (in years).
-        tau2 : float
-            Timescale of the second response component (in years).
-        gamma : float
-            Exponent for the temperature forcing term.
-        params : np.ndarray
-            Array of shape (n_samples, 4) containing [alpha1, alpha2, beta, drift] parameters for each sample.
-        dt : float
-            Time step in years.
-        Returns
-        -------
-        np.ndarray
-            Slow response term for each sample (shape: n_samples x n_time).
-        """
-        n_time = tas.shape[0]
+        """Computes the slow response term for a single trajectory."""
+        n_time = tas_1d.shape[0]
+        alpha1, alpha2, _ = params_1d
 
-        # Two slow coeffs
-        alphas1 = params[:, 0]
-        alphas2 = params[:, 1]
+        forcing_base = np.sign(tas_1d) * (np.abs(tas_1d) ** gamma)
 
-        # Base forcing term to power of gamma, but preserving sign
-        forcing_base = np.sign(tas) * (np.abs(tas) ** gamma)
-
-        # Impulse response function for timescale 1
-        decay_factors1 = np.exp(-np.arange(n_time) * dt / tau1) * (dt / tau1)
+        # decay_factors1 = np.exp(-np.arange(n_time) * dt / tau1) * (dt / tau1)
+        t_arr = np.arange(n_time)
+        decay_factors1 = (t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt
         rate_delayed1 = fftconvolve(forcing_base, decay_factors1, mode="full")[:n_time]
-        t_conv1 = np.cumsum(rate_delayed1, axis=0) * dt
-        term_slow1 = alphas1[:, None] * t_conv1[None, :]
+        term_slow1 = alpha1 * (np.cumsum(rate_delayed1) * dt)
 
-        # Impulse response function for timescale 2
-        decay_factors2 = np.exp(-np.arange(n_time) * dt / tau2) * (dt / tau2)
+        # decay_factors2 = np.exp(-np.arange(n_time) * dt / tau2) * (dt / tau2)
+        decay_factors2 = (t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt
         rate_delayed2 = fftconvolve(forcing_base, decay_factors2, mode="full")[:n_time]
-        t_conv2 = np.cumsum(rate_delayed2, axis=0) * dt
-        term_slow2 = alphas2[:, None] * t_conv2[None, :]
+        term_slow2 = alpha2 * (np.cumsum(rate_delayed2) * dt)
 
-        return term_slow1 + term_slow2  # Slow terms are linearly combined
+        return term_slow1 + term_slow2
 
-    def predict(
-        self, tas: np.ndarray, dt: float = 1.0, display_progress=True, seed=None
-    ) -> np.ndarray:
+    def _precompute_delayed_rates(
+        self, tas: np.ndarray, dt: float
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
-        Projects AIS response using empirical additive bootstrapping.
-        Parameters
-        ----------
-        tas : np.ndarray
-            Time series of global mean surface air temperature anomalies (shape: n_time).
-        dt : float, optional
-            Time step in years (default: 1.0).
-        display_progress : bool, optional
-            Whether to show a progress bar during prediction (default: True).
-        seed : int or None, optional
-            Random seed for reproducibility (default: None).
-        Returns
-        -------
-        np.ndarray
-            Projected AIS contributions (shape: n_models x n_samples x n_time).
+        Precomputes the cumulative delayed rates for all models across all trajectories.
+        Returns two arrays of shape (n_models, n_traj, n_time).
         """
-        tas = np.squeeze(tas)
-        n_time = len(tas)
-        physical_time = np.arange(n_time) * dt
+        n_traj, n_time = tas.shape
+        cum_rate1 = np.zeros((self.n_models, n_traj, n_time))
+        cum_rate2 = np.zeros((self.n_models, n_traj, n_time))
+        t_arr = np.arange(n_time)
 
-        # RNG
-        rng = np.random.default_rng(seed)
+        for m_idx in range(self.n_models):
+            tau1 = float(self.param_ds.tau1[m_idx].values)
+            tau2 = float(self.param_ds.tau2[m_idx].values)
+            gamma = float(self.param_ds.gamma[m_idx].values)
 
-        # Integrated temperature term
-        tas_int = np.cumsum(tas) * dt
+            # Forcing base is model-specific due to gamma. Shape: (n_traj, n_time)
+            forcing_base = np.sign(tas) * (np.abs(tas) ** gamma)
 
-        # Output shape: (n_models, n_samples, n_time)
-        all_preds = np.zeros((self.n_models, self.n_samples, n_time))
+            # Decay factors broadcasted to 2D: (1, n_time)
+            df1 = ((t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt)[
+                np.newaxis, :
+            ]
+            df2 = ((t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt)[
+                np.newaxis, :
+            ]
 
-        # Shape assumed: (n_models, n_training_scenarios, 4)
+            # Vectorized convolution across all trajectories (axes=1)
+            rate_delayed1 = fftconvolve(forcing_base, df1, mode="full", axes=1)[
+                :, :n_time
+            ]
+            cum_rate1[m_idx] = np.cumsum(rate_delayed1, axis=1) * dt
+
+            rate_delayed2 = fftconvolve(forcing_base, df2, mode="full", axes=1)[
+                :, :n_time
+            ]
+            cum_rate2[m_idx] = np.cumsum(rate_delayed2, axis=1) * dt
+
+        return cum_rate1, cum_rate2
+
+    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+        """
+        Projects AIS response using empirical additive bootstrapping aligned
+        to the ClimateState ensemble size.
+        """
+        tas = np.atleast_2d(np.squeeze(state.T_ens))
+        n_traj, n_time = tas.shape
+        dt = 1.0
+        nm = state.nt * state.num_members
+
+        # 1. Precompute expensive convolutions for unique (Model x Trajectory) combos
+        cum_rate1, cum_rate2 = self._precompute_delayed_rates(tas, dt)
+        tas_int = np.cumsum(tas, axis=1) * dt
+
+        # 2. Generate random model/residual assignments for all members
+        model_indices = rng.integers(0, self.n_models, size=nm)
         all_residuals = self.param_ds.param_residuals.values
         n_train_scenarios = all_residuals.shape[1]
+        residual_indices = rng.integers(0, n_train_scenarios, size=nm)
 
-        for model in track(
-            range(self.n_models),
-            description="Projecting AIS response... ",
-            disable=not display_progress,
-        ):
-            # Unpack model-specific parameters
-            tau1 = float(self.param_ds.tau1[model].values)
-            tau2 = float(self.param_ds.tau2[model].values)
-            gamma = float(self.param_ds.gamma[model].values)
+        # 3. Create flat mapping array to match the (Trajectory x Member) layout
+        # This groups by trajectory: [Traj0_Mem0...Traj0_Mem999, Traj1_Mem0...]
+        t_indices = np.repeat(np.arange(n_traj), state.num_members)
 
-            # Unpack general parameters [alpha1, alpha2, beta, drift]
-            general_p = self.param_ds.general_params[model].values
+        # NOTE: If your required grouping is interleaved [Traj0_Mem0, Traj1_Mem0...]
+        # uncomment the line below instead:
+        # t_indices = np.tile(np.arange(n_traj), state.num_members)
 
-            # Sample random parameter residuals for this model
-            rand_indices = rng.integers(0, n_train_scenarios, size=self.n_samples)
-            sampled_residuals = all_residuals[model, rand_indices, :]
+        # 4. Vectorized Parameter Extraction
+        general_p = self.param_ds.general_params.values[model_indices]
+        sampled_residuals = all_residuals[model_indices, residual_indices, :]
+        total_params = general_p + sampled_residuals
 
-            # Add sampled parameter residuals to general parameters
-            total_params = general_p + sampled_residuals
+        # Slice with [:, 0:1] to maintain a 2D shape (nm, 1) for broadcasting against time
+        alpha1 = total_params[:, 0:1]
+        alpha2 = total_params[:, 1:2]
+        beta = total_params[:, 2:3]
 
-            # Slow response term
-            term_slow = self._impulse_response_term(
-                tas, tau1, tau2, gamma, total_params, dt
-            )
+        # 5. Final Vectorized Assembly
+        term_slow = (
+            alpha1 * cum_rate1[model_indices, t_indices]
+            + alpha2 * cum_rate2[model_indices, t_indices]
+        )
+        term_fast = beta * tas_int[t_indices]
 
-            # Fast response term
-            betas = total_params[:, 2]
-            term_fast = betas[:, None] * tas_int[None, :]
+        return term_slow + term_fast
 
-            # Drift term
-            drift_coeffs = total_params[:, 3]
-            term_drift = drift_coeffs[:, None] * physical_time[None, :]
+    # def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    #     """
+    #     Projects AIS response using empirical additive bootstrapping aligned
+    #     to the ClimateState ensemble size.
+    #     """
+    #     tas = state.T_ens
+    #     if tas.ndim > 2:
+    #         tas = np.squeeze(tas)
+    #     if tas.ndim == 1:
+    #         tas = np.expand_dims(tas, axis=0)
 
-            all_preds[model, :, :] = term_fast + term_slow + term_drift
+    #     dt = 1.0
+    #     nm = state.nt * state.num_members
+    #     n_time = tas.shape[1]
 
-        return all_preds
+    #     preds = np.zeros((nm, n_time))
+    #     tas_int = np.cumsum(tas, axis=1) * dt
+
+    #     # Randomly assign an ISMIP6 model and residual draw to each ensemble member
+    #     model_indices = rng.integers(0, self.n_models, size=nm)
+    #     all_residuals = self.param_ds.param_residuals.values
+    #     n_train_scenarios = all_residuals.shape[1]
+    #     residual_indices = rng.integers(0, n_train_scenarios, size=nm)
+
+    #     for i in range(nm):
+    #         t_idx = i // state.num_members
+    #         m_idx = model_indices[i]
+    #         r_idx = residual_indices[i]
+
+    #         # Extract assigned model parameters
+    #         tau1 = float(self.param_ds.tau1[m_idx].values)
+    #         tau2 = float(self.param_ds.tau2[m_idx].values)
+    #         gamma = float(self.param_ds.gamma[m_idx].values)
+
+    #         general_p = self.param_ds.general_params[m_idx].values
+    #         sampled_residuals = all_residuals[m_idx, r_idx, :]
+    #         total_params = general_p + sampled_residuals
+
+    #         # Slow response
+    #         term_slow = self._impulse_response_term(
+    #             tas[t_idx], tau1, tau2, gamma, total_params, dt
+    #         )
+
+    #         # Fast response
+    #         beta = total_params[2]
+    #         term_fast = beta * tas_int[t_idx]
+
+    #         # Combine
+    #         preds[i, :] = term_fast + term_slow
+
+    #     return preds
 
 
 class AntarcticaDynAR5(Component):
@@ -250,9 +309,9 @@ class AntarcticaSMBAR5(Component):
         KoKg = [1.1, 0.2]  # ratio of Antarctic warming to global warming from G&H06
 
         # Generate a distribution of products of the above two factors
-        pcoKg = (pcoK[0] + rng.standard_normal([state.num_members, state.nt]) * pcoK[1]) * (
-            KoKg[0] + rng.standard_normal([state.num_members, state.nt]) * KoKg[1]
-        )
+        pcoKg = (
+            pcoK[0] + rng.standard_normal([state.num_members, state.nt]) * pcoK[1]
+        ) * (KoKg[0] + rng.standard_normal([state.num_members, state.nt]) * KoKg[1])
         meansmb = 1923  # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
         moaoKg = (
             -pcoKg * 1e-2 * meansmb * self.mSLEoGt

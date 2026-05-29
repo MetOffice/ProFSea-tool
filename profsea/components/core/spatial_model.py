@@ -30,6 +30,7 @@ ZENODO_DOWNLOAD_LINK = (
     "https://zenodo.org/records/20427061/files/profsea-assets.zip?download=1"
 )
 
+
 class Spatial:
     """Spatial sea level rise component emulator."""
 
@@ -110,7 +111,7 @@ class Spatial:
         # Log the size of each component and provide an estimate of their memory usage
         # Output shape will be (num_members, n_years, n_lats, n_lons)
         bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
-        
+
         future_size = (
             self.num_members
             * self.n_years
@@ -283,6 +284,7 @@ class Spatial:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         encoding = {}
+        # Sort out Zarr encoding
         if output_format == "zarr":
             import numcodecs
             from numcodecs.zarr3 import Blosc
@@ -291,28 +293,24 @@ class Spatial:
                 cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
             )
 
-        # Loop through the xrDataarrays and add them to the single Dataset
+        # Set the encoding/compression for each variable based on the output format
         for name, component in components.items():
-            # Populate the encoding dictionary variable-by-variable
             if output_format == "netcdf":
-                encoding[name] = {"zlib": True, "complevel": 5, "dtype": "float32"}
+                encoding[name] = {"zlib": True, "complevel": 1, "dtype": "float32"}
             elif output_format == "zarr":
                 encoding[name] = {"compressor": compressor, "dtype": "float32"}
 
-        # Define output paths
         file_header = f"{scenario_name}_spatial_projection"
 
         # Stream the computation and write to disk
         if output_format == "netcdf":
             out_path = os.path.join(output_dir, f"{file_header}.nc")
 
-            # The spinner will animate while to_netcdf is blocking
             with console.status(
                 "[bold cyan]Computing and saving NetCDF...[/bold cyan]",
                 spinner="dots",
             ):
-                ds.compute()  # Compute before saving, for speed
-                ds.to_netcdf(out_path, encoding=encoding)
+                ds.compute().to_netcdf(out_path, encoding=encoding)
 
             console.log(
                 f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
@@ -355,9 +353,7 @@ def fetch_zenodo_fingerprints(
 
     # 1. Check if data already exists
     if target_dir.exists() and any(target_dir.iterdir()):
-        console.log(
-            f"[bold green]✓ Fingerprint data already found locally at {target_dir}[/bold green]"
-        )
+        console.log("[bold green]✓ ProFSea assets found locally![/bold green]")
         return
 
     # Create the base directory if it doesn't exist
@@ -402,12 +398,15 @@ def fetch_zenodo_fingerprints(
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             # Filter out the __MACOSX directory and its contents
             valid_members = [
-                member for member in zip_ref.namelist() 
+                member
+                for member in zip_ref.namelist()
                 if not member.startswith("__MACOSX/") and not member.startswith("._")
             ]
             zip_ref.extractall(data_dir, members=valid_members)
-            
-        console.log(f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]")
+
+        console.log(
+            f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
+        )
     except zipfile.BadZipFile:
         console.log(
             "[bold red]Error: Downloaded file is not a valid zip archive.[/bold red]"

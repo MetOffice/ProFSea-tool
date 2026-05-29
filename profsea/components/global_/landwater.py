@@ -13,7 +13,7 @@ from profsea.components.core.time_projection import time_projection
 def load_landwater_projection():
     """Loads the NetCDF once and keeps the VALUES in memory."""
     path = (
-        Path(__file__).parents[3] / "aux_data" / "ssp_global_landwater_projections.nc"
+        Path(__file__).parents[2] / "aux_data" / "ssp_global_landwater_projections.nc"
     )
     with xr.open_dataset(path) as ds:
         ds.load()
@@ -41,18 +41,18 @@ class LandwaterAR6(Component):
         interp_ds = lw_ds.interp(
             years=np.arange(2005, 2301, 1), method="linear"
         ).squeeze()
-        lw = interp_ds["sea_level_change"].values * 1e-3  # mm to m
+        interp_ds["sea_level_change"].values * 1e-3  # mm to m
 
-        del interp_ds
+        # Base array: Shape (n_samples_in_nc, 296)
+        lw_base = interp_ds["sea_level_change"].values * 1e-3
+        n_samples_nc = lw_base.shape[0]
 
-        # Make a Monte Carlo ensemble of projections
-        full_repeats = (state.nt * state.num_members) // lw.shape[0]
-        remainder = (state.nt * state.num_members) % lw.shape[0]
-        lw = np.vstack([np.tile(lw, (full_repeats, 1)), lw[:remainder]])
-        lw = lw.reshape(state.nt * state.num_members, lw.shape[1])
-        lw = lw[:, 1 : state.nyr + 1]  # Start at 2006, end at end_yr
+        # Sample!
+        sample_indices = rng.integers(0, n_samples_nc, size=(state.nt, state.num_members))
 
-        return lw
+        # Resulting shape: (nt, nm, nyr)
+        lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]
+        return lw_ens.reshape(state.nt * state.num_members, state.nyr)
 
 
 class LandwaterAR5(Component):

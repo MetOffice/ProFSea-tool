@@ -13,7 +13,7 @@ from profsea.components.core.time_projection import time_projection
 @functools.lru_cache(maxsize=1)
 def load_greenland_calibration():
     """Loads the CSV once and keeps it in memory."""
-    path = Path(__file__).parents[3] / "aux_data" / "ISMIP_GIS_calibration.csv"
+    path = Path(__file__).parents[2] / "aux_data" / "ISMIP_GIS_calibration.csv"
     return pd.read_csv(path)
 
 
@@ -31,15 +31,27 @@ class GreenlandAR6(Component):
         np.ndarray
             Total GIS contribution to GMSLR.
         """
-        df = self.df
-        b0 = df["b0"].values[None, :, None]
-        b1 = df["b1"].values[None, :, None]
-        b2 = df["b2"].values[None, :, None]
-        b3 = df["b3"].values[None, :, None]
-        b4 = df["b4"].values[None, :, None]
-        b5 = df["b5"].values[None, :, None]
-        sigma = df["sigma"].values
+        tas = state.T_ens
+        if tas.ndim > 2:
+            tas = np.squeeze(tas)
+        if tas.ndim == 1:
+            tas = np.expand_dims(tas, axis=0)
+
+        nt = tas.shape[0]
         time_delta = np.arange(state.nyr)
+
+        df = self.df
+        n_models = len(df)
+
+        model_indices = rng.integers(0, n_models, size=(nt, state.num_members))
+
+        # Extract parameters and reshape to 3D: (nt, nm, 1)
+        b0 = df["b0"].values[model_indices][:, :, None]
+        b1 = df["b1"].values[model_indices][:, :, None]
+        b2 = df["b2"].values[model_indices][:, :, None]
+        b3 = df["b3"].values[model_indices][:, :, None]
+        b4 = df["b4"].values[model_indices][:, :, None]
+        b5 = df["b5"].values[model_indices][:, :, None]
 
         # GIS trend values taken from FACTS GitHub repo
         trend_mean = 0.19
@@ -49,55 +61,37 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random(state.num_members),
+            rng.random((nt, state.num_members)),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,
             scale=trend_std,
         )
-        trend = trend[:, None] * time_delta[None, :]
-        trend = trend[:, None, :]
-        trend *= 1e-3  # convert mm to m SLE
+        trend_sle = (trend[:, :, None] * time_delta[None, None, :]) * 1e-3
+
+        tas_3d = tas[:, None, :] 
 
         # Calculate GIS contribution rate
         dsle = (
             b0
-            + (b1 * state.T_ens[:, None, :])
-            + (b2 * state.T_ens[:, None, :] ** 2)
-            + (b3 * state.T_ens[:, None, :] ** 3)
+            + (b1 * tas_3d)
+            + (b2 * tas_3d**2)
+            + (b3 * tas_3d**3)
             + (b4 * time_delta[None, None, :])
             + (b5 * time_delta[None, None, :] ** 2)
         )
 
         # Now integrate
-        sle = np.cumsum(dsle, axis=2)  # mm SLE per K of global warming
-        sle = sle * 1e-3  # convert mm to m SLE
+        sle_ens = np.cumsum(dsle, axis=2) * 1e-3  # convert from mm to m
 
-        # Vectorized distribution of num_members samples across the models
-        n_models = sle.shape[1]
-        r_per_model = state.num_members // n_models
-        r_remainder = state.num_members % n_models
-
-        # Calculate exactly how many realizations each model should get
-        counts = [
-            r_per_model + 1 if i < r_remainder else r_per_model for i in range(n_models)
-        ]
-
-        # Create an array of indices and expand sle
-        model_indices = np.repeat(np.arange(n_models), counts)
-        sle_ens = sle[:, model_indices, :]  # Shape: (nt, num_members, nyr)
-
-        # Transpose to match the intended (num_members, nt, nyr) shape
-        sle_ens = sle_ens.transpose(1, 0, 2)
-
-        # Add the trend uncertainty
-        sle_ens += trend
+        sle_ens += trend_sle
 
         # Persist 2100 rate of changeg
         if state.end_yr >= 2100:
-            rate = np.diff(sle_ens, axis=2)[:, :, 94]
-            sle_ens[:, :, 95:] = sle_ens[:, :, 94:95] + (
-                rate[:, :, None] * time_delta[None, None, 1 : state.nyr - 94]
+            idx_2100 = 94
+            rate = np.diff(sle_ens, axis=2)[:, :, idx_2100 - 1]
+            sle_ens[:, :, idx_2100 + 1 :] = sle_ens[:, :, idx_2100 : idx_2100 + 1] + (
+                rate[:, :, None] * time_delta[None, None, 1 : state.nyr - idx_2100]
             )
 
         sle_ens = sle_ens.reshape((state.num_members * state.nt, state.nyr))

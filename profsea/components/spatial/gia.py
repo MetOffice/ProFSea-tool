@@ -21,38 +21,23 @@ class GIA(SpatialComponent):
 
     def __init__(
         self,
-        gia_paths: str | Path | list[str | Path] = None,
+        gia_dir: str | Path = None,
         sample_spatial: bool = False,
     ) -> None:
         """
         Parameters
         ----------
-        gia_paths: str, Path, or list of str/Path
-            Path to a single GIA file, a list of GIA files, or a directory containing GIA files.
+        gia_dir: str, Path, or list of str/Path
+            Path to a directory containing GIA files.
         sample_spatial: bool, optional
             Whether to sample spatial patterns probabilistically. Default is False.
         """
         self.sample_spatial = sample_spatial
 
-        if gia_paths is None:
-            self.gia_paths = list(GIA_DIR.glob("*.nc"))
-        elif isinstance(gia_paths, (str, Path)):
-            path_obj = Path(gia_paths)
-            if path_obj.is_dir():
-                self.gia_paths = list(path_obj.glob("*.nc"))
-            else:
-                self.gia_paths = [path_obj]
+        if gia_dir is None:
+            self.gia_dir = GIA_DIR
         else:
-            self.gia_paths = [Path(p) for p in gia_paths]
-
-        if not self.gia_paths:
-            raise FileNotFoundError(
-                f"No GIA NetCDF files found. Looked in: {GIA_DIR if gia_paths is None else gia_paths}"
-            )
-
-        for p in self.gia_paths:
-            if not p.exists():
-                raise FileNotFoundError(f"Missing GIA file: {p}")
+            self.gia_dir = Path(gia_dir)
 
         # Dummy property required by the base Spatial architecture
         self._global_projection = da.zeros((1, 1))
@@ -76,8 +61,13 @@ class GIA(SpatialComponent):
         da.Array
             A Dask array of shape (total_models, lat, lon) containing the regridded GIA rates.
         """
+        gia_paths = list(self.gia_dir.glob("*.nc"))
+
+        if not gia_paths:
+            raise FileNotFoundError(f"No GIA NetCDF files found in {self.gia_dir}")
+
         grids = []
-        for path in self.gia_paths:
+        for path in gia_paths:
             gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
             interp_da = interpolate_to_grid(gia_da, state.grid_lats, state.grid_lons)
 
