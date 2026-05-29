@@ -8,6 +8,15 @@ from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
 
+PROFSEA_DIR = Path(__file__).resolve().parents[2]
+AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
+
+PARAMS_MAP = {
+    "wais": AUX_DATA_DIR / "wais_params_expanded.nc",
+    "eais": AUX_DATA_DIR / "eais_params_expanded.nc",
+    "peninsula": AUX_DATA_DIR / "pen_params_expanded.nc",
+}
+
 
 class AntarcticaISMIP6(Component):
     """
@@ -26,7 +35,17 @@ class AntarcticaISMIP6(Component):
     different response characteristics to warming.
     """
 
-    def __init__(self, params_path: Path | str):
+    def __init__(self, ais_region: str):
+        """
+        Parameters
+        ----------
+        ais_region: str
+            The Antarctic region to model. Must be one of "wais", "eais", or "peninsula".
+        """
+        params_path = PARAMS_MAP.get(ais_region.lower())
+        if not params_path:
+            raise ValueError(f"Invalid region calibration: {ais_region}")
+
         self.param_ds = xr.load_dataset(params_path)
         self.n_models = self.param_ds.coords["model"].shape[0]
 
@@ -47,18 +66,20 @@ class AntarcticaISMIP6(Component):
 
         # decay_factors1 = np.exp(-np.arange(n_time) * dt / tau1) * (dt / tau1)
         t_arr = np.arange(n_time)
-        decay_factors1 = (t_arr * dt / tau1**2) * np.exp(-t_arr*dt/tau1) * dt
+        decay_factors1 = (t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt
         rate_delayed1 = fftconvolve(forcing_base, decay_factors1, mode="full")[:n_time]
         term_slow1 = alpha1 * (np.cumsum(rate_delayed1) * dt)
 
         # decay_factors2 = np.exp(-np.arange(n_time) * dt / tau2) * (dt / tau2)
-        decay_factors2 = (t_arr * dt / tau2**2) * np.exp(-t_arr*dt/tau2) * dt
+        decay_factors2 = (t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt
         rate_delayed2 = fftconvolve(forcing_base, decay_factors2, mode="full")[:n_time]
         term_slow2 = alpha2 * (np.cumsum(rate_delayed2) * dt)
 
         return term_slow1 + term_slow2
 
-    def _precompute_delayed_rates(self, tas: np.ndarray, dt: float) -> tuple[np.ndarray, np.ndarray]:
+    def _precompute_delayed_rates(
+        self, tas: np.ndarray, dt: float
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Precomputes the cumulative delayed rates for all models across all trajectories.
         Returns two arrays of shape (n_models, n_traj, n_time).
@@ -77,14 +98,22 @@ class AntarcticaISMIP6(Component):
             forcing_base = np.sign(tas) * (np.abs(tas) ** gamma)
 
             # Decay factors broadcasted to 2D: (1, n_time)
-            df1 = ((t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt)[np.newaxis, :]
-            df2 = ((t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt)[np.newaxis, :]
+            df1 = ((t_arr * dt / tau1**2) * np.exp(-t_arr * dt / tau1) * dt)[
+                np.newaxis, :
+            ]
+            df2 = ((t_arr * dt / tau2**2) * np.exp(-t_arr * dt / tau2) * dt)[
+                np.newaxis, :
+            ]
 
             # Vectorized convolution across all trajectories (axes=1)
-            rate_delayed1 = fftconvolve(forcing_base, df1, mode="full", axes=1)[:, :n_time]
+            rate_delayed1 = fftconvolve(forcing_base, df1, mode="full", axes=1)[
+                :, :n_time
+            ]
             cum_rate1[m_idx] = np.cumsum(rate_delayed1, axis=1) * dt
 
-            rate_delayed2 = fftconvolve(forcing_base, df2, mode="full", axes=1)[:, :n_time]
+            rate_delayed2 = fftconvolve(forcing_base, df2, mode="full", axes=1)[
+                :, :n_time
+            ]
             cum_rate2[m_idx] = np.cumsum(rate_delayed2, axis=1) * dt
 
         return cum_rate1, cum_rate2
@@ -111,26 +140,26 @@ class AntarcticaISMIP6(Component):
 
         # 3. Create flat mapping array to match the (Trajectory x Member) layout
         # This groups by trajectory: [Traj0_Mem0...Traj0_Mem999, Traj1_Mem0...]
-        t_indices = np.repeat(np.arange(n_traj), state.num_members) 
-        
+        t_indices = np.repeat(np.arange(n_traj), state.num_members)
+
         # NOTE: If your required grouping is interleaved [Traj0_Mem0, Traj1_Mem0...]
         # uncomment the line below instead:
         # t_indices = np.tile(np.arange(n_traj), state.num_members)
 
         # 4. Vectorized Parameter Extraction
-        general_p = self.param_ds.general_params.values[model_indices] 
+        general_p = self.param_ds.general_params.values[model_indices]
         sampled_residuals = all_residuals[model_indices, residual_indices, :]
         total_params = general_p + sampled_residuals
 
         # Slice with [:, 0:1] to maintain a 2D shape (nm, 1) for broadcasting against time
-        alpha1 = total_params[:, 0:1] 
+        alpha1 = total_params[:, 0:1]
         alpha2 = total_params[:, 1:2]
         beta = total_params[:, 2:3]
 
         # 5. Final Vectorized Assembly
         term_slow = (
-            alpha1 * cum_rate1[model_indices, t_indices] + 
-            alpha2 * cum_rate2[model_indices, t_indices]
+            alpha1 * cum_rate1[model_indices, t_indices]
+            + alpha2 * cum_rate2[model_indices, t_indices]
         )
         term_fast = beta * tas_int[t_indices]
 
@@ -280,9 +309,9 @@ class AntarcticaSMBAR5(Component):
         KoKg = [1.1, 0.2]  # ratio of Antarctic warming to global warming from G&H06
 
         # Generate a distribution of products of the above two factors
-        pcoKg = (pcoK[0] + rng.standard_normal([state.num_members, state.nt]) * pcoK[1]) * (
-            KoKg[0] + rng.standard_normal([state.num_members, state.nt]) * KoKg[1]
-        )
+        pcoKg = (
+            pcoK[0] + rng.standard_normal([state.num_members, state.nt]) * pcoK[1]
+        ) * (KoKg[0] + rng.standard_normal([state.num_members, state.nt]) * KoKg[1])
         meansmb = 1923  # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
         moaoKg = (
             -pcoKg * 1e-2 * meansmb * self.mSLEoGt
