@@ -14,7 +14,7 @@ We simulate sea-level change contributions from:
 
 ProFSea can calculate projections of both global mean sea-level rise and spatially-resolved sea-level change fields:
 
-All the data required to run the regionalisation module can be found here: [![DOI](https://doi.org/badg/10.5281/20427061.svg)](https://doi.org/10.5281/zenodo.20427061)
+All the data required to run the regionalisation module can be found here: [![DOI](https://doi.org/badge/10.5281/20427061.svg)](https://doi.org/10.5281/zenodo.20427061)
 
 ## Developments
 
