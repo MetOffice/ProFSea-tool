@@ -22,6 +22,7 @@ release = '1.0.0'
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
+    "nbsphinx",
 ]
 
 napoleon_google_docstring = False
@@ -55,6 +56,10 @@ autodoc_mock_imports = [
 
 templates_path = ['_templates']
 exclude_patterns = []
+
+nbsphinx_prolog = ""
+# Allow nbsphinx to find notebooks outside the docs/source directory
+nbsphinx_allow_errors = False
 
 
 

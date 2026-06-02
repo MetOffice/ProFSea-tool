@@ -9,7 +9,7 @@ This is the Development Guidelines page.
 
 Open an Issue
 -------------
-Before forking the repository, open an issue in the main repository to describe the changes you plan to make. This helps maintainers track contributions and provide feedback early.
+Before forking the repository, open an issue in the main repository to describe the changes you plan to make. This helps maintainers track contributions and provide feedback early. Check with the repository owners what is the name of the development branch you need to use. In this guide, the name used for the development branch is generically indicated as "development_branch_name"
 
 .. _fork-the-repository:
 
@@ -25,15 +25,17 @@ First, create a fork of the repository in your GitHub account:
 
 Clone Your Fork
 ---------------
-Clone your forked repository and switch to the `profsea-climate` branch:
+Clone your forked repository and switch to the `development_branch_name` branch:
 
 .. code-block:: bash
 
    git clone git@github.com:<your-username>/ProFSea-tool.git
    cd ProFSea-tool
-   git checkout profsea-climate
+   git checkout <development_branch_name>
 
 Replace ``<your-username>`` with your GitHub username.
+
+Replace ``<development_branch_name>`` with the development branch name provided by the repository owners
 
 .. _commit-changes-to-your-fork:
 
@@ -45,7 +47,7 @@ Once you are satisfied with your changes, commit and push them to your fork:
 
    git add .
    git commit -m "Adding feature: <brief description of changes>"
-   git push origin profsea-climate
+   git push origin development_branch_name
 
 Replace ``<brief description of changes>`` with a short summary of your updates.
 
@@ -57,7 +59,8 @@ To contribute your changes to the main repository:
 
 1. Go to your forked repository on GitHub.
 2. Click the **Pull Request** button.
-3. Select the ``profsea-climate`` branch of the main repository as the base branch.
-4. Select the ``profsea-climate`` branch of your fork as the compare branch.
+3. Select the ``development_branch_name`` branch of the main repository as the base branch.
+4. Select the ``development_branch_name`` branch of your fork as the compare branch.
 5. Add a title and description for your pull request.
 6. Click **Create Pull Request**.
+7. Assign reviewers to the pull request

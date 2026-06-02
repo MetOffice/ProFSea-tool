@@ -1,7 +1,7 @@
 How to update the documentation
 ========================================
 
-This is the page describing how to update the documentation.
+This is the page describing how to update the sphinx documentation.
 
 If you want to update the documentation, follow these steps to ensure that your changes are tested locally before contributing:
 
@@ -19,12 +19,12 @@ Ensure you have the required dependencies installed to build the documentation.
 
 2.1 Create a Conda Environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-If you are using Conda, create the environment from the ``environment.yml`` file:
+If you are using Conda, create the environment from the ``docs-environment.yml`` file:
 
 .. code-block:: bash
 
-   conda env create -f environment.yml
-   conda activate profsea-climate-docs
+   conda env create -f docs-environment.yml
+   conda activate profsea-sphinx-docs
 
 2.2 Install Dependencies with Pip (Optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -72,7 +72,7 @@ refer to the following sections in the :ref:`Development Guidelines <development
 
 7. Verify Deployment
 ---------------------
-After your pull request is merged, the GitHub Actions workflow will automatically build and deploy the updated documentation. Verify that the changes are live on GitHub Pages:
+After your pull request is reviewed and merged, the GitHub Actions workflow will automatically build and deploy the updated documentation. Verify that the changes are live on GitHub Pages:
 
 1. Go to the **Actions** tab in the main repository.
 2. Check the logs for the ``deploy-docs.yml`` workflow to ensure it completed successfully.

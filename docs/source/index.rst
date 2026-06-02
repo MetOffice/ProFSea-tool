@@ -1,9 +1,9 @@
-.. profsea-climate documentation master file, created by
+.. profsea documentation master file, created by
    sphinx-quickstart on Wed Apr  8 11:10:23 2026.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-profsea-climate documentation
+profsea documentation
 =============================
 
 Add your content using ``reStructuredText`` syntax. See the
@@ -25,6 +25,7 @@ User Guide
 ----------
 
 See :doc:`user_guide`.
+The worked tutorial notebook is listed on that page.
 
 Development Guidelines
 ----------------------

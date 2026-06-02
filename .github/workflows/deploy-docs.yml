@@ -5,7 +5,7 @@ name: Build and deploy the documentation
 on:
   # Runs on pushes targeting the default branch.
   push:
-    branches: ["profsea-climate-v2"]
+    branches: ["profsea-v3"]
 
   # Allows you to run this workflow manually from the Actions tab.
   workflow_dispatch:
