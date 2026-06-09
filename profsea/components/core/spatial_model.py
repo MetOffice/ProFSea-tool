@@ -2,25 +2,16 @@ import os
 from pathlib import Path
 from typing import Dict
 import warnings
-import zipfile
 
 import dask.array as da
 import numpy as np
-import requests
 from rich.console import Console
-from rich.progress import (
-    Progress,
-    TextColumn,
-    BarColumn,
-    DownloadColumn,
-    TransferSpeedColumn,
-    TimeRemainingColumn,
-    track,
-)
+from rich.progress import track
 import xarray as xr
 
 from .state import SpatialState
-from .base import Component
+from .base import SpatialComponent
+from profsea.utils import fetch_zenodo_fingerprints
 
 console = Console()
 warnings.filterwarnings("ignore")
@@ -36,7 +27,7 @@ class Spatial:
 
     def __init__(
         self,
-        components: Dict[str, Component],
+        components: Dict[str, SpatialComponent],
         grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
@@ -332,87 +323,3 @@ class Spatial:
         console.log(
             "Output shape was " + str(ds[name].shape) + " (members, time, lat, lon)"
         )
-
-
-def fetch_zenodo_fingerprints(
-    zenodo_url: str, data_dir: Path, expected_folder_name: str
-) -> None:
-    """
-    Downloads and extracts the ProFSea fingerprint dataset from Zenodo if it doesn't already exist locally.
-
-    Parameters
-    ----------
-    zenodo_url: str
-        The direct download URL for the fingerprint dataset on Zenodo.
-    data_dir: Path
-        The base directory where the dataset should be stored.
-    expected_folder_name: str
-        The name of the folder that should be created when the dataset is extracted. Used to check if the data already exists.
-    """
-    target_dir = data_dir / expected_folder_name
-
-    # 1. Check if data already exists
-    if target_dir.exists() and any(target_dir.iterdir()):
-        console.log("[bold green]✓ ProFSea assets found locally![/bold green]")
-        return
-
-    # Create the base directory if it doesn't exist
-    data_dir.mkdir(parents=True, exist_ok=True)
-    zip_path = data_dir / "temp_fingerprints.zip"
-
-    console.log(f"Initiating download from {zenodo_url}...")
-
-    # 2. Stream the download with a rich progress bar
-    try:
-        response = requests.get(zenodo_url, stream=True)
-        response.raise_for_status()  # Raise an error for bad status codes
-
-        total_size = int(response.headers.get("content-length", 0))
-
-        with Progress(
-            TextColumn("[bold cyan]{task.description}"),
-            BarColumn(),
-            DownloadColumn(),
-            TransferSpeedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            download_task = progress.add_task(
-                "Downloading dataset...", total=total_size
-            )
-
-            with open(zip_path, "wb") as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        file.write(chunk)
-                        progress.update(download_task, advance=len(chunk))
-
-    except requests.exceptions.RequestException as e:
-        console.log(f"[bold red]Failed to download data: {e}[/bold red]")
-        if zip_path.exists():
-            zip_path.unlink()  # Clean up partial downloads
-        raise
-
-    console.log("Extracting data...")
-    try:
-        with zipfile.ZipFile(zip_path, "r") as zip_ref:
-            # Filter out the __MACOSX directory and its contents
-            valid_members = [
-                member
-                for member in zip_ref.namelist()
-                if not member.startswith("__MACOSX/") and not member.startswith("._")
-            ]
-            zip_ref.extractall(data_dir, members=valid_members)
-
-        console.log(
-            f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
-        )
-    except zipfile.BadZipFile:
-        console.log(
-            "[bold red]Error: Downloaded file is not a valid zip archive.[/bold red]"
-        )
-        raise
-    finally:
-        # 4. Clean up the zip file
-        if zip_path.exists():
-            zip_path.unlink()

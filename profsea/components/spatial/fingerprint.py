@@ -114,7 +114,7 @@ class Fingerprint(SpatialComponent):
         grids = []
         for path in self.fp_paths:
             fp_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
-            fp_interp = interpolate_to_grid(fp_da, state.grid_lats, state.grid_lons)
+            fp_interp = self.extract_spatial(fp_da, state)
             grids.append(fp_interp.data * self.scaling_factor)
 
         # Stack them into a 3D array: (n_fingerprints, lat, lon)
@@ -137,6 +137,7 @@ class Fingerprint(SpatialComponent):
             A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
         """
         fps = self._load_and_interpolate(state)  # Shape: (n_fps, lat, lon)
+        spatial_shape = fps.shape[1:]
 
         # Handle the global projection
         if state.output_percentiles is not None:
@@ -153,7 +154,7 @@ class Fingerprint(SpatialComponent):
             # Only one fingerprint available
             selected_fps = da.broadcast_to(
                 fps[0],
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
         elif self.sample_spatial:
             # Probabilistic mode: pick a random fingerprint per member
@@ -164,9 +165,8 @@ class Fingerprint(SpatialComponent):
             mean_fp = da.nanmean(fps, axis=0)
             selected_fps = da.broadcast_to(
                 mean_fp,
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
-        spatial_projection = global_proj[:, :, None, None] * selected_fps[:, None, :, :]
-        return spatial_projection
+        return self.broadcast_spatiotemporal(global_proj, selected_fps)

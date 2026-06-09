@@ -1,0 +1,146 @@
+from typing import Dict, Tuple
+
+import dask.array as da
+import numpy as np
+from rich.console import Console
+from rich.progress import track
+import xarray as xr
+
+from .base import SpatialComponent
+from .state import LocalState
+
+console = Console()
+
+# Assuming fetch_zenodo_fingerprints, LocalState, and Component are imported here
+console = Console()
+
+
+class Local:
+    """Site-specific (Local) sea level rise component emulator."""
+
+    def __init__(
+        self,
+        components: Dict[str, SpatialComponent],
+        locations: Dict[str, Tuple[float, float]],
+        interpolation_method: str = "linear",
+        end_year: int = 2301,
+        baseline_yrs: tuple = (1995, 2014),
+        output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
+    ) -> None:
+        """
+        Parameters
+        ----------
+        components: dict
+            Dictionary of spatial components to include in the model.
+        locations: dict
+            Dictionary mapping site names to (latitude, longitude) tuples.
+            Example: {"Aberdeen": (57.144, -2.080)}
+        interpolation_method: str, optional
+            Interpolation method to use when interpolating patterns to the target sites. Default is 'linear'.
+        end_year: int, optional
+            The final year of the projections. Default is 2301.
+        baseline_yrs: tuple, optional
+            Tuple defining the start and end years of the baseline period. Default is (1995, 2014).
+        output_percentiles: list or np.ndarray, optional
+            List or array of percentiles to sample from the ensemble for output.
+        """
+
+        self.components = components
+        self.end_year = end_year
+        self.baseline_yrs = baseline_yrs
+        self.output_percentiles = output_percentiles
+        self.start_year = 2006
+        self.n_years = self.end_year - self.start_year
+        self.interpolation_method = interpolation_method
+
+        # Parse the locations dictionary
+        self.site_names = list(locations.keys())
+        self.target_lats = [coords[0] for coords in locations.values()]
+        self.target_lons = [coords[1] for coords in locations.values()]
+
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            self.num_members = len(self.output_percentiles)
+        else:
+            self.num_members = next(
+                iter(self.components.values())
+            ).global_projection.shape[0]
+
+        console.log(
+            f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
+        )
+        console.log(f"Configured for {len(self.site_names)} specific target locations.")
+
+    def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
+        """Convert Dask arrays to xarray DataArrays with site coordinates."""
+        xr_dict = {}
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
+
+        for name, arr in arr_dict.items():
+            xr_dict[name] = xr.DataArray(
+                arr,
+                dims=[member_dim, "time", "site"],
+                coords={
+                    member_dim: self.output_percentiles
+                    if self.output_percentiles is not None
+                    else np.arange(arr.shape[0]),
+                    "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
+                    "site": self.site_names,
+                    "lat": ("site", self.target_lats),
+                    "lon": ("site", self.target_lons),
+                },
+                attrs={
+                    "units": "m",
+                    "long_name": f"Local {name} sea-level projections",
+                    "source": "ProFSea-Climate v0.1",
+                },
+            )
+        return xr_dict
+
+    def run(self, member_seed: int = 42) -> Dict[str, xr.DataArray]:
+        """Run the local model to generate site-specific projections."""
+        seed_seq = np.random.SeedSequence(member_seed)
+
+        console.log(
+            f"Simulating {len(self.components)} sea-level components for {len(self.site_names)} sites..."
+        )
+
+        state = LocalState(
+            n_years=self.n_years,
+            n_members=self.num_members,
+            target_lats=self.target_lats,
+            target_lons=self.target_lons,
+            interpolation_method=self.interpolation_method,
+            output_percentiles=self.output_percentiles,
+            baseline_yrs=self.baseline_yrs,
+        )
+
+        child_seeds = seed_seq.spawn(len(self.components))
+        comp_rngs = {
+            name: np.random.default_rng(s)
+            for name, s in zip(self.components.keys(), child_seeds)
+        }
+
+        local_projections = {}
+        for name, comp in track(
+            self.components.items(), description="Localising components..."
+        ):
+            # Project method should return array of shape (members, time, sites)
+            lazy_projection = comp.project(state, comp_rngs[name])
+
+            # Rechunk to optimize for reading full time-series per site
+            lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: -1})
+            local_projections[name] = lazy_projection
+
+        self.results = self._arr_to_xr(local_projections)
+        return self.results
+
+    def sum_components(self, components: Dict[str, xr.DataArray]) -> xr.DataArray:
+        """Sum the local components to get total sea-level change."""
+        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component")
+        total_rsl.attrs = {
+            "units": "m",
+            "long_name": "Local total sea-level projections",
+            "source": "ProFSea-Climate v0.1",
+        }
+        components["total_rsl"] = total_rsl
+        return total_rsl
