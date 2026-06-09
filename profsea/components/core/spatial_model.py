@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import Dict
 import warnings
@@ -11,7 +10,7 @@ import xarray as xr
 
 from .state import SpatialState
 from .base import SpatialComponent
-from profsea.utils import fetch_zenodo_fingerprints
+from profsea.utils import fetch_zenodo_fingerprints, save_components
 
 console = Console()
 warnings.filterwarnings("ignore")
@@ -121,6 +120,9 @@ class Spatial:
                     f"Consider reducing the number of members, the grid "
                     f"resolution or take percentiles.[/bold red]"
                 )
+
+    # Instance method!
+    save_components = save_components
 
     def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
         """
@@ -238,88 +240,3 @@ class Spatial:
 
         components["total_rsl"] = total_rsl
         return total_rsl
-
-    def save_components(
-        self,
-        components: Dict[str, xr.DataArray],
-        scenario_name: str,
-        output_dir: str = ".",
-        output_format: str = "zarr",
-    ) -> None:
-        """
-        Stream all regional sea level projections to disk in a single file/store.
-
-        Parameters
-        ----------
-        components: Dict[str, xr.DataArray]
-            Dictionary of component names and their corresponding Xarray DataArrays.
-        output_format: str
-            Format to save the output in. Must be either 'netcdf' or 'zarr'.
-        output_dir: str
-            Directory to save components to.
-        scenario_name: str
-            Name of the scenario you've run the emulator for.
-
-        Returns
-        -------
-        None
-        """
-        # Wrap dataarrays in a single Dataset for saving
-        ds = xr.Dataset(components)
-
-        output_format = output_format.lower()
-        if output_format not in ["netcdf", "zarr"]:
-            raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
-
-        # Create directory if it doesn't exist
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-        encoding = {}
-        # Sort out Zarr encoding
-        if output_format == "zarr":
-            import numcodecs
-            from numcodecs.zarr3 import Blosc
-
-            compressor = Blosc(
-                cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
-            )
-
-        # Set the encoding/compression for each variable based on the output format
-        for name, component in components.items():
-            if output_format == "netcdf":
-                encoding[name] = {"zlib": True, "complevel": 1, "dtype": "float32"}
-            elif output_format == "zarr":
-                encoding[name] = {"compressor": compressor, "dtype": "float32"}
-
-        file_header = f"{scenario_name}_spatial_projection"
-
-        # Stream the computation and write to disk
-        if output_format == "netcdf":
-            out_path = os.path.join(output_dir, f"{file_header}.nc")
-
-            with console.status(
-                "[bold cyan]Computing and saving NetCDF...[/bold cyan]",
-                spinner="dots",
-            ):
-                ds.compute().to_netcdf(out_path, encoding=encoding)
-
-            console.log(
-                f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
-            )
-
-        elif output_format == "zarr":
-            out_path = os.path.join(output_dir, f"{file_header}.zarr")
-
-            with console.status(
-                "[bold cyan]Streaming computation and saving Zarr...[/bold cyan]",
-                spinner="dots",
-            ):
-                ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
-
-            console.log(
-                f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}"
-            )
-
-        console.log(
-            "Output shape was " + str(ds[name].shape) + " (members, time, lat, lon)"
-        )

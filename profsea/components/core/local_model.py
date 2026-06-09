@@ -1,4 +1,6 @@
+from pathlib import Path
 from typing import Dict, Tuple
+import warnings
 
 import dask.array as da
 import numpy as np
@@ -8,11 +10,15 @@ import xarray as xr
 
 from .base import SpatialComponent
 from .state import LocalState
+from profsea.utils import fetch_zenodo_fingerprints, save_components
 
 console = Console()
+warnings.filterwarnings("ignore")
 
-# Assuming fetch_zenodo_fingerprints, LocalState, and Component are imported here
-console = Console()
+PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
+ZENODO_DOWNLOAD_LINK = (
+    "https://zenodo.org/records/20427061/files/profsea-assets.zip?download=1"
+)
 
 
 class Local:
@@ -44,6 +50,11 @@ class Local:
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output.
         """
+        fetch_zenodo_fingerprints(
+            zenodo_url=ZENODO_DOWNLOAD_LINK,
+            data_dir=PROFSEA_DIR,
+            expected_folder_name="profsea-assets",
+        )
 
         self.components = components
         self.end_year = end_year
@@ -69,6 +80,9 @@ class Local:
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
         console.log(f"Configured for {len(self.site_names)} specific target locations.")
+
+    # Instance method!
+    save_components = save_components
 
     def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
         """Convert Dask arrays to xarray DataArrays with site coordinates."""
