@@ -85,4 +85,4 @@ html_sidebars = {
 }
 html_static_path = ["_static"]
 html_logo = "_static/profsea-logo.png"
-html_favicon = 'static/favicon.png'
+html_favicon = '_static/favicon.png'
