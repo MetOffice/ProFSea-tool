@@ -14,8 +14,8 @@ PATTERNS_DIR = PROFSEA_DIR / "profsea-assets" / "cmip6-patterns"
 
 class SterodynamicCMIP6(SpatialComponent):
     """
-    Parameters & Attributes
-    ----------
+    Parameters and Attributes
+    -------------------------
     global_projection: np.ndarray
         Array of global sea level rise projections to use as input for sterodynamic projection.
     """
