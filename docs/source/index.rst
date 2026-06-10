@@ -1,49 +1,57 @@
-.. profsea documentation master file, created by
-   sphinx-quickstart on Wed Apr  8 11:10:23 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+ProFSea
+====
 
-profsea documentation
-=============================
+**ProFSea is sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature. It's modular, easy to setup and self-contained - all you need is global mean surface temperature and ocean heat content forcing anomalies, using any baseline period, and you're good to go.**
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
+
+.. grid:: 1 1 2 2
+   :gutter: 2
+
+   .. grid-item-card:: User Guide
+       :link: user_guide
+       :link-type: doc
+       :class-card: sd-rounded-3
+       
+       Learn how to use ProFSea and run the tutorial notebook.
+
+   .. grid-item-card:: API Reference
+       :link: api_reference
+       :link-type: doc
+       :class-card: sd-rounded-3
+       
+       Detailed descriptions of ProFSea functionality by module.
+
+   .. grid-item-card:: Development & Docs
+       :link: documentation
+       :link-type: doc
+       :class-card: sd-rounded-3
+       
+       Guidelines for contributing code and updating this documentation.
+
+   .. grid-item-card:: References
+       :link: references
+       :link-type: doc
+       :class-card: sd-rounded-3
+       
+       Academic and software references for the project.
 
 
 .. toctree::
+   :caption: User Guide
    :maxdepth: 2
-   :caption: Contents:
+   :hidden:
 
    user_guide
-   development_guidelines
-   documentation
+
+.. toctree::
+   :caption: Development
+   :maxdepth: 1
+   :hidden:
+
+.. toctree::
+   :caption: Reference
+   :maxdepth: 1
+   :hidden:
+
    api_reference
    references
-
-User Guide
-----------
-
-See :doc:`user_guide`.
-The worked tutorial notebook is listed on that page.
-
-Development Guidelines
-----------------------
-
-See :doc:`development_guidelines`.
-
-Documentation Guide
--------------------
-
-See :doc:`documentation`.
-
-API Reference
--------------
-
-See :doc:`api_reference`.
-
-References
-----------
-
-See :doc:`references`.
-

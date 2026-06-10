@@ -7,7 +7,7 @@ If you want to update the documentation, follow these steps to ensure that your 
 
 1. Initial Steps
 -----------------------------------
-First of all you need to open an issue, fork and clone the repository. For detailed instructions, refer to the following sections in the :ref:`Development Guidelines <development_guidelines>` page:
+First of all you need to open an issue, fork and clone the repository. For detailed instructions, refer to the following sections in the :ref:`Development Guide <development_guide>` page:
 
 - :ref:`Open an Issue <open-an-issue>`
 - :ref:`Fork the Repository <fork-the-repository>`
@@ -66,7 +66,7 @@ This will generate the HTML files in the ``docs/build/html`` directory. Open the
 6. Commit Changes and Create a Pull Request
 ---------------------------------------------
 Once you are satisfied with your changes, commit and push them to your fork. For detailed instructions,
-refer to the following sections in the :ref:`Development Guidelines <development_guidelines>` page:
+refer to the following sections in the :ref:`Development Guide <development_guide>` page:
 - :ref:`Commit Changes to Your Fork <commit-changes-to-your-fork>`
 - :ref:`Create a Pull Request <create-a-pull-request>`
 

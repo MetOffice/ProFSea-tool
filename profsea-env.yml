@@ -21,6 +21,7 @@ dependencies:
   - rich
   - scipy
   - sphinx
+  - sphinx-design
   - xarray
   - zarr
   

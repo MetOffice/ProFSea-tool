@@ -12,3 +12,5 @@ The worked tutorial notebook is available below:
 	:maxdepth: 1
 
 	worked_example
+	development_guide
+	documentation
