@@ -7,7 +7,7 @@ import xarray as xr
 def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:
     """Sample real ensemble members from a 2D numpy array."""
     # Caculate statistical timeseries, then match with closest real timeseries
-    array_percentiles = np.percentile(array, percentiles, axis=0)
+    array_percentiles = np.nanpercentile(array, percentiles, axis=0)
     distances = cdist(array_percentiles, array)
     mem_indices = np.argmin(distances, axis=1)
     return array[mem_indices]
@@ -46,10 +46,38 @@ def interpolate_to_grid(
     # Normalize target longitudes to [-180, 180) and sort
     target_lons_norm = np.sort(((target_lons + 180) % 360) - 180)
 
-    # Interpolate!
-    data_interp = data.interp(
+    # Pad longitude with one points from each end to handle periodicity 
+    data_padded = data.pad(lon=1, mode='wrap') # need more padding for higher-order interpolation
+
+    # Fix the longitude coordinate after padding
+    lon = data.lon.values
+    lon_padded = np.concatenate([[lon[-1] - 360], lon, [lon[0] + 360]])
+    data_padded['lon'] = lon_padded
+
+    # Now interpolate (maybe add land_mask if condition here)
+    for dim in ["lat", "lon"]:
+        data_padded = data_padded.interpolate_na(
+            dim=dim, method=grid_interpolation,
+            fill_value="extrapolate"
+        ) # this to handle nan values or land mask 
+        
+    data_interp = data_padded.interp(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
+
+    data_interp = data_interp.where
+
+    
+
+    # Acount for land mask (1 where NaN, 0 elsewhere)
+    #if mask_present:
+    #    nan_mask = data.isnull().astype(float).interp(
+    #        lat=target_lats, lon=target_lons_norm, method=grid_interpolation
+    #    )
+
+    #   # Mask out any grid point that had NaN influence
+    #   data_interp = data_interp.where(nan_mask == 0)
+    
     return data_interp
 
 
