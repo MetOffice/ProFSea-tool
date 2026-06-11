@@ -87,12 +87,11 @@ class SterodynamicCMIP6(SpatialComponent):
                 xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"] for f in mask_files
             ]
             mask_stack = xr.concat(datasets_mask, dim="model")
+            mask_stack = mask_stack.sum(dim='model', skipna=True)
             
         else:
             self.land_mask_present = False
-            mask_stack = xr.Dataset() # dummy dataset to return 
-
-        print(self.land_mask_present)
+            mask_stack = None
         
         return slopes_stack, mask_stack
 
@@ -132,7 +131,7 @@ class SterodynamicCMIP6(SpatialComponent):
             return coeffs[rand_samples, :, :]
         else:
             # Calc pattern ensemble mean
-            mean_coeff = da.mean(coeffs, axis=0)
+            mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
                 (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),

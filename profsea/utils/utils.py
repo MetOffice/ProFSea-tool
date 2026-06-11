@@ -28,7 +28,6 @@ def interpolate(data: da.array, lats: int, lons: int) -> np.ndarray:
     ).data
     return data_interp
 
-
 def interpolate_to_grid(
     data: xr.DataArray,
     target_lats: np.ndarray,
@@ -41,42 +40,41 @@ def interpolate_to_grid(
     """
     # Normalize source longitudes to [-180, 180) and sort monotonically
     data = data.assign_coords(lon=(((data.lon + 180) % 360) - 180))
-    data = data.sortby("lon")
+    data = data.sortby(["lat", "lon"])
 
     # Normalize target longitudes to [-180, 180) and sort
     target_lons_norm = np.sort(((target_lons + 180) % 360) - 180)
 
-    # Pad longitude with one points from each end to handle periodicity 
+    # Pad longitude with one points from each end to handle periodicity in zonal direction 
     data_padded = data.pad(lon=1, mode='wrap') # need more padding for higher-order interpolation
-
-    # Fix the longitude coordinate after padding
     lon = data.lon.values
     lon_padded = np.concatenate([[lon[-1] - 360], lon, [lon[0] + 360]])
     data_padded['lon'] = lon_padded
+    data_padded = data_padded.sortby(["lat", "lon"])
 
-    # Now interpolate (maybe add land_mask if condition here)
+    # Now interpolate
+    data_padded = data_padded.chunk({"lat": -1, "lon": -1})
     for dim in ["lat", "lon"]:
         data_padded = data_padded.interpolate_na(
-            dim=dim, method=grid_interpolation,
-            fill_value="extrapolate"
+            dim=dim, method="nearest",
         ) # this to handle nan values or land mask 
         
     data_interp = data_padded.interp(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
 
-    data_interp = data_interp.where
-
+    # Account for land mask (1 where ocean, 0 where land (NaN))
+    ocean_mask = (~data.isnull()).astype(float)
+    ocean_mask_padded = ocean_mask.pad(lon=1, mode='wrap')
+    ocean_mask_padded['lon'] = lon_padded
+    ocean_mask_padded = ocean_mask_padded.sortby(["lat", "lon"])
+    ocean_mask_padded = ocean_mask_padded.chunk({"lat": -1, "lon": -1})
+    ocean_mask_interp = ocean_mask_padded.interp(
+        lat=target_lats, lon=target_lons_norm, method="nearest"
+        )
     
-
-    # Acount for land mask (1 where NaN, 0 elsewhere)
-    #if mask_present:
-    #    nan_mask = data.isnull().astype(float).interp(
-    #        lat=target_lats, lon=target_lons_norm, method=grid_interpolation
-    #    )
-
-    #   # Mask out any grid point that had NaN influence
-    #   data_interp = data_interp.where(nan_mask == 0)
+    data_interp = data_interp.where(ocean_mask_interp == 1)
+    data_interp = data_interp.chunk("auto")
     
     return data_interp
 
