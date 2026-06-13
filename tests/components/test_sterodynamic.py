@@ -1,5 +1,6 @@
-import numpy as np
 from unittest.mock import patch
+
+import numpy as np
 import xarray as xr
 
 from profsea.components.core.state import SpatialState

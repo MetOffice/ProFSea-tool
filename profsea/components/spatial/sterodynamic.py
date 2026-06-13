@@ -73,7 +73,10 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Lazily load all files keeping metadata intact
         datasets = [
-            xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_zostoga_regression_slope"] for f in slope_files
+            xr.open_dataset(f, chunks={"lat": 45, "lon": 45})[
+                "zos_zostoga_regression_slope"
+            ]
+            for f in slope_files
         ]
 
         # Concatenate along a new dimension (representing the ensemble/models)

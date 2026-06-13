@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import dask.array as da
 import numpy as np
-from scipy.spatial.distance import cdist
 import xarray as xr
+from scipy.spatial.distance import cdist
 
 
 def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:

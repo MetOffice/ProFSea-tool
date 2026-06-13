@@ -1,7 +1,8 @@
+from unittest.mock import patch
+
 import dask.array as da
 import numpy as np
 import xarray as xr
-from unittest.mock import patch
 
 from profsea.components.core.spatial_model import Spatial
 

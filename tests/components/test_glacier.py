@@ -1,8 +1,8 @@
-import pytest
 import numpy as np
+import pytest
 
-from profsea.components.global_.glacier import Glacier
 from profsea.components.core.state import ClimateState
+from profsea.components.global_.glacier import Glacier
 
 
 def get_dummy_state(T_change_val: float) -> ClimateState:

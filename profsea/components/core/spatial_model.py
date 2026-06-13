@@ -1,28 +1,27 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from typing import Dict
 import warnings
 import zipfile
+from pathlib import Path
 
 import dask.array as da
 import numpy as np
 import requests
+import xarray as xr
 from rich.console import Console
 from rich.progress import (
-    Progress,
-    TextColumn,
     BarColumn,
     DownloadColumn,
-    TransferSpeedColumn,
+    Progress,
+    TextColumn,
     TimeRemainingColumn,
+    TransferSpeedColumn,
     track,
 )
-import xarray as xr
 
-from .state import SpatialState
 from .base import Component
+from .state import SpatialState
 
 console = Console()
 warnings.filterwarnings("ignore")
@@ -38,7 +37,7 @@ class Spatial:
 
     def __init__(
         self,
-        components: Dict[str, Component],
+        components: dict[str, Component],
         grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
@@ -133,7 +132,7 @@ class Spatial:
                     f"resolution or take percentiles.[/bold red]"
                 )
 
-    def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
+    def _arr_to_xr(self, arr_dict: dict[str, da.Array]) -> dict[str, xr.DataArray]:
         """
         Convert a dictionary of Dask arrays to a dictionary of xarray DataArrays with appropriate coordinates and metadata.
 
@@ -222,7 +221,7 @@ class Spatial:
         self.results = spatial_projections_xr
         return self.results
 
-    def sum_components(self, components: Dict[str, xr.DataArray]) -> xr.DataArray:
+    def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """
         Sum the spatial components to get total sea-level change.
 
@@ -252,7 +251,7 @@ class Spatial:
 
     def save_components(
         self,
-        components: Dict[str, xr.DataArray],
+        components: dict[str, xr.DataArray],
         scenario_name: str,
         output_dir: str = ".",
         output_format: str = "zarr",

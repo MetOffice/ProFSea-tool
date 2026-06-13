@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import concurrent.futures
-from pathlib import Path
 import os
-from typing import Dict
+from pathlib import Path
 
 import numpy as np
-from rich.console import Console
 import xarray as xr
+from rich.console import Console
 
-from .state import ClimateState
+from profsea.utils import check_shapes, sample_members_2D
+
 from .base import Component
-from profsea.utils import sample_members_2D, check_shapes
+from .state import ClimateState
 
 console = Console()
 
@@ -58,7 +58,7 @@ class Global:
 
     def __init__(
         self,
-        components: Dict[str, Component],
+        components: dict[str, Component],
         end_yr: int,
         nt: int = 100,
         num_members: int = 1000,
@@ -87,7 +87,7 @@ class Global:
         scenario: str,
         T_change: np.ndarray,
         member_seed: int = 42,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Run the emulator to project GMSLR components for a specific state.
         Parameters
         ----------
@@ -175,7 +175,7 @@ class Global:
 
         return results
 
-    def sum_components(self, components: Dict[str, np.ndarray]) -> np.ndarray:
+    def sum_components(self, components: dict[str, np.ndarray]) -> np.ndarray:
         """Sum the components to get total GMSLR."""
         components["gmslr"] = np.sum(
             [np.atleast_2d(c) for c in components.values()], axis=0
@@ -183,7 +183,7 @@ class Global:
         return components["gmslr"]
 
     def save_components(
-        self, components: Dict[str, np.ndarray], output_dir: str, scenario_name: str
+        self, components: dict[str, np.ndarray], output_dir: str, scenario_name: str
     ) -> None:
         """Save SLR components as nc files to a directory.
 

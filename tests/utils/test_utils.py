@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 import xarray as xr
 
 from profsea.utils import check_shapes, interpolate_to_grid, sample_members_2D

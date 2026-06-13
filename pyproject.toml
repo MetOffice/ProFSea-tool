@@ -21,6 +21,7 @@ test = [
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+extend-exclude = ["*.ipynb"]
 
 [tool.ruff.lint]
 # Pyflakes (F), pycodestyle (E, W), isort (I), and pyupgrade (UP)

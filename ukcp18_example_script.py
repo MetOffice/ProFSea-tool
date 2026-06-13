@@ -1,19 +1,19 @@
 import cartopy.crs as ccrs
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 from profsea.components.core.global_model import Global
+from profsea.components.core.spatial_model import Spatial
 from profsea.components.global_ import (
-    LandwaterAR5,
-    GreenlandDynAR5,
-    GreenlandSMBAR5,
-    ThermalExpansion,
     AntarcticaDynAR5,
     AntarcticaSMBAR5,
     Glacier,
+    GreenlandDynAR5,
+    GreenlandSMBAR5,
+    LandwaterAR5,
+    ThermalExpansion,
 )
-from profsea.components.core.spatial_model import Spatial
-from profsea.components.spatial import SterodynamicCMIP6, Fingerprint, GIA
+from profsea.components.spatial import GIA, Fingerprint, SterodynamicCMIP6
 
 ### Global projections first ###
 slr_components = {
