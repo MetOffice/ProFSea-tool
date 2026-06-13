@@ -10,6 +10,7 @@ on:
 
 jobs:
   ruff:
+    name: Code Quality (Ruff)
     runs-on: ubuntu-latest
     
     steps:

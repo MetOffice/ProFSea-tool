@@ -15,6 +15,7 @@ exclude = ["docs*", "tests*"]
 test = [
     "pytest>=7.0",
     "pytest-cov",  # Useful for checking test coverage later
+    "pytest-github-actions-annotate-failures"
 ]
 
 # Settings for Ruff formatting
