@@ -4,6 +4,7 @@ profsea.egg-info
 data/
 .pytest_cache/
 .ipynb_checkpoints/
+.ruff_cache/
 
 # Ignore the documentation build directory
 docs/build
