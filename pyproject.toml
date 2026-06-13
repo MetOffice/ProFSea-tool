@@ -5,6 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "profsea"
 version = "3.0"
+dependencies = ["numpy", "xarray", "scipy", "dask"]
 
 [tool.setuptools.packages.find]
 include = ["profsea*"]
