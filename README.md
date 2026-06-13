@@ -1,4 +1,4 @@
-# ProFSea <img src="logo.png" width="100" />
+# ProFSea <img width="100" alt="logo" src="https://github.com/user-attachments/assets/cba78630-9965-4b66-8be1-065ae975229e" />
 
 [![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
 
