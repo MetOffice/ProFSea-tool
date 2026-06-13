@@ -9,3 +9,9 @@ version = "3.0"
 [tool.setuptools.packages.find]
 include = ["profsea*"]
 exclude = ["docs*", "tests*"]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov",  # Useful for checking test coverage later
+]

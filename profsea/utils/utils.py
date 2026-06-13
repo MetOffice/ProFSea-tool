@@ -73,8 +73,7 @@ def check_shapes(array: np.ndarray, n_time: int) -> None:
         array = array[np.newaxis, :]
 
     if array.shape[1] != n_time:
-        # Split over lines for readability
         raise ValueError(
-            f"Array should have shape (realisation, time) with time \
-                dimension of length {n_time}. Got {array.shape}."
+            f"Array should have shape (realisation, time) with time "
+            f"dimension of length {n_time}. Got {array.shape}."
         )
