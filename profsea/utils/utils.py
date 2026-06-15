@@ -72,16 +72,6 @@ def interpolate_to_grid(
     is_land = land_mask.squeeze("region", drop=True)
     data_interp = data_interp.where(~is_land)
     
-    #ocean_mask = (~data.isnull()).astype(float)
-    #ocean_mask_padded = ocean_mask.pad(lon=1, mode='wrap')
-    #ocean_mask_padded['lon'] = lon_padded
-    #ocean_mask_padded = ocean_mask_padded.sortby(["lat", "lon"])
-    #ocean_mask_padded = ocean_mask_padded.chunk({"lat": -1, "lon": -1})
-    #ocean_mask_interp = ocean_mask_padded.interp(
-    #    lat=target_lats, lon=target_lons_norm, method="nearest"
-    #    )
-    #data_interp = data_interp.where(ocean_mask_interp == 1)
-    
     return data_interp
 
 
