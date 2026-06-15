@@ -2,6 +2,7 @@ import dask.array as da
 import numpy as np
 from scipy.spatial.distance import cdist
 import xarray as xr
+import regionmask
 
 
 def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:
@@ -63,18 +64,21 @@ def interpolate_to_grid(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
 
-    # Account for land mask (1 where ocean, 0 where land (NaN))
-    ocean_mask = (~data.isnull()).astype(float)
-    ocean_mask_padded = ocean_mask.pad(lon=1, mode='wrap')
-    ocean_mask_padded['lon'] = lon_padded
-    ocean_mask_padded = ocean_mask_padded.sortby(["lat", "lon"])
-    ocean_mask_padded = ocean_mask_padded.chunk({"lat": -1, "lon": -1})
-    ocean_mask_interp = ocean_mask_padded.interp(
-        lat=target_lats, lon=target_lons_norm, method="nearest"
-        )
+    # Account for land mask (using regionmask library)
+    land = regionmask.defined_regions.natural_earth_v5_0_0.land_110
+    land_mask = land.mask_3D(data_interp)
+    is_land = land_mask.squeeze("region", drop=True)
+    data_interp = data_interp.where(~is_land)
     
-    data_interp = data_interp.where(ocean_mask_interp == 1)
-    data_interp = data_interp.chunk("auto")
+    #ocean_mask = (~data.isnull()).astype(float)
+    #ocean_mask_padded = ocean_mask.pad(lon=1, mode='wrap')
+    #ocean_mask_padded['lon'] = lon_padded
+    #ocean_mask_padded = ocean_mask_padded.sortby(["lat", "lon"])
+    #ocean_mask_padded = ocean_mask_padded.chunk({"lat": -1, "lon": -1})
+    #ocean_mask_interp = ocean_mask_padded.interp(
+    #    lat=target_lats, lon=target_lons_norm, method="nearest"
+    #    )
+    #data_interp = data_interp.where(ocean_mask_interp == 1)
     
     return data_interp
 

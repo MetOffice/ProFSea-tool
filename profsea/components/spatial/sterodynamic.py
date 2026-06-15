@@ -3,6 +3,8 @@ from pathlib import Path
 import dask.array as da
 import numpy as np
 import xarray as xr
+import logging
+logging.basicConfig(level=logging.WARNING)
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
@@ -60,9 +62,13 @@ class SterodynamicCMIP6(SpatialComponent):
         Returns
         -------
         da.Array
-            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
+            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic 
+            fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
         """
-        slope_files = list(Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"))
+        slope_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
+            key=lambda p: p.name
+        )
 
         if not slope_files:
             raise FileNotFoundError(
@@ -78,16 +84,27 @@ class SterodynamicCMIP6(SpatialComponent):
         slopes_stack = xr.concat(datasets, dim="model")
 
         # Read land mask if present
-        mask_files = list(Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"))
+        mask_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"),
+            key=lambda p: p.name
+        )
+
         
         if mask_files:
-            self.land_mask_present = True
-
-            datasets_mask = [
-                xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"] for f in mask_files
-            ]
-            mask_stack = xr.concat(datasets_mask, dim="model")
-            mask_stack = mask_stack.sum(dim='model', skipna=True)
+            if(len(slope_files) == len(mask_files)):
+                self.land_mask_present = True
+    
+                datasets_mask = [
+                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"] for f in mask_files
+                ]
+                mask_stack = xr.concat(datasets_mask, dim="model")
+                #mask_stack = mask_stack.sum(dim='model', skipna=True)
+            
+            else:
+                logging.warning("There is a mismatch between number of slope files and mask files. "
+                                "Ignoring mask files.")
+                self.land_mask_present = False
+                mask_stack = None
             
         else:
             self.land_mask_present = False

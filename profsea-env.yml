@@ -13,6 +13,7 @@ dependencies:
   - pandas
   - python=3.12
   - pyyaml
+  - regionmask
   - requests
   - rich
   - scipy
