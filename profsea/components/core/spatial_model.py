@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import warnings
 import zipfile
@@ -23,6 +24,7 @@ from rich.progress import (
 from .base import Component
 from .state import SpatialState
 
+logger = logging.getLogger(__name__)
 console = Console()
 warnings.filterwarnings("ignore")
 
@@ -105,7 +107,7 @@ class Spatial:
             grid_config["step_lat"],
         )
 
-        console.log(
+        logger.info(
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
 
@@ -124,8 +126,8 @@ class Spatial:
         for name, comp in self.components.items():
             # Warn if memory usage is going to be large
             if future_size > 20:
-                console.log(
-                    f"[bold red]Warning: the output array for component "
+                logger.warning(
+                    f"[bold red]The output array for component "
                     f"[bold blue]'{name}'[/bold blue] requires a large amount "
                     f"of memory [bold blue]({future_size:.2f} GB)[/bold blue]. "
                     f"Consider reducing the number of members, the grid "
@@ -186,7 +188,7 @@ class Spatial:
         """
         seed_seq = np.random.SeedSequence(member_seed)
 
-        console.log(
+        logger.info(
             f"Simulating {len(self.components)} sea-level components...: {', '.join(self.components.keys())}"
         )
 
@@ -313,7 +315,7 @@ class Spatial:
             ):
                 ds.compute().to_netcdf(out_path, encoding=encoding)
 
-            console.log(
+            logger.info(
                 f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
             )
 
@@ -326,11 +328,11 @@ class Spatial:
             ):
                 ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
 
-            console.log(
+            logger.info(
                 f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}"
             )
 
-        console.log(
+        logger.info(
             "Output shape was " + str(ds[name].shape) + " (members, time, lat, lon)"
         )
 
@@ -354,14 +356,14 @@ def fetch_zenodo_fingerprints(
 
     # 1. Check if data already exists
     if target_dir.exists() and any(target_dir.iterdir()):
-        console.log("[bold green]✓ ProFSea assets found locally![/bold green]")
+        logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
         return
 
     # Create the base directory if it doesn't exist
     data_dir.mkdir(parents=True, exist_ok=True)
     zip_path = data_dir / "temp_fingerprints.zip"
 
-    console.log(f"Initiating download from {zenodo_url}...")
+    logger.info(f"Initiating download from {zenodo_url}...")
 
     # 2. Stream the download with a rich progress bar
     try:
@@ -389,12 +391,12 @@ def fetch_zenodo_fingerprints(
                         progress.update(download_task, advance=len(chunk))
 
     except requests.exceptions.RequestException as e:
-        console.log(f"[bold red]Failed to download data: {e}[/bold red]")
+        logger.error(f"[bold red]Failed to download data: {e}[/bold red]")
         if zip_path.exists():
             zip_path.unlink()  # Clean up partial downloads
         raise
 
-    console.log("Extracting data...")
+    logger.info("Extracting data...")
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             # Filter out the __MACOSX directory and its contents
@@ -405,11 +407,11 @@ def fetch_zenodo_fingerprints(
             ]
             zip_ref.extractall(data_dir, members=valid_members)
 
-        console.log(
+        logger.info(
             f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
         )
     except zipfile.BadZipFile:
-        console.log(
+        logger.error(
             "[bold red]Error: Downloaded file is not a valid zip archive.[/bold red]"
         )
         raise

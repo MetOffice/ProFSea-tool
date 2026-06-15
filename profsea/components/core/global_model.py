@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import os
 from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from rich.console import Console
 
 from profsea.utils import check_shapes, sample_members_2D
 
 from .base import Component
 from .state import ClimateState
 
-console = Console()
+logger = logging.getLogger(__name__)
 
 
 class Global:
@@ -165,7 +165,7 @@ class Global:
 
         # Output percentiles
         if self.output_percentiles is not None:
-            console.log(
+            logger.info(
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
