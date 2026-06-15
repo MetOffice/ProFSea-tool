@@ -10,7 +10,11 @@ logger.setLevel(logging.INFO)
 
 # Use Rich!
 rich_handler = RichHandler(
-    rich_tracebacks=True, show_time=True, show_path=False, markup=True
+    rich_tracebacks=True,
+    show_time=True,
+    show_path=False,
+    markup=True,
+    log_time_format="[%H:%M:%S]",
 )
 
 formatter = logging.Formatter("%(message)s")
