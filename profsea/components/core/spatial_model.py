@@ -189,7 +189,7 @@ class Spatial:
         seed_seq = np.random.SeedSequence(member_seed)
 
         logger.info(
-            f"Simulating {len(self.components)} sea-level components...: {', '.join(self.components.keys())}"
+            f"Simulating {len(self.components)} sea-level components: {', '.join(self.components.keys())}"
         )
 
         state = SpatialState(
@@ -209,6 +209,7 @@ class Spatial:
         }
 
         spatial_projections = {}
+        console.print()  # Add a blank line for better readability in the console output
         for name, comp in track(
             self.components.items(), description="Spatialising components..."
         ):
@@ -217,6 +218,7 @@ class Spatial:
             # Rechunk before saving to optimize memory during writing
             lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})
             spatial_projections[name] = lazy_projection
+        console.print()
 
         # Put into xarray datasets for easier saving and metadata handling
         spatial_projections_xr = self._arr_to_xr(spatial_projections)
