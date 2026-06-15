@@ -1,9 +1,9 @@
-.. _development_guidelines:
+.. _development_guide:
 
-Development Guidelines
+Development Guide
 ======================
 
-This is the Development Guidelines page.
+This is the Development Guide page.
 
 .. _open-an-issue:
 

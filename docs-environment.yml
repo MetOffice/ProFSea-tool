@@ -1,10 +1,9 @@
 name: profsea-sphinx-docs
 
-
-
 dependencies:
   - pre-commit
   - pydata-sphinx-theme
   - sphinx
+  - sphinx-design
   - nbsphinx
   - pandoc

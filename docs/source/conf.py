@@ -11,10 +11,10 @@ sys.path.insert(0, os.path.abspath("../.."))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'profsea-climate'
-copyright = '2026, MetOffice'
-author = 'isabellaascione'
-release = '1.0.0'
+project = "ProFSea"
+copyright = "2026, MetOffice"
+author = "isabellaascione"
+release = "3.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
@@ -23,6 +23,7 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.napoleon",
     "nbsphinx",
+    "sphinx_design",
 ]
 
 napoleon_google_docstring = False
@@ -54,7 +55,7 @@ autodoc_mock_imports = [
     "xarray",
 ]
 
-templates_path = ['_templates']
+templates_path = ["_templates"]
 exclude_patterns = []
 
 nbsphinx_prolog = ""
@@ -62,16 +63,26 @@ nbsphinx_prolog = ""
 nbsphinx_allow_errors = False
 
 
-
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'pydata_sphinx_theme'
+html_theme = "pydata_sphinx_theme"
 html_theme_options = {
-    'show_nav_level': 2,
-    'secondary_sidebar_items': [],
+    "show_nav_level": 2,
+    "header_links_before_dropdown": 4,
+    "secondary_sidebar_items": [],
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/MetOffice/ProFSea-tool",
+            "icon": "fa-brands fa-square-github",
+            "type": "fontawesome",
+        }
+    ],
 }
 html_sidebars = {
     "**": ["search-field", "sidebar-nav-bs", "page-toc"],
 }
-html_static_path = ['_static']
+html_static_path = ["_static"]
+html_logo = "_static/profsea-logo.png"
+html_favicon = '_static/favicon.png'
