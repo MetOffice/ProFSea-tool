@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import dask.array as da
 import numpy as np
+import regionmask
 import xarray as xr
 from scipy.spatial.distance import cdist
-import regionmask
-
 
 def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:
     """Sample real ensemble members from a 2D numpy array."""
@@ -48,7 +47,7 @@ def interpolate_to_grid(
     # Normalize target longitudes to [-180, 180) and sort
     target_lons_norm = np.sort(((target_lons + 180) % 360) - 180)
 
-    # Pad longitude with one points from each end to handle periodicity in zonal direction 
+    # Pad longitude with one points from each end to handle periodicity in zonal direction
     data_padded = data.pad(lon=1, mode='wrap') # need more padding for higher-order interpolation
     lon = data.lon.values
     lon_padded = np.concatenate([[lon[-1] - 360], lon, [lon[0] + 360]])
@@ -60,8 +59,8 @@ def interpolate_to_grid(
     for dim in ["lat", "lon"]:
         data_padded = data_padded.interpolate_na(
             dim=dim, method="nearest",
-        ) # this to handle nan values or land mask 
-        
+        ) # this to handle nan values or land mask
+
     data_interp = data_padded.interp(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
@@ -71,7 +70,7 @@ def interpolate_to_grid(
     land_mask = land.mask_3D(data_interp)
     is_land = land_mask.squeeze("region", drop=True)
     data_interp = data_interp.where(~is_land)
-    
+
     return data_interp
 
 
