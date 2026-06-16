@@ -1,3 +1,4 @@
+import logging
 import warnings
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from profsea.utils import fetch_zenodo_fingerprints, save_components
 from .base import SpatialComponent
 from .state import LocalState
 
+logger = logging.getLogger(__name__)
 console = Console()
 warnings.filterwarnings("ignore")
 
@@ -28,7 +30,7 @@ class Local:
         self,
         components: dict[str, SpatialComponent],
         locations: dict[str, tuple[float, float]],
-        interpolation_method: str = "linear",
+        interpolation_method: str = "nearest",
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
@@ -42,7 +44,7 @@ class Local:
             Dictionary mapping site names to (latitude, longitude) tuples.
             Example: {"Aberdeen": (57.144, -2.080)}
         interpolation_method: str, optional
-            Interpolation method to use when interpolating patterns to the target sites. Default is 'linear'.
+            Interpolation method to use when interpolating patterns to the target sites. Default is 'nearest'.
         end_year: int, optional
             The final year of the projections. Default is 2301.
         baseline_yrs: tuple, optional
@@ -76,16 +78,28 @@ class Local:
                 iter(self.components.values())
             ).global_projection.shape[0]
 
-        console.log(
+        logger.info(
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
-        console.log(f"Configured for {len(self.site_names)} specific target locations.")
+        logger.info(f"Configured for {len(self.site_names)} specific target locations.")
 
     # Instance method!
     save_components = save_components
 
     def _arr_to_xr(self, arr_dict: dict[str, da.Array]) -> dict[str, xr.DataArray]:
-        """Convert Dask arrays to xarray DataArrays with site coordinates."""
+        """
+        Convert Dask arrays to xarray DataArrays with site coordinates.
+
+        Parameters
+        ----------
+        arr_dict: dict
+            Dictionary of Dask arrays to convert. Keys should be the component names and values should be Dask arrays of shape (members, time, sites).
+
+        Returns
+        -------
+        dict
+            Dictionary of xarray DataArrays with site coordinates. Keys are the same as in arr_dict.
+        """
         xr_dict = {}
         member_dim = "percentile" if self.output_percentiles is not None else "member"
 
@@ -110,11 +124,66 @@ class Local:
             )
         return xr_dict
 
+    def _apply_universal_mask(self) -> None:
+        """
+        Identify locations that evaluate to NaN in ANY component (typically driven
+        by the sterodynamic land mask) and propagate that NaN to ALL components.
+        This ensures physical consistency: a site over land has no valid components.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        if not hasattr(self, "results") or not self.results:
+            return
+
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
+        spatial_slices = [
+            comp.isel({member_dim: 0, "time": 0}) for comp in self.results.values()
+        ]
+
+        # Site is valid if it is non-NaN in ALL components
+        stacked_slices = xr.concat(spatial_slices, dim="component")
+        valid_site_mask = stacked_slices.notnull().all(dim="component").compute()
+
+        # Inform user of land mask
+        masked_sites = [
+            site
+            for site, is_valid in zip(self.site_names, valid_site_mask.values)
+            if not is_valid
+        ]
+        if masked_sites:
+            logger.warning(
+                f"The following site(s) may be over land: {', '.join(masked_sites)}. "
+                "Expect NaN values for all components. "
+                "Either try increasing your grid resolution or check your site coordinates."
+            )
+
+        # Apply the mask uniformly
+        for name in self.results.keys():
+            self.results[name] = self.results[name].where(valid_site_mask)
+
     def run(self, member_seed: int = 42) -> dict[str, xr.DataArray]:
-        """Run the local model to generate site-specific projections."""
+        """
+        Run the local model to generate site-specific projections.
+
+        Parameters
+        ----------
+        member_seed: int, optional
+            Seed for random number generation to ensure reproducibility of member sampling. Default is 42.
+
+        Returns
+        -------
+        dict
+            Dictionary of local projections for each component, where keys are component names and values are xarray DataArrays of shape (n_members, n_years, n_sites).
+        """
         seed_seq = np.random.SeedSequence(member_seed)
 
-        console.log(
+        logger.info(
             f"Simulating {len(self.components)} sea-level components for {len(self.site_names)} sites..."
         )
 
@@ -135,6 +204,7 @@ class Local:
         }
 
         local_projections = {}
+        logger.info("Starting localisation of components...")
         for name, comp in track(
             self.components.items(), description="Localising components..."
         ):
@@ -146,11 +216,24 @@ class Local:
             local_projections[name] = lazy_projection
 
         self.results = self._arr_to_xr(local_projections)
+        self._apply_universal_mask()
         return self.results
 
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
-        """Sum the local components to get total sea-level change."""
-        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component")
+        """
+        Sum the local components to get total sea-level change.
+
+        Parameters
+        ----------
+        components: dict
+            Dictionary of xarray DataArrays representing individual components.
+
+        Returns
+        -------
+        xr.DataArray
+            A single xarray DataArray representing the total sea-level projections, with appropriate attributes.
+        """
+        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component", skipna=False)
         total_rsl.attrs = {
             "units": "m",
             "long_name": "Local total sea-level projections",

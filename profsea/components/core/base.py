@@ -41,7 +41,7 @@ class SpatialComponent(Component):
             return da_input.interp(
                 lat=lats,
                 lon=lons,
-                method=getattr(state, "interpolation_method", "linear"),
+                method=getattr(state, "interpolation_method", "nearest"),
             )
         elif hasattr(state, "grid_lats"):
             from profsea.utils import interpolate_to_grid
