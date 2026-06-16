@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import numpy as np
 import xarray as xr
@@ -11,7 +11,7 @@ from profsea.components.spatial.sterodynamic import SterodynamicCMIP6
 @patch("profsea.components.spatial.sterodynamic.xr.open_dataset")
 @patch("profsea.components.spatial.sterodynamic.Path.glob")
 def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
-    # 1. Setup mock file paths (glob is called twice: once for slopes, once for masks)
+    # Mock file paths (glob is called twice: once for slopes, once for masks)
     mock_glob.side_effect = [
         [
             Path("dummy/zos_regression_ssp585_1.nc"),
@@ -20,7 +20,7 @@ def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
         [Path("dummy/zos_mask_ssp585_1.nc"), Path("dummy/zos_mask_ssp585_2.nc")],
     ]
 
-    # 2. Setup mock xarray datasets
+    # Mock datasets
     mock_data = xr.DataArray(np.random.rand(5, 5), dims=["lat", "lon"])
     mock_mask_data = xr.DataArray(np.zeros((5, 5)), dims=["lat", "lon"])
 
@@ -32,13 +32,11 @@ def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
 
     mock_open_dataset.side_effect = mock_open
 
-    # 3. Initialize component and call the method
     dummy_global = np.zeros((10, 100))
     stero = SterodynamicCMIP6(global_projection=dummy_global)
 
     slopes, masks = stero._load_CMIP6_slopes()
 
-    # 4. Assertions
     assert slopes.shape == (2, 5, 5)
     assert "model" in slopes.dims
     assert masks is not None
@@ -49,7 +47,7 @@ def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
 @patch("profsea.components.spatial.sterodynamic.interpolate_to_grid")
 @patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
 def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
-    # 1. Mock the loaded data and masks
+    # Mock the loaded data and masks
     mock_coeffs = xr.DataArray(
         np.array([np.ones((2, 2)), np.ones((2, 2)) * 2, np.ones((2, 2)) * 3]),
         coords=[("model", [0, 1, 2]), ("lat", [0, 1]), ("lon", [0, 1])],
@@ -73,7 +71,7 @@ def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
         baseline_yrs=(1995, 2014),
     )
 
-    # 2. Test Storyline Mode
+    # Test Storyline Mode
     stero_storyline = SterodynamicCMIP6(
         global_projection=np.zeros((5, 100)), sample_spatial=False
     )
