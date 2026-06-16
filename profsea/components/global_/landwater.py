@@ -1,6 +1,8 @@
-import functools
+from __future__ import annotations
 
+import functools
 from pathlib import Path
+
 import numpy as np
 import xarray as xr
 
@@ -48,7 +50,9 @@ class LandwaterAR6(Component):
         n_samples_nc = lw_base.shape[0]
 
         # Sample!
-        sample_indices = rng.integers(0, n_samples_nc, size=(state.nt, state.num_members))
+        sample_indices = rng.integers(
+            0, n_samples_nc, size=(state.nt, state.num_members)
+        )
 
         # Resulting shape: (nt, nm, nyr)
         lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]

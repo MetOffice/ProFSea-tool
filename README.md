@@ -1,6 +1,6 @@
-# ProFSea <img src="logo.png" width="100" />
+# ProFSea <img width="100" alt="logo" src="https://github.com/user-attachments/assets/cba78630-9965-4b66-8be1-065ae975229e" />
 
-[![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
+[![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467) [![Tests](https://github.com/MetOffice/ProFSea-tool/actions/workflows/pytest.yml/badge.svg?branch=profsea-v3)](https://github.com/MetOffice/ProFSea-tool/actions/workflows/pytest.yml) [![Lint](https://github.com/MetOffice/ProFSea-tool/actions/workflows/ruff.yml/badge.svg?branch=profsea-v3)](https://github.com/MetOffice/ProFSea-tool/actions/workflows/ruff.yml) [![Docs](https://github.com/MetOffice/ProFSea-tool/actions/workflows/deploy-docs.yml/badge.svg?branch=profsea-v3)](https://github.com/MetOffice/ProFSea-tool/actions/workflows/deploy-docs.yml) [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 ProFSea is sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature. It's modular, easy to setup and self-contained - all you need is global mean surface temperature and ocean heat content forcing anomalies, using any baseline period, and you're good to go.
 
@@ -13,6 +13,10 @@ We simulate sea-level change contributions from:
 - Landwater ⛰️
 
 ProFSea can calculate projections of both global mean sea-level rise and spatially-resolved sea-level change fields:
+
+<p align="center">
+  <img width="480" height="273" alt="output" src="https://github.com/user-attachments/assets/82122190-1566-4386-b558-da32b4bee7e7" />
+</p>
 
 All the data required to run the regionalisation module can be found here: [![DOI](https://doi.org/badge/10.5281/20427061.svg)](https://doi.org/10.5281/zenodo.20427061)
 

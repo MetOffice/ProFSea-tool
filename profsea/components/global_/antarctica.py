@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 from pathlib import Path
+
 import numpy as np
+import xarray as xr
 from scipy.signal import fftconvolve
 from scipy.stats import norm
-import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
@@ -238,8 +241,8 @@ class AntarcticaDynAR5(Component):
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters
-            ----------
-            fraction: np.ndarray
+        ----------
+        fraction: np.ndarray
             Random numbers for the dynamic contribution.
 
         Returns

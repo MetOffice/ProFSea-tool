@@ -1,6 +1,8 @@
-import functools
+from __future__ import annotations
 
+import functools
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 from scipy.stats import truncnorm
@@ -69,7 +71,7 @@ class GreenlandAR6(Component):
         )
         trend_sle = (trend[:, :, None] * time_delta[None, None, :]) * 1e-3
 
-        tas_3d = tas[:, None, :] 
+        tas_3d = tas[:, None, :]
 
         # Calculate GIS contribution rate
         dsle = (

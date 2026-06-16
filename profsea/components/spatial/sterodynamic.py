@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 from pathlib import Path
 
 import dask.array as da
@@ -6,7 +9,9 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
-from profsea.utils import interpolate_to_grid, sample_members_2D
+from profsea.utils import sample_members_2D
+
+logging.basicConfig(level=logging.WARNING)
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 PATTERNS_DIR = PROFSEA_DIR / "profsea-assets" / "cmip6-patterns"
@@ -14,8 +19,8 @@ PATTERNS_DIR = PROFSEA_DIR / "profsea-assets" / "cmip6-patterns"
 
 class SterodynamicCMIP6(SpatialComponent):
     """
-    Parameters & Attributes
-    ----------
+    Parameters and Attributes
+    -------------------------
     global_projection: np.ndarray
         Array of global sea level rise projections to use as input for sterodynamic projection.
     """
@@ -49,7 +54,7 @@ class SterodynamicCMIP6(SpatialComponent):
     def global_projection(self):
         return self._global_projection
 
-    def _load_CMIP6_slopes(self) -> xr.DataArray:
+    def _load_CMIP6_slopes(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Load in the CMIP6 slope coefficients.
 
@@ -60,9 +65,16 @@ class SterodynamicCMIP6(SpatialComponent):
         Returns
         -------
         xr.DataArray
-            A xarray DataArray of shape (n_models, n_lats, n_lons) containing the sterodynamic fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
+            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic
+            fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
+        xr.DataArray
+            A dask array of shape (n_models, n_lats, n_lons) containing the land mask for
+            each CMIP6 model, if present.
         """
-        slope_files = list(Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"))
+        slope_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
+            key=lambda p: p.name,
+        )
 
         if not slope_files:
             raise FileNotFoundError(
@@ -80,7 +92,33 @@ class SterodynamicCMIP6(SpatialComponent):
         # Concatenate along a new dimension (representing the ensemble/models)
         slopes_stack = xr.concat(datasets, dim="model")
 
-        return slopes_stack
+        # Read land mask if present
+        mask_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"), key=lambda p: p.name
+        )
+
+        if mask_files:
+            if len(slope_files) == len(mask_files):
+                self.land_mask_present = True
+
+                datasets_mask = [
+                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"]
+                    for f in mask_files
+                ]
+                mask_stack = xr.concat(datasets_mask, dim="model")
+                # mask_stack = mask_stack.sum(dim='model', skipna=True)
+            else:
+                logging.warning(
+                    "There is a mismatch between number of slope files and mask files. "
+                    "Ignoring mask files."
+                )
+                self.land_mask_present = False
+                mask_stack = None
+        else:
+            self.land_mask_present = False
+            mask_stack = None
+
+        return slopes_stack, mask_stack
 
     def _calc_expansion_contribution(
         self, rng: np.random.Generator, state: ClimateState
@@ -102,7 +140,10 @@ class SterodynamicCMIP6(SpatialComponent):
             A dask array of shape (members, years, lat, lon) containing the thermal expansion contribution to the sterodynamic component for each member and year.
         """
         # Select slope coefficients based on the MIP
-        coeffs_da = self._load_CMIP6_slopes()
+        coeffs_da, mask_da = self._load_CMIP6_slopes()
+
+        if self.land_mask_present:  # apply land mask
+            coeffs_da = coeffs_da.where(mask_da == 0.0)
 
         # Get the data either at sites or on a grid
         interp_da = self.extract_spatial(coeffs_da, state)
@@ -116,7 +157,7 @@ class SterodynamicCMIP6(SpatialComponent):
             return coeffs[rand_samples, :, :]
         else:
             # Calc pattern ensemble mean
-            mean_coeff = da.mean(coeffs, axis=0)
+            mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
                 (state.n_members, *spatial_shape),

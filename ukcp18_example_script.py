@@ -1,22 +1,22 @@
 import cartopy.crs as ccrs
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
 from profsea.components.core.global_model import Global
+from profsea.components.core.spatial_model import Spatial
 from profsea.components.global_ import (
-    LandwaterAR5,
-    GreenlandDynAR5,
-    GreenlandSMBAR5,
-    ThermalExpansion,
     AntarcticaDynAR5,
     AntarcticaSMBAR5,
     Glacier,
+    GreenlandDynAR5,
+    GreenlandSMBAR5,
+    LandwaterAR5,
+    ThermalExpansion,
 )
-from profsea.components.core.spatial_model import Spatial
-from profsea.components.spatial import SterodynamicCMIP6, Fingerprint, GIA
+from profsea.components.spatial import GIA, Fingerprint, SterodynamicCMIP6
 
 ### Global projections first ###
-slr_components = {
+global_components = {
     "expansion": ThermalExpansion(
         OHC_change=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
     ),
@@ -29,7 +29,7 @@ slr_components = {
 }
 
 # Pass to the global model
-global_model = Global(components=slr_components, end_yr=2301)
+global_model = Global(components=global_components, end_yr=2301)
 projections = global_model.run(
     scenario="rcp85",
     T_change=np.linspace(1, 5, 295).reshape(1, -1),

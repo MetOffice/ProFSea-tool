@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 
 from profsea.components.core.base import Component
@@ -7,8 +9,8 @@ from profsea.utils import check_shapes
 
 class ThermalExpansion(Component):
     """
-    Parameters & Attributes
-    ----------
+    Parameters and Attributes
+    -------------------------
     OHC_change: np.ndarray
         Array of ocean heat content change values.
     exp_efficiency: float
@@ -35,7 +37,8 @@ class ThermalExpansion(Component):
         std_eff = 0.013 * self.distribution_scaler
 
         exp_efficiency = (
-            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members)) * 1e-24
+            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
+            * 1e-24
         )  # m/YJ
 
         ohc_3d = self.OHC_change[:, None, :]

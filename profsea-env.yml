@@ -7,14 +7,23 @@ dependencies:
   - ipykernel
   - iris
   - matplotlib
+  - nbsphinx
   - netcdf4
   - numcodecs
   - numpy
   - pandas
+  - pandoc
+  - pre-commit
+  - pydata-sphinx-theme
+  - pytest
   - python=3.12
   - pyyaml
+  - regionmask
   - requests
   - rich
+  - ruff
   - scipy
+  - sphinx
+  - sphinx-design
   - xarray
   - zarr
