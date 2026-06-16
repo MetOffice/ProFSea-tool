@@ -5,6 +5,8 @@ from pathlib import Path
 import dask.array as da
 import numpy as np
 import xarray as xr
+import logging
+logging.basicConfig(level=logging.WARNING)
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
@@ -62,9 +64,13 @@ class SterodynamicCMIP6(SpatialComponent):
         Returns
         -------
         da.Array
-            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
+            A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic 
+            fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
         """
-        slope_files = list(Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"))
+        slope_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
+            key=lambda p: p.name
+        )
 
         if not slope_files:
             raise FileNotFoundError(
@@ -79,7 +85,34 @@ class SterodynamicCMIP6(SpatialComponent):
         # Concatenate along a new dimension (representing the ensemble/models)
         slopes_stack = xr.concat(datasets, dim="model")
 
-        return slopes_stack
+        # Read land mask if present
+        mask_files = sorted(
+            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"),
+            key=lambda p: p.name
+        )
+
+        
+        if mask_files:
+            if(len(slope_files) == len(mask_files)):
+                self.land_mask_present = True
+    
+                datasets_mask = [
+                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"] for f in mask_files
+                ]
+                mask_stack = xr.concat(datasets_mask, dim="model")
+                #mask_stack = mask_stack.sum(dim='model', skipna=True)
+            
+            else:
+                logging.warning("There is a mismatch between number of slope files and mask files. "
+                                "Ignoring mask files.")
+                self.land_mask_present = False
+                mask_stack = None
+            
+        else:
+            self.land_mask_present = False
+            mask_stack = None
+        
+        return slopes_stack, mask_stack
 
     def _calc_expansion_contribution(
         self, rng: np.random.Generator, state: ClimateState
@@ -101,7 +134,10 @@ class SterodynamicCMIP6(SpatialComponent):
             A dask array of shape (members, years, lat, lon) containing the thermal expansion contribution to the sterodynamic component for each member and year.
         """
         # Select slope coefficients based on the MIP
-        coeffs_da = self._load_CMIP6_slopes()
+        coeffs_da, mask_da = self._load_CMIP6_slopes()
+
+        if self.land_mask_present: # apply land mask
+            coeffs_da = coeffs_da.where(mask_da == 0.)
 
         # Align the grid coordinates + interpolate if necessary
         interp_da = interpolate_to_grid(coeffs_da, state.grid_lats, state.grid_lons)
@@ -114,7 +150,7 @@ class SterodynamicCMIP6(SpatialComponent):
             return coeffs[rand_samples, :, :]
         else:
             # Calc pattern ensemble mean
-            mean_coeff = da.mean(coeffs, axis=0)
+            mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
                 (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),

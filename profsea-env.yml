@@ -17,6 +17,7 @@ dependencies:
   - pydata-sphinx-theme
   - python=3.12
   - pyyaml
+  - regionmask
   - requests
   - rich
   - scipy
@@ -24,4 +25,3 @@ dependencies:
   - sphinx-design
   - xarray
   - zarr
-  
