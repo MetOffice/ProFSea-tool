@@ -5,7 +5,34 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "profsea"
 version = "3.0"
+dependencies = ["numpy", "xarray", "scipy", "dask", "rich", "requests", "regionmask"]
 
 [tool.setuptools.packages.find]
 include = ["profsea*"]
 exclude = ["docs*", "tests*"]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov",  # Useful for checking test coverage later
+    "pytest-github-actions-annotate-failures"
+]
+
+# Settings for Ruff formatting
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+# Pyflakes (F), pycodestyle (E, W), isort (I), and pyupgrade (UP)
+select = ["E", "F", "W", "I", "UP"]
+ignore = [
+    "E501", # Line too long (let the formatter handle this, ignore in linter)
+]
+
+[tool.ruff.format]
+# Use double quotes for strings (standard Python convention)
+quote-style = "double"
+# Indent with spaces
+indent-style = "space"

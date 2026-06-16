@@ -37,7 +37,8 @@ class ThermalExpansion(Component):
         std_eff = 0.013 * self.distribution_scaler
 
         exp_efficiency = (
-            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members)) * 1e-24
+            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
+            * 1e-24
         )  # m/YJ
 
         ohc_3d = self.OHC_change[:, None, :]

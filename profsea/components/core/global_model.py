@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import concurrent.futures
-from pathlib import Path
+import logging
 import os
-from typing import Dict
+from pathlib import Path
 
 import numpy as np
-from rich.console import Console
 import xarray as xr
 
-from .state import ClimateState
-from .base import Component
-from profsea.utils import sample_members_2D, check_shapes
+from profsea.utils import check_shapes, sample_members_2D
+from profsea.utils.ui import print_global_preflight
 
-console = Console()
+from .base import Component
+from .state import ClimateState
+
+logger = logging.getLogger(__name__)
 
 
 class Global:
@@ -58,7 +59,7 @@ class Global:
 
     def __init__(
         self,
-        components: Dict[str, Component],
+        components: dict[str, Component],
         end_yr: int,
         nt: int = 100,
         num_members: int = 1000,
@@ -87,7 +88,7 @@ class Global:
         scenario: str,
         T_change: np.ndarray,
         member_seed: int = 42,
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """Run the emulator to project GMSLR components for a specific state.
         Parameters
         ----------
@@ -111,6 +112,8 @@ class Global:
             T_change = np.expand_dims(T_change, axis=0)
 
         self.nt = T_change.shape[0]
+
+        print_global_preflight(self, scenario)
 
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
 
@@ -165,7 +168,7 @@ class Global:
 
         # Output percentiles
         if self.output_percentiles is not None:
-            console.log(
+            logger.info(
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
@@ -175,7 +178,7 @@ class Global:
 
         return results
 
-    def sum_components(self, components: Dict[str, np.ndarray]) -> np.ndarray:
+    def sum_components(self, components: dict[str, np.ndarray]) -> np.ndarray:
         """Sum the components to get total GMSLR."""
         components["gmslr"] = np.sum(
             [np.atleast_2d(c) for c in components.values()], axis=0
@@ -183,7 +186,7 @@ class Global:
         return components["gmslr"]
 
     def save_components(
-        self, components: Dict[str, np.ndarray], output_dir: str, scenario_name: str
+        self, components: dict[str, np.ndarray], output_dir: str, scenario_name: str
     ) -> None:
         """Save SLR components as nc files to a directory.
 

@@ -1,26 +1,25 @@
 import argparse
-import json
 from pathlib import Path
 
-from fair import FAIR
-from fair.io import read_properties
-from fair.interface import initialise
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from rich_argparse import RichHelpFormatter
+import xarray as xr
+from fair import FAIR
+from fair.interface import initialise
+from fair.io import read_properties
 from rich.console import Console
 from rich.progress import track
-import xarray as xr
+from rich_argparse import RichHelpFormatter
 
 # --- NEW IMPORTS ---
 from profsea.components.core.global_model import Global
 from profsea.components.global_ import (
     AntarcticaISMIP6,
-    LandwaterAR6,
-    GreenlandAR6,
-    ThermalExpansion,
     Glacier,
+    GreenlandAR6,
+    LandwaterAR6,
+    ThermalExpansion,
 )
 from profsea.utils import sample_members_2D
 
@@ -215,7 +214,7 @@ def plot_samples(tas: np.ndarray, ohc: np.ndarray) -> None:
     ax = fig.add_subplot(121)
     ax.plot(tas.T, color="seagreen", alpha=0.05)
     ax.set_xlabel("Simulation years")
-    ax.set_ylabel("GMST ($\degree$C)")
+    ax.set_ylabel(r"GMST ($\degree$C)")
     ax.plot(np.arange(tas.shape[1]), np.median(tas, axis=0), color="black")
 
     ax = fig.add_subplot(122)
@@ -324,10 +323,10 @@ def main(args):
 
     console.log(f"Using scenarios: {scenarios}")
 
-    if "ssp" in scenarios[0].lower():
-        emissions_path = args.cumulative_emissions_file
-        with open(emissions_path) as f:
-            cumulative_emissions = json.load(f)
+    # if "ssp" in scenarios[0].lower():
+    #     emissions_path = args.cumulative_emissions_file
+    #     with open(emissions_path) as f:
+    #         cumulative_emissions = json.load(f)
 
     baseline_start = 1995
     baseline_end = 2014

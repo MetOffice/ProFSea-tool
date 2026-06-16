@@ -15,11 +15,13 @@ dependencies:
   - pandoc
   - pre-commit
   - pydata-sphinx-theme
+  - pytest
   - python=3.12
   - pyyaml
   - regionmask
   - requests
   - rich
+  - ruff
   - scipy
   - sphinx
   - sphinx-design
