@@ -233,7 +233,9 @@ class Local:
         xr.DataArray
             A single xarray DataArray representing the total sea-level projections, with appropriate attributes.
         """
-        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component", skipna=False)
+        total_rsl = xr.concat(components.values(), dim="component").sum(
+            dim="component", skipna=False
+        )
         total_rsl.attrs = {
             "units": "m",
             "long_name": "Local total sea-level projections",

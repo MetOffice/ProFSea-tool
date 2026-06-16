@@ -237,7 +237,9 @@ class Spatial:
         """
         # Using xr.concat preserves all dimensions and coordinates, and summing
         # along the new dimension handles the underlying dask arrays cleanly.
-        total_rsl = xr.concat(components.values(), dim="component").sum(dim="component", skipna=False)
+        total_rsl = xr.concat(components.values(), dim="component").sum(
+            dim="component", skipna=False
+        )
 
         # Optionally, apply attributes so it matches the other DataArrays
         total_rsl.attrs = {
