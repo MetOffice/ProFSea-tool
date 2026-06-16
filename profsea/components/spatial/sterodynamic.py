@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import dask.array as da
 import numpy as np
 import xarray as xr
-import logging
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
