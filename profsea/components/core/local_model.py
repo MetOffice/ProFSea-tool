@@ -1,16 +1,16 @@
-from pathlib import Path
-from typing import Dict, Tuple
 import warnings
+from pathlib import Path
 
 import dask.array as da
 import numpy as np
+import xarray as xr
 from rich.console import Console
 from rich.progress import track
-import xarray as xr
+
+from profsea.utils import fetch_zenodo_fingerprints, save_components
 
 from .base import SpatialComponent
 from .state import LocalState
-from profsea.utils import fetch_zenodo_fingerprints, save_components
 
 console = Console()
 warnings.filterwarnings("ignore")
@@ -26,8 +26,8 @@ class Local:
 
     def __init__(
         self,
-        components: Dict[str, SpatialComponent],
-        locations: Dict[str, Tuple[float, float]],
+        components: dict[str, SpatialComponent],
+        locations: dict[str, tuple[float, float]],
         interpolation_method: str = "linear",
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
@@ -84,7 +84,7 @@ class Local:
     # Instance method!
     save_components = save_components
 
-    def _arr_to_xr(self, arr_dict: Dict[str, da.Array]) -> Dict[str, xr.DataArray]:
+    def _arr_to_xr(self, arr_dict: dict[str, da.Array]) -> dict[str, xr.DataArray]:
         """Convert Dask arrays to xarray DataArrays with site coordinates."""
         xr_dict = {}
         member_dim = "percentile" if self.output_percentiles is not None else "member"
@@ -110,7 +110,7 @@ class Local:
             )
         return xr_dict
 
-    def run(self, member_seed: int = 42) -> Dict[str, xr.DataArray]:
+    def run(self, member_seed: int = 42) -> dict[str, xr.DataArray]:
         """Run the local model to generate site-specific projections."""
         seed_seq = np.random.SeedSequence(member_seed)
 
@@ -148,7 +148,7 @@ class Local:
         self.results = self._arr_to_xr(local_projections)
         return self.results
 
-    def sum_components(self, components: Dict[str, xr.DataArray]) -> xr.DataArray:
+    def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """Sum the local components to get total sea-level change."""
         total_rsl = xr.concat(components.values(), dim="component").sum(dim="component")
         total_rsl.attrs = {

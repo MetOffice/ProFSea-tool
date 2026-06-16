@@ -8,7 +8,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import interpolate_to_grid, sample_members_2D
+from profsea.utils import sample_members_2D
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
