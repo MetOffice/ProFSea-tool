@@ -21,6 +21,8 @@ from rich.progress import (
     track,
 )
 
+from profsea.utils.ui import print_spatial_preflight
+
 from .base import Component
 from .state import SpatialState
 
@@ -186,6 +188,7 @@ class Spatial:
         Dict[str, da.Array]
             Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
         """
+        print_spatial_preflight(self)
         seed_seq = np.random.SeedSequence(member_seed)
 
         logger.info(

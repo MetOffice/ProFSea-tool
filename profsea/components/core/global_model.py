@@ -9,6 +9,7 @@ import numpy as np
 import xarray as xr
 
 from profsea.utils import check_shapes, sample_members_2D
+from profsea.utils.ui import print_global_preflight
 
 from .base import Component
 from .state import ClimateState
@@ -111,6 +112,8 @@ class Global:
             T_change = np.expand_dims(T_change, axis=0)
 
         self.nt = T_change.shape[0]
+
+        print_global_preflight(self, scenario)
 
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
 
