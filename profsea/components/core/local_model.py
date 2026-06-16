@@ -204,7 +204,8 @@ class Local:
         }
 
         local_projections = {}
-        logger.info("Starting localisation of components...")
+
+        console.print()
         for name, comp in track(
             self.components.items(), description="Localising components..."
         ):
@@ -214,6 +215,7 @@ class Local:
             # Rechunk to optimize for reading full time-series per site
             lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: -1})
             local_projections[name] = lazy_projection
+        console.print()
 
         self.results = self._arr_to_xr(local_projections)
         self._apply_universal_mask()
