@@ -8,7 +8,21 @@ from scipy.spatial.distance import cdist
 
 
 def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:
-    """Sample real ensemble members from a 2D numpy array."""
+    """
+    Sample real ensemble members from a 2D numpy array.
+
+    Parameters
+    ----------
+    array: np.ndarray
+        Input 2D array of shape (realisation, time).
+    percentiles: list | np.ndarray
+        List of percentiles to sample from the input array.
+
+    Returns
+    -------
+    np.ndarray
+        Sampled array of shape (len(percentiles), time) corresponding to the closest real ensemble members to the specified percentiles.
+    """
     # Caculate statistical timeseries, then match with closest real timeseries
     array_percentiles = np.nanpercentile(array, percentiles, axis=0)
     distances = cdist(array_percentiles, array)
@@ -16,8 +30,24 @@ def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.n
     return array[mem_indices]
 
 
-def interpolate(data: da.array, lats: int, lons: int) -> np.ndarray:
-    """ """
+def interpolate(data: da.array, lats: int, lons: int) -> da.array:
+    """
+    Interpolate a 2D dask array to a target grid defined by lats and lons.
+
+    Parameters
+    ----------
+    data: da.array
+        Input 2D dask array to be interpolated.
+    lats: int
+        Number of latitude points in the target grid.
+    lons: int
+        Number of longitude points in the target grid.
+
+    Returns
+    -------
+    da.array
+        Interpolated 2D dask array on the target grid.
+    """
     original_da = xr.DataArray(
         data.data,
         coords=[("lat", data[data.dims[0]].values), ("lon", data[data.dims[1]].values)],
@@ -41,6 +71,22 @@ def interpolate_to_grid(
     """
     Interpolate an xarray DataArray to a target grid defined by target_lats and target_lons.
     Safely handles longitude wrapping mismatches (e.g., [0, 360) vs [-180, 180)).
+
+    Parameters
+    ----------
+    data: xr.DataArray
+        Input xarray DataArray to be interpolated. Must have 'lat' and 'lon' dimensions.
+    target_lats: np.ndarray
+        1D array of target latitude values.
+    target_lons: np.ndarray
+        1D array of target longitude values.
+    grid_interpolation: str, optional
+        Interpolation method to use. Default is 'linear'. Other options include 'nearest', 'cubic', etc.
+
+    Returns
+    -------
+    xr.DataArray
+        Interpolated xarray DataArray on the target grid.
     """
     # Normalize source longitudes to [-180, 180) and sort monotonically
     data = data.assign_coords(lon=(((data.lon + 180) % 360) - 180))
