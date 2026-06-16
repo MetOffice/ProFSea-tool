@@ -44,7 +44,7 @@ def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
     assert stero.land_mask_present is True
 
 
-@patch("profsea.components.spatial.sterodynamic.interpolate_to_grid")
+@patch("profsea.utils.interpolate_to_grid")
 @patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
 def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
     # Mock the loaded data and masks
@@ -88,7 +88,7 @@ def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
     np.testing.assert_array_equal(computed_result, np.ones((5, 2, 2)) * 2)
 
 
-@patch("profsea.components.spatial.sterodynamic.interpolate_to_grid")
+@patch("profsea.utils.interpolate_to_grid")
 @patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
 def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
     mock_coeffs = xr.DataArray(

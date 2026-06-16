@@ -1,25 +1,14 @@
 from __future__ import annotations
 
 import logging
-import os
 import warnings
-import zipfile
 from pathlib import Path
 
 import dask.array as da
 import numpy as np
-import requests
 import xarray as xr
 from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
-    TextColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-    track,
-)
+from rich.progress import track
 
 from profsea.utils import fetch_zenodo_fingerprints, save_components
 from profsea.utils.ui import print_spatial_preflight
