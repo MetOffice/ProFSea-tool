@@ -70,7 +70,7 @@ class SterodynamicCMIP6(SpatialComponent):
         """
         slope_files = sorted(
             Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
-            key=lambda p: p.name
+            key=lambda p: p.name,
         )
 
         if not slope_files:
@@ -91,22 +91,24 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Read land mask if present
         mask_files = sorted(
-            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"),
-            key=lambda p: p.name
+            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"), key=lambda p: p.name
         )
 
         if mask_files:
-            if(len(slope_files) == len(mask_files)):
+            if len(slope_files) == len(mask_files):
                 self.land_mask_present = True
 
                 datasets_mask = [
-                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"] for f in mask_files
+                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"]
+                    for f in mask_files
                 ]
                 mask_stack = xr.concat(datasets_mask, dim="model")
-                #mask_stack = mask_stack.sum(dim='model', skipna=True)
+                # mask_stack = mask_stack.sum(dim='model', skipna=True)
             else:
-                logging.warning("There is a mismatch between number of slope files and mask files. "
-                                "Ignoring mask files.")
+                logging.warning(
+                    "There is a mismatch between number of slope files and mask files. "
+                    "Ignoring mask files."
+                )
                 self.land_mask_present = False
                 mask_stack = None
         else:
@@ -137,8 +139,8 @@ class SterodynamicCMIP6(SpatialComponent):
         # Select slope coefficients based on the MIP
         coeffs_da, mask_da = self._load_CMIP6_slopes()
 
-        if self.land_mask_present: # apply land mask
-            coeffs_da = coeffs_da.where(mask_da == 0.)
+        if self.land_mask_present:  # apply land mask
+            coeffs_da = coeffs_da.where(mask_da == 0.0)
 
         # Align the grid coordinates + interpolate if necessary
         interp_da = interpolate_to_grid(coeffs_da, state.grid_lats, state.grid_lons)
