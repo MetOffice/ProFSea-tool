@@ -1,6 +1,6 @@
 # (C) Crown Copyright 2025, Met Office.
 # The LICENSE file contains full licensing details.
-name: Build and deploy the documentation
+name: Documentation
 
 on:
   # Runs on pushes targeting the default branch.
