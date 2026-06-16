@@ -25,14 +25,13 @@ def test_check_shapes_raises_value_error():
         check_shapes(arr, n_time=12)
 
 
-@patch("profsea.utils.utils.regionmask")
-def test_interpolate_to_grid_longitude_wrapping(mock_regionmask):
+def test_interpolate_to_grid_longitude_wrapping():
     # Target grid using -180 to 180 format (includes 180, which should wrap)
     target_lats = np.array([-45, 0, 45])
     target_lons = np.array([-10, 0, 180])
 
     # 1. Setup mock regionmask to act as if there is no land
-    # mask_3D needs to return an xarray DataArray with a "region" dimension
+    mock_regionmask = MagicMock()
     mock_land = MagicMock()
     mock_mask_da = xr.DataArray(
         np.zeros((1, 3, 3), dtype=bool),
@@ -47,7 +46,9 @@ def test_interpolate_to_grid_longitude_wrapping(mock_regionmask):
     lons_360 = np.array([0, 180, 350])
     data = xr.DataArray(np.random.rand(3, 3), coords=[("lat", lats), ("lon", lons_360)])
 
-    result = interpolate_to_grid(data, target_lats, target_lons)
+    # 3. Intercept the local import using sys.modules
+    with patch.dict("sys.modules", {"regionmask": mock_regionmask}):
+        result = interpolate_to_grid(data, target_lats, target_lons)
 
     assert result.shape == (3, 3)
     expected_lons = np.array([-180, -10, 0])

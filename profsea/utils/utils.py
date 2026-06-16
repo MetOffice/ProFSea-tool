@@ -6,7 +6,6 @@ from pathlib import Path
 
 import dask.array as da
 import numpy as np
-import regionmask
 import requests
 import xarray as xr
 from rich.console import Console
@@ -104,6 +103,8 @@ def interpolate_to_grid(
     xr.DataArray
         Interpolated xarray DataArray on the target grid.
     """
+    import regionmask
+
     # Normalize source longitudes to [-180, 180) and sort monotonically
     data = data.assign_coords(lon=(((data.lon + 180) % 360) - 180))
     data = data.sortby(["lat", "lon"])
