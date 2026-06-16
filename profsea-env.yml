@@ -18,6 +18,7 @@ dependencies:
   - pytest
   - python=3.12
   - pyyaml
+  - regionmask
   - requests
   - rich
   - ruff
@@ -26,4 +27,3 @@ dependencies:
   - sphinx-design
   - xarray
   - zarr
-  
