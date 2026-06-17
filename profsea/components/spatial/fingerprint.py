@@ -8,7 +8,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import interpolate_to_grid, sample_members_2D
+from profsea.utils import sample_members_2D
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
@@ -53,7 +53,7 @@ class Fingerprint(SpatialComponent):
 
     def __init__(
         self,
-        global_projection: np.ndarray,
+        global_projection: xr.DataArray,
         fingerprint_component: str,
         fingerprint_paths: str | Path | list[str | Path] = None,
         scaling_factor: float = 1.0,
@@ -62,7 +62,7 @@ class Fingerprint(SpatialComponent):
         """
         Parameters
         ----------
-        global_projection: np.ndarray
+        global_projection: xr.DataArray
              A 2D array (members x years) of global projections to apply the fingerprints to.
         fingerprint_paths: str, Path, or list of str/Path
              Path(s) to NetCDF files containing the spatial fingerprint patterns. Each file should contain a DataArray with dimensions (lat, lon).
@@ -71,7 +71,7 @@ class Fingerprint(SpatialComponent):
         sample_spatial: bool, optional
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
-        self._global_projection = da.from_array(global_projection, chunks="auto")
+        self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial
         self.fingerprint_component = fingerprint_component
@@ -116,7 +116,7 @@ class Fingerprint(SpatialComponent):
         grids = []
         for path in self.fp_paths:
             fp_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
-            fp_interp = interpolate_to_grid(fp_da, state.grid_lats, state.grid_lons)
+            fp_interp = self.extract_spatial(fp_da, state)
             grids.append(fp_interp.data * self.scaling_factor)
 
         # Stack them into a 3D array: (n_fingerprints, lat, lon)
@@ -139,6 +139,7 @@ class Fingerprint(SpatialComponent):
             A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
         """
         fps = self._load_and_interpolate(state)  # Shape: (n_fps, lat, lon)
+        spatial_shape = fps.shape[1:]
 
         # Handle the global projection
         if state.output_percentiles is not None:
@@ -155,7 +156,7 @@ class Fingerprint(SpatialComponent):
             # Only one fingerprint available
             selected_fps = da.broadcast_to(
                 fps[0],
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
         elif self.sample_spatial:
             # Probabilistic mode: pick a random fingerprint per member
@@ -166,9 +167,8 @@ class Fingerprint(SpatialComponent):
             mean_fp = da.nanmean(fps, axis=0)
             selected_fps = da.broadcast_to(
                 mean_fp,
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
-        spatial_projection = global_proj[:, :, None, None] * selected_fps[:, None, :, :]
-        return spatial_projection
+        return self.broadcast_spatiotemporal(global_proj, selected_fps)

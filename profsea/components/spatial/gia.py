@@ -8,7 +8,6 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import interpolate_to_grid
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 GIA_DIR = PROFSEA_DIR / "profsea-assets" / "gia"
@@ -71,14 +70,15 @@ class GIA(SpatialComponent):
         grids = []
         for path in gia_paths:
             gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
-            interp_da = interpolate_to_grid(gia_da, state.grid_lats, state.grid_lons)
-
+            interp_da = self.extract_spatial(gia_da, state)
             data = interp_da.data
 
-            # Normalize dimensions: if a file is purely 2D (lat, lon),
-            # we expand it to 3D (1, lat, lon) so it can be concatenated safely.
-            if data.ndim == 2:
-                data = data[None, :, :]
+            # Determine expected spatial dims based on state
+            spatial_dims = 2 if hasattr(state, "grid_lats") else 1
+
+            # If the raw file lacks a 'model' dimension, prepend it
+            if data.ndim == spatial_dims:
+                data = data[None, ...]
 
             grids.append(data)
 
@@ -104,6 +104,9 @@ class GIA(SpatialComponent):
         gia_rates = self._load_and_interpolate_rates(state)
         n_patterns = gia_rates.shape[0]
 
+        # Dynamically capture spatial shape (site,) or (lat, lon)
+        spatial_shape = gia_rates.shape[1:]
+
         # Calculate the accumulation time vector (mm/yr to m/yr)
         midyr = (
             state.baseline_yrs[1] - state.baseline_yrs[0] + 1
@@ -111,34 +114,25 @@ class GIA(SpatialComponent):
         Tdelta = 2006 - midyr
         unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
 
+        # Broadcast 1D time series to match expected (members, years) signature
+        temporal_array = da.broadcast_to(unit_series, (state.n_members, state.n_years))
+
         # Handle sampling if required
         if n_patterns == 1:
-            # Only one pattern available; broadcast it to all members
             selected_gia = da.broadcast_to(
                 gia_rates[0],
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
         else:
             if self.sample_spatial:
-                # Probabilistic mode: pick random GIA models for each member
                 rgiai = rng.integers(n_patterns, size=state.n_members)
-                selected_gia = gia_rates[rgiai, :, :]  # Shape: (members, lat, lon)
+                selected_gia = gia_rates[rgiai, ...]
             else:
-                # Storyline mode: use the mean of all GIA patterns for all members
-                selected_gia = da.mean(gia_rates, axis=0)  # Shape: (lat, lon)
+                mean_gia = da.mean(gia_rates, axis=0)
                 selected_gia = da.broadcast_to(
-                    selected_gia,
-                    (
-                        state.n_members,
-                        state.grid_lats.shape[0],
-                        state.grid_lons.shape[0],
-                    ),
+                    mean_gia,
+                    (state.n_members, *spatial_shape),
                 )
 
-        # Multiply accumulation time by spatial rates
-        # (years) * (members, lat, lon) -> broadcasts to (members, years, lat, lon)
-        spatial_projection = (
-            unit_series[None, :, None, None] * selected_gia[:, None, :, :]
-        )
-
-        return spatial_projection
+        # Delegate dimensional multiplication to the base class
+        return self.broadcast_spatiotemporal(temporal_array, selected_gia)

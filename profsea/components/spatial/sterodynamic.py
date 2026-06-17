@@ -9,7 +9,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
-from profsea.utils import interpolate_to_grid, sample_members_2D
+from profsea.utils import sample_members_2D
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -27,14 +27,14 @@ class SterodynamicCMIP6(SpatialComponent):
 
     def __init__(
         self,
-        global_projection: np.ndarray,
+        global_projection: xr.DataArray,
         patterns_dir: str = None,
         sample_spatial: bool = False,
     ) -> None:
         """
         Parameters
         ----------
-        global_projection: np.ndarray
+        global_projection: xr.DataArray
              A 2D array (members x years) of global projections to apply the fingerprints to.
         patterns_dir: str, optional
              Path to directory containing CMIP6 sterodynamic patterns.
@@ -42,7 +42,7 @@ class SterodynamicCMIP6(SpatialComponent):
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
         # Convert to dask array for cheap as possible compute
-        self._global_projection = da.from_array(global_projection, chunks="auto")
+        self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.sample_spatial = sample_spatial
 
         if patterns_dir is None:
@@ -54,7 +54,7 @@ class SterodynamicCMIP6(SpatialComponent):
     def global_projection(self):
         return self._global_projection
 
-    def _load_CMIP6_slopes(self) -> da.Array:
+    def _load_CMIP6_slopes(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Load in the CMIP6 slope coefficients.
 
@@ -64,9 +64,12 @@ class SterodynamicCMIP6(SpatialComponent):
 
         Returns
         -------
-        da.Array
+        xr.DataArray
             A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic
             fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
+        xr.DataArray
+            A dask array of shape (n_models, n_lats, n_lons) containing the land mask for
+            each CMIP6 model, if present.
         """
         slope_files = sorted(
             Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
@@ -142,9 +145,10 @@ class SterodynamicCMIP6(SpatialComponent):
         if self.land_mask_present:  # apply land mask
             coeffs_da = coeffs_da.where(mask_da == 0.0)
 
-        # Align the grid coordinates + interpolate if necessary
-        interp_da = interpolate_to_grid(coeffs_da, state.grid_lats, state.grid_lons)
+        # Get the data either at sites or on a grid
+        interp_da = self.extract_spatial(coeffs_da, state)
         coeffs = interp_da.data
+        spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
 
         if self.sample_spatial:
             rand_samples = rng.choice(
@@ -156,7 +160,7 @@ class SterodynamicCMIP6(SpatialComponent):
             mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
-                (state.n_members, state.grid_lats.shape[0], state.grid_lons.shape[0]),
+                (state.n_members, *spatial_shape),
             )
 
     def project(self, state: ClimateState, rng) -> np.ndarray:
@@ -185,10 +189,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         expansion_contribution = self._calc_expansion_contribution(rng, state)
 
-        sterodynamic_projection = (
-            current_projection[:, :, None, None] * expansion_contribution[:, None, :, :]
-        )
-        return sterodynamic_projection
+        return self.broadcast_spatiotemporal(current_projection, expansion_contribution)
 
 
 class SterodynamicCMIP5(SpatialComponent):
@@ -199,13 +200,11 @@ class SterodynamicCMIP5(SpatialComponent):
     def __init__(self):
         pass
 
-    def project(self, state: ClimateState, rng) -> np.ndarray:
-        # For now, just return zeros as a placeholder
-        return np.zeros(
-            (
-                state.n_members,
-                state.n_years,
-                state.grid_lats.shape[0],
-                state.grid_lons.shape[0],
-            )
-        )
+    def project(self, state, rng) -> da.Array:
+        # Dynamically determine the spatial shape to prevent crashes when using LocalState
+        if hasattr(state, "target_lats"):
+            spatial_shape = (len(state.target_lats),)
+        else:
+            spatial_shape = (state.grid_lats.shape[0], state.grid_lons.shape[0])
+
+        return da.zeros((state.n_members, state.n_years, *spatial_shape))
