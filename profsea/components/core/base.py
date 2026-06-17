@@ -19,9 +19,7 @@ class Component(ABC):
 class SpatialComponent(Component):
     def extract_spatial(self, da_input: xr.DataArray, state) -> xr.DataArray:
         if hasattr(state, "target_lats"):
-            return self._extract_points(
-                da_input, state.target_lats, state.target_lons
-            )
+            return self._extract_points(da_input, state.target_lats, state.target_lons)
 
         elif hasattr(state, "grid_lats"):
             from profsea.utils.utils import interpolate_to_grid
