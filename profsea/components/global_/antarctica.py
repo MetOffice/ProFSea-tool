@@ -38,16 +38,16 @@ class AntarcticaISMIP6(Component):
     different response characteristics to warming.
     """
 
-    def __init__(self, ais_region: str):
+    def __init__(self, region: str):
         """
         Parameters
         ----------
-        ais_region: str
+        region: str
             The Antarctic region to model. Must be one of "wais", "eais", or "peninsula".
         """
-        params_path = PARAMS_MAP.get(ais_region.lower())
+        params_path = PARAMS_MAP.get(region.lower())
         if not params_path:
-            raise ValueError(f"Invalid region calibration: {ais_region}")
+            raise ValueError(f"Invalid region calibration: {region}")
 
         self.param_ds = xr.load_dataset(params_path)
         self.n_models = self.param_ds.coords["model"].shape[0]
