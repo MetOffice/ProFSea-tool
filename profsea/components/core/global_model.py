@@ -373,8 +373,4 @@ class Global:
         # Time-integral of temperature anomaly
         T_int_ens = np.cumsum(T_ens, axis=1)
         T_int_med = np.cumsum(np.median(T_ens, axis=0))
-        return (
-            T_ens.astype(self.dtype),
-            T_int_ens.astype(self.dtype),
-            T_int_med.astype(self.dtype),
-        )
+        return (T_ens, T_int_ens, T_int_med)
