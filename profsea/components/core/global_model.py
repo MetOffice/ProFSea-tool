@@ -323,6 +323,32 @@ class Global:
         dims_str = ", ".join(ds[sample_name].dims)
         logger.info(f"Global output shape was {ds[sample_name].shape} ({dims_str})")
 
+    def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
+        """
+        Sum the components in-place to get total GMSLR.
+
+        Parameters
+        ----------
+        components: dict[str, xr.DataArray]
+            Dictionary of component names and their corresponding Xarray DataArrays.
+
+        Returns
+        -------
+        xr.DataArray
+            DataArray of the summed global projections.
+        """
+
+        iterator = iter(components.values())
+        gmslr = next(iterator).copy()
+
+        for comp in iterator:
+            gmslr += comp
+
+        gmslr.attrs["units"] = "m"
+        gmslr.attrs["description"] = "Total global mean sea level rise"
+        components["total_gmslr"] = gmslr
+        return gmslr
+
     def _calculate_drivers(self, T_change: np.ndarray) -> tuple:
         """Calculate the drivers of GMSLR: temperature change and
         thermosteric sea level rise.

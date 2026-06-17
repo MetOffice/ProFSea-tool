@@ -240,13 +240,6 @@ class Spatial:
         total_rsl = xr.concat(components.values(), dim="component").sum(
             dim="component", skipna=False
         )
-
-        # Optionally, apply attributes so it matches the other DataArrays
-        total_rsl.attrs = {
-            "units": "m",
-            "long_name": "Regional total sea-level projections",
-            "source": "ProFSea-Climate v0.1",
-        }
-
+        total_rsl.attrs["units"] = "m"
         components["total_rsl"] = total_rsl
         return total_rsl
