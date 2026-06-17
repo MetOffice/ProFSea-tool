@@ -96,7 +96,7 @@ def df_to_arr(df, scenario_order):
 def load_magicc_forcing(
     input_path: str, scenarios: list, baseline_start: int, baseline_end: int
 ) -> tuple[np.ndarray]:
-    df = pd.read_csv(input_path, index_col=0)
+    df = pd.read_csv(input_path)
 
     tas_condition = (df["variable"] == "Surface Air Temperature Change") & (
         df["scenario"].isin(scenarios)
@@ -278,7 +278,7 @@ def plot_component(
         scenarios[3]: "#d3a640",
         scenarios[4]: "#098740",
         scenarios[5]: "#0080d0",
-        # scenarios[6]: '#100060',
+        scenarios[6]: '#100060',
     }
     for scenario in reversed(scenarios):
         ax.fill_between(
@@ -310,16 +310,16 @@ def main(args):
         scenarios = scen_df["scenario"].unique().tolist()
     else:
         # Defaulting to an SSP list to avoid UnboundLocalError
-        scenarios = ["ssp119", "ssp126", "ssp245", "ssp370", "ssp534-over", "ssp585"]
-        # scenarios = [
-        #     "Very Low - SSP1 (Marker)",
-        #     "Low-to-Negative - SSP2 (Marker)",
-        #     "Low - SSP2 (Marker)",
-        #     "Medium-to-Low - SSP2 (Marker)",
-        #     "Medium - SSP2 (Marker)",
-        #     "High-to-Low - SSP5 (Marker)",
-        #     "High - SSP3 (Marker)",
-        # ]
+        # scenarios = ["ssp119", "ssp126", "ssp245", "ssp370", "ssp534-over", "ssp585"]
+        scenarios = [
+            "Very Low - SSP1 (Marker)",
+            "Low-to-Negative - SSP2 (Marker)",
+            "Low - SSP2 (Marker)",
+            "Medium-to-Low - SSP2 (Marker)",
+            "Medium - SSP2 (Marker)",
+            "High-to-Low - SSP5 (Marker)",
+            "High - SSP3 (Marker)",
+        ]
 
     console.log(f"Using scenarios: {scenarios}")
 
@@ -335,7 +335,7 @@ def main(args):
     components = {}
     for scenario in scenarios:
         components[scenario] = {
-            "gmslr": [],
+            "total_gmslr": [],
             "expansion": [],
             "antarctica": [],
             "greenland": [],
@@ -363,9 +363,6 @@ def main(args):
     tas_matrix = tas[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
     ohc_matrix = ohc[:, random_indices, :]  # Shape: (n_scenarios, 1000, 295)
 
-    wais_params_path = Path("components") / "aux_data" / "wais_params_expanded.nc"
-    eais_params_path = Path("components") / "aux_data" / "eais_params_expanded.nc"
-    pen_params_path = Path("components") / "aux_data" / "pen_params_expanded.nc"
     sampled_components = {}
     for idx, scenario in track(
         enumerate(scenarios),
@@ -379,13 +376,13 @@ def main(args):
             "expansion": ThermalExpansion(OHC_change=ohc_scen),
             "greenland": GreenlandAR6(),
             "landwater": LandwaterAR6(),
-            "wais": AntarcticaISMIP6(params_path=wais_params_path),
-            "eais": AntarcticaISMIP6(params_path=eais_params_path),
-            "pen": AntarcticaISMIP6(params_path=pen_params_path),
+            "wais": AntarcticaISMIP6(region="wais"),
+            "eais": AntarcticaISMIP6(region="eais"),
+            "pen": AntarcticaISMIP6(region="peninsula"),
             "glacier": Glacier(),
         }
 
-        global_model = Global(components=slr_components, end_yr=2301, nm=1)
+        global_model = Global(components=slr_components, end_yr=2301, num_members=1)
         projections = global_model.run(
             scenario=scenario,
             T_change=tas_scen,
@@ -407,7 +404,7 @@ def main(args):
 
     fig = plt.figure(figsize=(16, 8), layout="constrained")
     ax = fig.add_subplot(231)
-    plot_component(ax, sampled_components, "gmslr", scenarios, plot_legend=True)
+    plot_component(ax, sampled_components, "total_gmslr", scenarios, plot_legend=True)
     ax = fig.add_subplot(232)
     plot_component(ax, sampled_components, "expansion", scenarios)
     ax = fig.add_subplot(233)
