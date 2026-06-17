@@ -66,24 +66,26 @@ class Glacier(Component):
         ngl = len(glparm)
         model_indices = rng.integers(0, ngl, size=(state.nt, state.num_members))
 
-        base_factors = np.array([p["factor"] for p in glparm])
-        base_exponents = np.array([p["exponent"] for p in glparm])
-        base_cvgls = np.array([p["cvgl"] for p in glparm])
+        base_factors = np.array([p["factor"] for p in glparm], dtype=state.dtype)
+        base_exponents = np.array([p["exponent"] for p in glparm], dtype=state.dtype)
+        base_cvgls = np.array([p["cvgl"] for p in glparm], dtype=state.dtype)
 
         factors = base_factors[model_indices][:, :, None]
         exponents = base_exponents[model_indices][:, :, None]
         cvgls = base_cvgls[model_indices][:, :, None]
 
-        r = rng.standard_normal((state.nt, state.num_members))[:, :, None]
+        r = rng.standard_normal((state.nt, state.num_members), dtype=state.dtype)[
+            :, :, None
+        ]
 
         T_int_ens_3d = state.T_int_ens[:, None, :]
         # Median shape: (1, 1, nyr)
         T_int_med_3d = state.T_int_med[None, None, :]
 
-        zgl = self._project_glacier1(T_int_ens_3d, factors, exponents)
+        zgl = self._project_glacier1(T_int_ens_3d, factors, exponents, state)
 
         # Passes (1, 1, nyr) + (nt, nm, 1) -> Returns (nt, nm, nyr)
-        mgl = self._project_glacier1(T_int_med_3d, factors, exponents)
+        mgl = self._project_glacier1(T_int_med_3d, factors, exponents, state)
 
         # 6. Apply variance and clip using 3D matrix math
         glacier = zgl + (mgl * r * cvgls)
@@ -94,7 +96,11 @@ class Glacier(Component):
         return glacier.reshape(state.nt * state.num_members, state.nyr)
 
     def _project_glacier1(
-        self, T_int: np.ndarray, factor: np.ndarray, exponent: np.ndarray
+        self,
+        T_int: np.ndarray,
+        factor: np.ndarray,
+        exponent: np.ndarray,
+        state: ClimateState,
     ) -> np.ndarray:
         """Project glacier contribution by one glacier method."""
         scale = 1e-3  # mm to m

@@ -212,13 +212,19 @@ class Global:
                 if data.ndim > 1:
                     results[comp_name] = data[random_idx][None, :]
 
+        # Print results dtypes
+        for comp_name, data in results.items():
+            logger.info(f"Component '{comp_name}' output dtype: {data.dtype}")
+
         # Output percentiles
         if self.output_percentiles is not None:
             logger.info(
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
-                results[comp_name] = sample_members_2D(data, self.output_percentiles)
+                results[comp_name] = sample_members_2D(
+                    data, self.output_percentiles, dtype=self.dtype
+                )
 
         self.results = self._arr_to_xr(results)
         return self.results
@@ -367,4 +373,8 @@ class Global:
         # Time-integral of temperature anomaly
         T_int_ens = np.cumsum(T_ens, axis=1)
         T_int_med = np.cumsum(np.median(T_ens, axis=0))
-        return T_ens, T_int_ens, T_int_med
+        return (
+            T_ens.astype(self.dtype),
+            T_int_ens.astype(self.dtype),
+            T_int_med.astype(self.dtype),
+        )

@@ -38,10 +38,10 @@ def time_projection(
     """
     # Create a field of elapsed time since start in years
     timeendofAR5 = state.endofAR5 - state.endofhistory + 1
-    time = np.arange(state.end_yr - state.endofhistory) + 1
+    time = (np.arange(state.end_yr - state.endofhistory, dtype=state.dtype) + 1)
 
     if fraction is None:
-        fraction = rng.random((state.num_members, state.nt)).astype(state.dtype)
+        fraction = rng.random((state.num_members, state.nt), dtype=state.dtype)
     elif fraction.size != state.num_members * state.nt:
         raise ValueError("fraction is the wrong size")
 
@@ -49,9 +49,9 @@ def time_projection(
 
     # Convert inputs to startrate (m yr-1) and afinal (m), where both are
     # arrays with the size of fraction
-    startrate = (
-        startratemean + startratepm * np.array([-1, 1], dtype=float)
-    ) * 1e-3  # convert mm yr-1 to m yr-1
+    startrate = ((
+        startratemean + startratepm * np.array([-1, 1])
+    ) * 1e-3).astype(state.dtype)  # convert mm yr-1 to m yr-1
     finalisrange = isinstance(final, Sequence)
 
     if finalisrange:
@@ -71,7 +71,7 @@ def time_projection(
     #   a = S/t**2-b/t = (S-b*t)/t**2
     # If nfinal=1, the following two lines are equivalent to
     # halfacc=(final-startyr*nyr)/nyr**2
-    finalyr = np.arange(nfinal) - nfinal + 94 + 1  # last element ==nyr
+    finalyr = np.arange(nfinal, dtype=state.dtype) - nfinal + 94 + 1  # last element ==nyr
     halfacc = (afinal - startrate * finalyr.mean()) / (finalyr**2).mean()
     quadratic = halfacc[:, :, np.newaxis] * (time**2)
     linear = startrate[:, :, np.newaxis] * time

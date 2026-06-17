@@ -37,6 +37,7 @@ class Spatial:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
+        dtype: np.dtype = np.float32,
     ) -> None:
         """
         Parameters
@@ -54,6 +55,8 @@ class Spatial:
             Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
+        dtype: np.dtype, optional
+            Data type for the output arrays. Default is np.float32.
         """
         # Define the path where the data should live
 
@@ -196,6 +199,7 @@ class Spatial:
             grid_interpolation="linear",
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
+            dtype=self.dtype,
         )
 
         child_seeds = seed_seq.spawn(len(self.components))

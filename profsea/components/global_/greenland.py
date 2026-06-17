@@ -40,7 +40,7 @@ class GreenlandAR6(Component):
             tas = np.expand_dims(tas, axis=0)
 
         nt = tas.shape[0]
-        time_delta = np.arange(state.nyr)
+        time_delta = np.arange(state.nyr, dtype=state.dtype)
 
         df = self.df
         n_models = len(df)
@@ -48,12 +48,12 @@ class GreenlandAR6(Component):
         model_indices = rng.integers(0, n_models, size=(nt, state.num_members))
 
         # Extract parameters and reshape to 3D: (nt, nm, 1)
-        b0 = df["b0"].values[model_indices][:, :, None]
-        b1 = df["b1"].values[model_indices][:, :, None]
-        b2 = df["b2"].values[model_indices][:, :, None]
-        b3 = df["b3"].values[model_indices][:, :, None]
-        b4 = df["b4"].values[model_indices][:, :, None]
-        b5 = df["b5"].values[model_indices][:, :, None]
+        b0 = df["b0"].values[model_indices][:, :, None].astype(state.dtype)
+        b1 = df["b1"].values[model_indices][:, :, None].astype(state.dtype)
+        b2 = df["b2"].values[model_indices][:, :, None].astype(state.dtype)
+        b3 = df["b3"].values[model_indices][:, :, None].astype(state.dtype)
+        b4 = df["b4"].values[model_indices][:, :, None].astype(state.dtype)
+        b5 = df["b5"].values[model_indices][:, :, None].astype(state.dtype)
 
         # GIS trend values taken from FACTS GitHub repo
         trend_mean = 0.19
@@ -63,12 +63,13 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random((nt, state.num_members)).astype(state.dtype),
+            rng.random((nt, state.num_members)),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,
             scale=trend_std,
-        )
+        ).astype(state.dtype)
+
         trend_sle = (trend[:, :, None] * time_delta[None, None, :]) * 1e-3
 
         tas_3d = tas[:, None, :]
@@ -131,11 +132,10 @@ class GreenlandSMBAR5(Component):
         febound = [1, 1.15]  # bounds of uniform pdf of SMB elevation feedback factor
 
         # random log-normal factor
-        fn = np.exp(rng.standard_normal(state.num_members) * fnlogsd)
+        fn = np.exp(rng.standard_normal(state.num_members, dtype=state.dtype) * fnlogsd)
         # elevation feedback factor
         fe = (
-            rng.random(state.num_members).astype(state.dtype)
-            * (febound[1] - febound[0])
+            rng.random(state.num_members, dtype=state.dtype) * (febound[1] - febound[0])
             + febound[0]
         )
         ff = fn * fe

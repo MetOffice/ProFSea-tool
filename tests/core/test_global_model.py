@@ -9,7 +9,7 @@ from profsea.components.core.state import ClimateState
 class MockGlobalComponent(Component):
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
         # Just return an array of 1s with the correct shape
-        return np.ones((state.nt * state.num_members, state.nyr))
+        return np.ones((state.nt * state.num_members, state.nyr), dtype=state.dtype)
 
 
 def test_calculate_drivers_math():
@@ -64,3 +64,53 @@ def test_save_components(tmp_path):
     assert "mock_comp" in ds.data_vars
     assert ds["mock_comp"].shape == (5, 4)
     assert list(ds.dims) == ["member", "time"]
+
+
+def test_return_types():
+    # Import a number of real components to test their return types
+    from profsea.components.global_ import (
+        AntarcticaDynAR5,
+        AntarcticaISMIP6,
+        AntarcticaSMBAR5,
+        Glacier,
+        GreenlandAR6,
+        GreenlandDynAR5,
+        GreenlandSMBAR5,
+        LandwaterAR5,
+        LandwaterAR6,
+        ThermalExpansion,
+    )
+
+    tas = np.zeros((2, 95))  # 2 trajectories, 4 years
+    ohc = np.zeros((2, 95))
+
+    components = {
+        "AntarcticaISMIP6": AntarcticaISMIP6(region="wais"),
+        "AntarcticaSMBAR5": AntarcticaSMBAR5(),
+        "AntarcticaDynAR5": AntarcticaDynAR5(),
+        "GreenlandAR6": GreenlandAR6(),
+        "GreenlandDynAR5": GreenlandDynAR5(),
+        "GreenlandSMBAR5": GreenlandSMBAR5(),
+        "Glacier": Glacier(),
+        "LandwaterAR5": LandwaterAR5(),
+        "LandwaterAR6": LandwaterAR6(),
+        "ThermalExpansion": ThermalExpansion(OHC_change=ohc),
+    }
+
+    global_model_float64 = Global(
+        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float64
+    )
+    results = global_model_float64.run(scenario="rcp26", T_change=tas)
+
+    for comp_name, data in results.items():
+        assert isinstance(data, xr.DataArray)
+        assert data.dtype == np.float64
+
+    global_model_float32 = Global(
+        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float32
+    )
+    results = global_model_float32.run(scenario="rcp26", T_change=tas)
+
+    for comp_name, data in results.items():
+        assert isinstance(data, xr.DataArray)
+        assert data.dtype == np.float32

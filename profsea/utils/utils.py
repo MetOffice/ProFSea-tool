@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 def sample_members_2D(
-    array: np.ndarray | da.Array, percentiles: list | np.ndarray
+    array: np.ndarray | da.Array,
+    percentiles: list | np.ndarray,
+    dtype: np.dtype = np.float32,
 ) -> np.ndarray | da.Array:
     """
     Sample real ensemble members from a 2D numpy or dask array lazily.
@@ -50,7 +52,7 @@ def sample_members_2D(
         array_percentiles = np.nanpercentile(arr, percs, axis=0)
         distances = cdist(array_percentiles, arr)
         mem_indices = np.argmin(distances, axis=1)
-        return arr[mem_indices]
+        return arr[mem_indices].astype(dtype)
 
     if isinstance(array, da.Array):
         # Tell Dask to delay this operation until the graph is computed
