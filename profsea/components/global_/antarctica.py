@@ -168,58 +168,6 @@ class AntarcticaISMIP6(Component):
 
         return term_slow + term_fast
 
-    # def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-    #     """
-    #     Projects AIS response using empirical additive bootstrapping aligned
-    #     to the ClimateState ensemble size.
-    #     """
-    #     tas = state.T_ens
-    #     if tas.ndim > 2:
-    #         tas = np.squeeze(tas)
-    #     if tas.ndim == 1:
-    #         tas = np.expand_dims(tas, axis=0)
-
-    #     dt = 1.0
-    #     nm = state.nt * state.num_members
-    #     n_time = tas.shape[1]
-
-    #     preds = np.zeros((nm, n_time))
-    #     tas_int = np.cumsum(tas, axis=1) * dt
-
-    #     # Randomly assign an ISMIP6 model and residual draw to each ensemble member
-    #     model_indices = rng.integers(0, self.n_models, size=nm)
-    #     all_residuals = self.param_ds.param_residuals.values
-    #     n_train_scenarios = all_residuals.shape[1]
-    #     residual_indices = rng.integers(0, n_train_scenarios, size=nm)
-
-    #     for i in range(nm):
-    #         t_idx = i // state.num_members
-    #         m_idx = model_indices[i]
-    #         r_idx = residual_indices[i]
-
-    #         # Extract assigned model parameters
-    #         tau1 = float(self.param_ds.tau1[m_idx].values)
-    #         tau2 = float(self.param_ds.tau2[m_idx].values)
-    #         gamma = float(self.param_ds.gamma[m_idx].values)
-
-    #         general_p = self.param_ds.general_params[m_idx].values
-    #         sampled_residuals = all_residuals[m_idx, r_idx, :]
-    #         total_params = general_p + sampled_residuals
-
-    #         # Slow response
-    #         term_slow = self._impulse_response_term(
-    #             tas[t_idx], tau1, tau2, gamma, total_params, dt
-    #         )
-
-    #         # Fast response
-    #         beta = total_params[2]
-    #         term_fast = beta * tas_int[t_idx]
-
-    #         # Combine
-    #         preds[i, :] = term_fast + term_slow
-
-    #     return preds
-
 
 class AntarcticaDynAR5(Component):
     """
@@ -321,7 +269,7 @@ class AntarcticaSMBAR5(Component):
         )  # m yr-1 of SLE per K of global warming
 
         if state.fraction is None:
-            fraction = rng.random((state.num_members, state.nt))
+            fraction = rng.random((state.num_members, state.nt)).astype(state.dtype)
         elif state.fraction.size != state.num_members * state.nt:
             raise ValueError("fraction is the wrong size")
         else:

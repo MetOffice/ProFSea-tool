@@ -21,6 +21,7 @@ class ClimateState:
     nyr: int
     nt: int
     num_members: int
+    dtype: np.dtype = np.float64
 
 
 @dataclass
@@ -34,6 +35,7 @@ class SpatialState:
     grid_interpolation: str
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
+    dtype: np.dtype = np.float64
 
 
 @dataclass
@@ -47,3 +49,4 @@ class LocalState:
     interpolation_method: str
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
+    dtype: np.dtype = np.float64

@@ -63,7 +63,7 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random((nt, state.num_members)),
+            rng.random((nt, state.num_members)).astype(state.dtype),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,
@@ -133,7 +133,11 @@ class GreenlandSMBAR5(Component):
         # random log-normal factor
         fn = np.exp(rng.standard_normal(state.num_members) * fnlogsd)
         # elevation feedback factor
-        fe = rng.random(state.num_members) * (febound[1] - febound[0]) + febound[0]
+        fe = (
+            rng.random(state.num_members).astype(state.dtype)
+            * (febound[1] - febound[0])
+            + febound[0]
+        )
         ff = fn * fe
 
         ztgreen = state.T_ens - dtgreen

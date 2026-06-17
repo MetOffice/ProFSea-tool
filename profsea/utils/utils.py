@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
 import zipfile
 from pathlib import Path
 
+import dask
 import dask.array as da
 import numpy as np
 import requests
@@ -20,29 +22,47 @@ from rich.progress import (
 from scipy.spatial.distance import cdist
 
 console = Console()
+logger = logging.getLogger(__name__)
 
 
-def sample_members_2D(array: np.ndarray, percentiles: list | np.ndarray) -> np.ndarray:
+def sample_members_2D(
+    array: np.ndarray | da.Array, percentiles: list | np.ndarray
+) -> np.ndarray | da.Array:
     """
-    Sample real ensemble members from a 2D numpy array.
+    Sample real ensemble members from a 2D numpy or dask array lazily.
 
     Parameters
     ----------
-    array: np.ndarray
+    array: np.ndarray | da.Array
         Input 2D array of shape (realisation, time).
     percentiles: list | np.ndarray
         List of percentiles to sample from the input array.
 
     Returns
     -------
-    np.ndarray
-        Sampled array of shape (len(percentiles), time) corresponding to the closest real ensemble members to the specified percentiles.
+    np.ndarray | da.Array
+        Sampled array of shape (len(percentiles), time). Maintains lazy
+        evaluation if a dask array is provided.
     """
-    # Caculate statistical timeseries, then match with closest real timeseries
-    array_percentiles = np.nanpercentile(array, percentiles, axis=0)
-    distances = cdist(array_percentiles, array)
-    mem_indices = np.argmin(distances, axis=1)
-    return array[mem_indices]
+
+    def _eager_sample(arr, percs):
+        # Calculate statistical timeseries, then match with closest real timeseries
+        array_percentiles = np.nanpercentile(arr, percs, axis=0)
+        distances = cdist(array_percentiles, arr)
+        mem_indices = np.argmin(distances, axis=1)
+        return arr[mem_indices]
+
+    if isinstance(array, da.Array):
+        # Tell Dask to delay this operation until the graph is computed
+        lazy_result = dask.delayed(_eager_sample)(array, percentiles)
+
+        # Reconstruct into a Dask array so downstream Xarray operations continue to work lazily
+        shape = (len(percentiles), array.shape[1])
+        return da.from_delayed(lazy_result, shape=shape, dtype=array.dtype)
+
+    else:
+        # Fallback for standard numpy arrays
+        return _eager_sample(array, percentiles)
 
 
 def interpolate(data: da.array, lats: int, lons: int) -> da.array:
@@ -280,6 +300,11 @@ def save_components(
     """
     ds = xr.Dataset(components)
 
+    # Add ProFSea version and scenario metadata
+    ds.attrs["source"] = "ProFSea v3.0"
+    ds.attrs["scenario"] = scenario_name
+    ds.attrs["description"] = "Spatial sea level rise projections"
+
     output_format = output_format.lower()
     if output_format not in ["netcdf", "zarr"]:
         raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
@@ -310,7 +335,7 @@ def save_components(
             "[bold cyan]Computing and saving NetCDF...[/bold cyan]", spinner="dots"
         ):
             ds.compute().to_netcdf(out_path, encoding=encoding)
-        console.log(f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}")
+        logger.info(f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}")
 
     elif output_format == "zarr":
         out_path = os.path.join(output_dir, f"{file_name}.zarr")
@@ -319,7 +344,7 @@ def save_components(
             spinner="dots",
         ):
             ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
-        console.log(f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}")
+        logger.info(f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}")
 
     dims_str = ", ".join(ds[name].dims)
-    console.log(f"Output shape was {ds[name].shape} ({dims_str})")
+    logger.info(f"Output shape was {ds[name].shape} ({dims_str})")
