@@ -279,6 +279,7 @@ def save_components(
     output_prefix: str = "projection",
     output_dir: str = ".",
     output_format: str = "zarr",
+    output_dtype: str = "float32",
 ) -> None:
     """
     Stream all regional sea level projections to disk in a single file/store.
@@ -295,6 +296,8 @@ def save_components(
         Name of the scenario you've run the emulator for.
     output_prefix: str
         Prefix for the output file name (e.g., 'projection' will result in 'ssp
+    output_dtype: str
+        Data type to save the output in. Default is 'float32'.
 
     Returns
     -------
@@ -324,9 +327,9 @@ def save_components(
     # Set the encoding/compression for each variable based on the output format
     for name, component in components.items():
         if output_format == "netcdf":
-            encoding[name] = {"zlib": True, "complevel": 1, "dtype": "float32"}
+            encoding[name] = {"zlib": True, "complevel": 1, "dtype": output_dtype}
         elif output_format == "zarr":
-            encoding[name] = {"compressor": compressor, "dtype": "float32"}
+            encoding[name] = {"compressor": compressor, "dtype": output_dtype}
 
     file_name = f"{scenario_name}_{output_prefix}"
 
