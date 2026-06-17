@@ -83,6 +83,43 @@ class Global:
         self.endofAR5 = 2100
         self.nyr = self.end_yr - self.endofhistory
 
+    def _arr_to_xr(self, arr_dict: dict[str, np.ndarray]) -> dict[str, xr.DataArray]:
+        """Convert a dictionary of numpy/dask arrays to xarray DataArrays.
+
+        Parameters
+        ----------
+        arr_dict: dict
+            Dictionary of arrays, where keys are component names and values are arrays.
+
+        Returns
+        -------
+        dict
+            Dictionary of xarray DataArrays, where keys are component names and values are xarray DataArrays.
+        """
+        xr_dict = {}
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
+
+        for name, arr in arr_dict.items():
+            member_coords = (
+                self.output_percentiles
+                if self.output_percentiles is not None
+                else np.arange(arr.shape[0])
+            )
+
+            xr_dict[name] = xr.DataArray(
+                arr,
+                dims=[member_dim, "time"],
+                coords={
+                    member_dim: member_coords,
+                    "time": np.arange(
+                        self.endofhistory, self.endofhistory + arr.shape[1]
+                    ),
+                },
+            )
+            xr_dict[name].attrs["units"] = "m"
+
+        return xr_dict
+
     def run(
         self,
         scenario: str,
@@ -174,27 +211,29 @@ class Global:
             for comp_name, data in results.items():
                 results[comp_name] = sample_members_2D(data, self.output_percentiles)
 
-        self.results = results
+        self.results = self._arr_to_xr(results)
+        return self.results
 
-        return results
-
-    def sum_components(self, components: dict[str, np.ndarray]) -> np.ndarray:
+    def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """Sum the components to get total GMSLR."""
-        components["gmslr"] = np.sum(
-            [np.atleast_2d(c) for c in components.values()], axis=0
-        )
-        return components["gmslr"]
+        gmslr = xr.concat(
+            [components[name] for name in components.keys()], dim="component"
+        ).sum(dim="component")
+        gmslr.attrs["units"] = "m"
+        gmslr.attrs["description"] = "Total global mean sea level rise"
+        components["total_gmslr"] = gmslr
+        return gmslr
 
     def save_components(
-        self, components: dict[str, np.ndarray], output_dir: str, scenario_name: str
+        self, components: dict[str, xr.DataArray], output_dir: str, scenario_name: str
     ) -> None:
         """Save SLR components as nc files to a directory.
 
         Parameters
         ----------
-        components: Dict[str, np.ndarray]
-            Dictionary of component names and their corresponding arrays.
-        output_directory: str
+        components: Dict[str, xr.DataArray]
+            Dictionary of component names and their corresponding xarray DataArrays.
+        output_dir: str
             Directory to save components to.
         scenario_name: str
             Name of the scenario you've run the emulator for.
@@ -203,27 +242,8 @@ class Global:
         -------
         None
         """
-        # Create directory if it doesn't exist
         Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-        # Save data in netcdf format
-        ds = xr.Dataset()
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
-        for name, component in components.items():
-            xr_dataArray = xr.DataArray(
-                component,
-                dims=[member_dim, "time"],
-                coords={
-                    member_dim: self.output_percentiles
-                    if self.output_percentiles is not None
-                    else np.arange(
-                        component.shape[0]
-                    ),  # handle if no output percentiles
-                    "time": np.arange(2006, component.shape[1] + 2006),
-                },
-            )
-            xr_dataArray.attrs["units"] = "m"
-            ds[name] = xr_dataArray
+        ds = xr.Dataset(components)
         ds.to_netcdf(os.path.join(output_dir, f"{scenario_name}_global.nc"))
 
     def _calculate_drivers(self, T_change: np.ndarray) -> tuple:

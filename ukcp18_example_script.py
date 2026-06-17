@@ -36,7 +36,7 @@ projections = global_model.run(
     member_seed=42,
 )
 global_model.sum_components(projections)
-gmslr = global_model.results["gmslr"]
+gmslr = global_model.results["total_gmslr"]
 
 ### Now spatial projections ###
 spatial_components = {
@@ -94,15 +94,15 @@ ax = fig.add_subplot(121)
 yrs = np.arange(2006, 2301)
 ax.plot(
     yrs,
-    np.median(global_model.results["gmslr"], axis=0),
+    np.median(gmslr, axis=0),
     label="Global Projection",
     color="royalblue",
 )
 # fill between 1 and 4 members
 ax.fill_between(
     yrs,
-    np.percentile(global_model.results["gmslr"], 17, axis=0),
-    np.percentile(global_model.results["gmslr"], 83, axis=0),
+    np.percentile(gmslr, 17, axis=0),
+    np.percentile(gmslr, 83, axis=0),
     alpha=0.3,
     color="skyblue",
 )

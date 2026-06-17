@@ -34,3 +34,16 @@ class SpatialState:
     grid_interpolation: str
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
+
+
+@dataclass
+class LocalState:
+    """LocalState context object to hold relevant state information for local SLR projections."""
+
+    target_lats: list[float]
+    target_lons: list[float]
+    n_years: int
+    n_members: int
+    interpolation_method: str
+    output_percentiles: list[int] | np.ndarray
+    baseline_yrs: tuple[int, int]

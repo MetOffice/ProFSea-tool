@@ -47,7 +47,9 @@ def test_save_components(tmp_path):
     global_model = Global(components={}, end_yr=2010)
 
     # Create dummy result: 5 members, 4 years
-    components = {"mock_comp": np.random.rand(5, 4)}
+    components = {
+        "mock_comp": xr.DataArray(np.random.rand(5, 4), dims=["member", "time"])
+    }
 
     # Save the output to the temporary directory
     global_model.save_components(

@@ -1,0 +1,105 @@
+import dask.array as da
+import numpy as np
+import pytest
+import xarray as xr
+
+from profsea.components.core.base import SpatialComponent
+
+
+class DummyState:
+    """Mock state object to hold target coordinates."""
+
+    def __init__(self, lats, lons):
+        self.target_lats = np.atleast_1d(lats)
+        self.target_lons = np.atleast_1d(lons)
+
+
+class MockLocalComponent(SpatialComponent):
+    @property
+    def global_projection(self):
+        # Return a dummy array to satisfy the abstract base class requirement
+        return np.zeros((1, 1))
+
+    def project(self, state, rng):
+        # Return a dummy array of shape (n_members, n_years, n_locations)
+        return np.ones((state.num_members, state.n_years, len(state.target_lats)))
+
+
+class TestLazyLocalExtraction:
+    @pytest.fixture
+    def lazy_grid(self) -> xr.DataArray:
+        """
+        Creates a predictable 3x4 global grid with known values and NaNs.
+        Latitudes: -10, 0, 10
+        Longitudes: -170, -90, 0, 90
+        """
+        lats = np.array([-10.0, 0.0, 10.0])
+        lons = np.array([-170.0, -90.0, 0.0, 90.0])
+
+        # Predictable values 1 through 12
+        data = np.arange(1, 13, dtype=float).reshape(3, 4)
+
+        # Inject NaNs to test coastal weighting
+        data[0, 2] = np.nan  # lat=-10, lon=0
+        data[2, 3] = np.nan  # lat=10,  lon=90
+
+        dask_data = da.from_array(data, chunks=(3, 2))
+
+        return xr.DataArray(
+            dask_data, dims=["lat", "lon"], coords={"lat": lats, "lon": lons}
+        )
+
+    @pytest.fixture
+    def component(self):
+        return MockLocalComponent()
+
+    def test_preserves_lazy_evaluation(self, lazy_grid, component):
+        """Ensure the extraction operations do not eagerly compute the Dask array."""
+        state = DummyState(lats=[5.0], lons=[-45.0])
+        result = component.extract_spatial(lazy_grid, state)
+        assert isinstance(result.data, da.Array), (
+            "Extraction triggered eager evaluation!"
+        )
+
+    def test_standard_bilinear_interpolation(self, lazy_grid, component):
+        """Test a clean extraction in the center of 4 valid nodes."""
+        state = DummyState(lats=[5.0], lons=[-45.0])
+        result = component.extract_spatial(lazy_grid, state).compute()
+        np.testing.assert_allclose(result.values, [8.5])
+
+    def test_coastal_nan_renormalization(self, lazy_grid, component):
+        """Test extraction where one corner of the bounding box is NaN."""
+        state = DummyState(lats=[-5.0], lons=[-45.0])
+        result = component.extract_spatial(lazy_grid, state).compute()
+        np.testing.assert_allclose(result.values, [5.0])
+
+    def test_exact_node_strike(self, lazy_grid, component):
+        """Ensure zero-division safeguards work when hitting a coordinate exactly."""
+        state = DummyState(lats=[0.0], lons=[-90.0])
+        result = component.extract_spatial(lazy_grid, state).compute()
+        np.testing.assert_allclose(result.values, [6.0])
+
+    def test_zonal_periodicity_wrapping(self, lazy_grid, component):
+        """Test extraction across the -180/180 antimeridian line."""
+        state = DummyState(lats=[0.0], lons=[180.0])
+        result = component.extract_spatial(lazy_grid, state).compute()
+        np.testing.assert_allclose(result.values, [5.3])
+
+    def test_all_nan_handling(self, lazy_grid, component):
+        """Ensure regions completely surrounded by NaNs yield NaN."""
+        lazy_grid *= np.nan  # Make the entire grid NaN
+        state = DummyState(lats=[5.0], lons=[45.0])
+        result = component.extract_spatial(lazy_grid, state).compute()
+        assert np.isnan(result.values[0])
+
+    def test_missing_spatial_attributes(self, lazy_grid, component):
+        """Ensure a ValueError is raised if the state lacks valid spatial targets."""
+
+        class DummyStateEmpty:
+            pass  # A truly empty state object
+
+        state = DummyStateEmpty()
+        with pytest.raises(
+            ValueError, match="State object is missing required spatial attributes"
+        ):
+            component.extract_spatial(lazy_grid, state)
