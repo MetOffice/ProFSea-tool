@@ -89,5 +89,7 @@ html_sidebars = {
     "**": ["search-field", "sidebar-nav-bs", "page-toc"],
 }
 html_static_path = ["_static"]
-# html_logo = "_static/profsea-logo-dark.png"
 html_favicon = "_static/favicon.png"
+html_css_files = [
+    "custom.css",
+]

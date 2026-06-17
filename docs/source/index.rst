@@ -38,8 +38,9 @@
 
       .. image:: /_static/logo.png
          :alt: ProFSea Logo
-         :class: align-center
+         :class: align-center transparent-logo
          :width: 100%
+
 
 ----
 
