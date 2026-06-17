@@ -53,7 +53,7 @@ class Fingerprint(SpatialComponent):
 
     def __init__(
         self,
-        global_projection: np.ndarray,
+        global_projection: xr.DataArray,
         fingerprint_component: str,
         fingerprint_paths: str | Path | list[str | Path] = None,
         scaling_factor: float = 1.0,
@@ -62,7 +62,7 @@ class Fingerprint(SpatialComponent):
         """
         Parameters
         ----------
-        global_projection: np.ndarray
+        global_projection: xr.DataArray
              A 2D array (members x years) of global projections to apply the fingerprints to.
         fingerprint_paths: str, Path, or list of str/Path
              Path(s) to NetCDF files containing the spatial fingerprint patterns. Each file should contain a DataArray with dimensions (lat, lon).
@@ -71,7 +71,7 @@ class Fingerprint(SpatialComponent):
         sample_spatial: bool, optional
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
-        self._global_projection = da.from_array(global_projection, chunks="auto")
+        self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial
         self.fingerprint_component = fingerprint_component

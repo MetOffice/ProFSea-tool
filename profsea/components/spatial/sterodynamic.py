@@ -27,14 +27,14 @@ class SterodynamicCMIP6(SpatialComponent):
 
     def __init__(
         self,
-        global_projection: np.ndarray,
+        global_projection: xr.DataArray,
         patterns_dir: str = None,
         sample_spatial: bool = False,
     ) -> None:
         """
         Parameters
         ----------
-        global_projection: np.ndarray
+        global_projection: xr.DataArray
              A 2D array (members x years) of global projections to apply the fingerprints to.
         patterns_dir: str, optional
              Path to directory containing CMIP6 sterodynamic patterns.
@@ -42,7 +42,7 @@ class SterodynamicCMIP6(SpatialComponent):
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
         # Convert to dask array for cheap as possible compute
-        self._global_projection = da.from_array(global_projection, chunks="auto")
+        self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.sample_spatial = sample_spatial
 
         if patterns_dir is None:
