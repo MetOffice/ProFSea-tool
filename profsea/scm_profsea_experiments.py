@@ -278,7 +278,7 @@ def plot_component(
         scenarios[3]: "#d3a640",
         scenarios[4]: "#098740",
         scenarios[5]: "#0080d0",
-        scenarios[6]: '#100060',
+        scenarios[6]: "#100060",
     }
     for scenario in reversed(scenarios):
         ax.fill_between(
