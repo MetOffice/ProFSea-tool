@@ -37,6 +37,12 @@ projections = global_model.run(
 )
 global_model.sum_components(projections)
 gmslr = global_model.results["total_gmslr"]
+global_model.save_components(
+    global_model.results,
+    scenario_name="rcp85",
+    output_format="zarr",
+    output_prefix="global_",
+)
 
 ### Now spatial projections ###
 spatial_components = {

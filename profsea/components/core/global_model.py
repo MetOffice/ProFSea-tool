@@ -2,18 +2,19 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-import os
-from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from rich.console import Console
+from rich.progress import track
 
-from profsea.utils import check_shapes, sample_members_2D
+from profsea.utils import check_shapes, sample_members_2D, save_components
 from profsea.utils.ui import print_global_preflight
 
 from .base import Component
 from .state import ClimateState
 
+console = Console()
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +69,7 @@ class Global:
         output_percentiles: list | np.ndarray = None,
         palmer_method: bool = True,
         random_sample: bool = False,
+        dtype: np.dtype | str = np.float32,
     ):
         self.components = components
         self.end_yr = end_yr
@@ -78,10 +80,14 @@ class Global:
         self.output_percentiles = output_percentiles
         self.palmer_method = palmer_method
         self.random_sample = random_sample
+        self.dtype = np.dtype(dtype)
 
         self.endofhistory = 2006
         self.endofAR5 = 2100
         self.nyr = self.end_yr - self.endofhistory
+
+    # Inject method!
+    save_components = save_components
 
     def _arr_to_xr(self, arr_dict: dict[str, np.ndarray]) -> dict[str, xr.DataArray]:
         """Convert a dictionary of numpy/dask arrays to xarray DataArrays.
@@ -152,10 +158,11 @@ class Global:
 
         print_global_preflight(self, scenario)
 
+        T_change = T_change.astype(self.dtype)
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
 
         # Shared physical correlation state
-        fraction = run_rng.random(self.num_members * self.nt)
+        fraction = run_rng.random(self.num_members * self.nt).astype(self.dtype)
 
         state = ClimateState(
             scenario=scenario,
@@ -170,6 +177,7 @@ class Global:
             nyr=self.nyr,
             nt=self.nt,
             num_members=self.num_members,
+            dtype=self.dtype,
         )
 
         # Child RNGs for each component
@@ -193,7 +201,9 @@ class Global:
                     except Exception as e:
                         raise RuntimeError(f"Component '{comp_name}' failed.") from e
         else:
-            for name, comp in self.components.items():
+            for name, comp in track(
+                self.components.items(), description="Projecting components..."
+            ):
                 results[name] = comp.project(state, comp_rngs[name])
 
         # Random Sampling
@@ -209,42 +219,138 @@ class Global:
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
-                results[comp_name] = sample_members_2D(data, self.output_percentiles)
+                results[comp_name] = sample_members_2D(
+                    data, self.output_percentiles, dtype=self.dtype
+                )
 
         self.results = self._arr_to_xr(results)
         return self.results
 
+    # def save_components(
+    #     self,
+    #     components: dict[str, xr.DataArray],
+    #     scenario_name: str,
+    #     output_prefix: str = "global",
+    #     output_dir: str = ".",
+    #     output_format: str = "netcdf",
+    # ) -> None:
+    #     """
+    #     Stream all global sea level projections to disk in a single file/store.
+
+    #     Parameters
+    #     ----------
+    #     components: dict[str, xr.DataArray]
+    #         Dictionary of component names and their corresponding Xarray DataArrays.
+    #     scenario_name: str
+    #         Name of the scenario you've run the emulator for.
+    #     output_prefix: str
+    #         Prefix for the output file name (default: 'global').
+    #     output_dir: str
+    #         Directory to save components to.
+    #     output_format: str
+    #         Format to save the output in. Must be either 'netcdf' or 'zarr'.
+
+    #     Returns
+    #     -------
+    #     None
+    #     """
+    #     ds = xr.Dataset(components)
+
+    #     # Add ProFSea version and scenario metadata
+    #     ds.attrs["source"] = "ProFSea v3.0"
+    #     ds.attrs["scenario"] = scenario_name
+    #     ds.attrs["description"] = "Global sea level rise projections"
+
+    #     output_format = output_format.lower()
+    #     if output_format not in ["netcdf", "zarr"]:
+    #         raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
+
+    #     Path(output_dir).mkdir(parents=True, exist_ok=True)
+    #     encoding = {}
+
+    #     # Sort out Zarr encoding
+    #     if output_format == "zarr":
+    #         import numcodecs
+    #         from numcodecs.zarr3 import Blosc
+
+    #         compressor = Blosc(
+    #             cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
+    #         )
+
+    #     # Set the encoding/compression dynamically based on the component's actual dtype
+    #     for name, component in components.items():
+    #         comp_dtype = (
+    #             component.dtype.name
+    #         )  # Captures 'float32' or 'float64' dynamically
+
+    #         if output_format == "netcdf":
+    #             encoding[name] = {"zlib": True, "complevel": 1, "dtype": comp_dtype}
+    #         elif output_format == "zarr":
+    #             encoding[name] = {"compressor": compressor, "dtype": comp_dtype}
+
+    #     file_name = f"{scenario_name}_{output_prefix}"
+
+    #     # Stream the computation and write to disk
+    #     if output_format == "netcdf":
+    #         out_path = os.path.join(output_dir, f"{file_name}.nc")
+    #         with console.status(
+    #             "[bold cyan]Computing and saving Global NetCDF...[/bold cyan]",
+    #             spinner="dots",
+    #         ):
+    #             # If using Dask, .compute() is required before .to_netcdf()
+    #             # If arrays are already eager NumPy arrays, .compute() is a harmless no-op
+    #             if hasattr(ds, "compute"):
+    #                 ds.compute().to_netcdf(out_path, encoding=encoding)
+    #             else:
+    #                 ds.to_netcdf(out_path, encoding=encoding)
+
+    #         logger.info(
+    #             f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
+    #         )
+
+    #     elif output_format == "zarr":
+    #         out_path = os.path.join(output_dir, f"{file_name}.zarr")
+    #         with console.status(
+    #             "[bold cyan]Streaming computation and saving Global Zarr...[/bold cyan]",
+    #             spinner="dots",
+    #         ):
+    #             ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
+    #         logger.info(
+    #             f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}"
+    #         )
+
+    #     # Log the shape of the total_gmslr (or the first available component)
+    #     sample_name = (
+    #         "total_gmslr" if "total_gmslr" in ds else list(ds.data_vars.keys())[0]
+    #     )
+    #     dims_str = ", ".join(ds[sample_name].dims)
+    #     logger.info(f"Global output shape was {ds[sample_name].shape} ({dims_str})")
+
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
-        """Sum the components to get total GMSLR."""
-        gmslr = xr.concat(
-            [components[name] for name in components.keys()], dim="component"
-        ).sum(dim="component")
+        """
+        Sum the components in-place to get total GMSLR.
+
+        Parameters
+        ----------
+        components: dict[str, xr.DataArray]
+            Dictionary of component names and their corresponding Xarray DataArrays.
+
+        Returns
+        -------
+        xr.DataArray
+            DataArray of the summed global projections.
+        """
+
+        iterator = iter(components.values())
+        gmslr = next(iterator).copy()
+
+        for comp in iterator:
+            gmslr += comp
+
         gmslr.attrs["units"] = "m"
         gmslr.attrs["description"] = "Total global mean sea level rise"
         components["total_gmslr"] = gmslr
         return gmslr
-
-    def save_components(
-        self, components: dict[str, xr.DataArray], output_dir: str, scenario_name: str
-    ) -> None:
-        """Save SLR components as nc files to a directory.
-
-        Parameters
-        ----------
-        components: Dict[str, xr.DataArray]
-            Dictionary of component names and their corresponding xarray DataArrays.
-        output_dir: str
-            Directory to save components to.
-        scenario_name: str
-            Name of the scenario you've run the emulator for.
-
-        Returns
-        -------
-        None
-        """
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-        ds = xr.Dataset(components)
-        ds.to_netcdf(os.path.join(output_dir, f"{scenario_name}_global.nc"))
 
     def _calculate_drivers(self, T_change: np.ndarray) -> tuple:
         """Calculate the drivers of GMSLR: temperature change and
@@ -264,4 +370,4 @@ class Global:
         # Time-integral of temperature anomaly
         T_int_ens = np.cumsum(T_ens, axis=1)
         T_int_med = np.cumsum(np.median(T_ens, axis=0))
-        return T_ens, T_int_ens, T_int_med
+        return (T_ens, T_int_ens, T_int_med)

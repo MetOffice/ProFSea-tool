@@ -5,7 +5,17 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "profsea"
 version = "3.0"
-dependencies = ["numpy", "xarray", "scipy", "dask", "rich", "requests", "regionmask"]
+dependencies = [
+    "numpy",
+    "xarray",
+    "scipy",
+    "dask",
+    "rich",
+    "requests",
+    "regionmask",
+    "netcdf4",
+    "h5netcdf",
+]
 
 [tool.setuptools.packages.find]
 include = ["profsea*"]
@@ -14,8 +24,8 @@ exclude = ["docs*", "tests*"]
 [project.optional-dependencies]
 test = [
     "pytest>=7.0",
-    "pytest-cov",  # Useful for checking test coverage later
-    "pytest-github-actions-annotate-failures"
+    "pytest-cov",                              # Useful for checking test coverage later
+    "pytest-github-actions-annotate-failures",
 ]
 
 # Settings for Ruff formatting

@@ -79,10 +79,17 @@ html_theme_options = {
             "type": "fontawesome",
         }
     ],
+    "logo": {
+        "image_light": "_static/profsea-logo-light.png",
+        "image_dark": "_static/profsea-logo-dark.png",
+    },
 }
 html_sidebars = {
+    "index": [],  # This removes the left sidebar on the landing page
     "**": ["search-field", "sidebar-nav-bs", "page-toc"],
 }
 html_static_path = ["_static"]
-html_logo = "_static/profsea-logo.png"
 html_favicon = "_static/favicon.png"
+html_css_files = [
+    "custom.css",
+]

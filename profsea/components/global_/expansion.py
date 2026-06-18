@@ -22,6 +22,8 @@ class ThermalExpansion(Component):
         self.distribution_scaler = distribution_scaler
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+        self.OHC_change = np.asarray(self.OHC_change, dtype=state.dtype)
+
         # check the shape here
         check_shapes(self.OHC_change, state.nyr)
 
@@ -39,7 +41,7 @@ class ThermalExpansion(Component):
         exp_efficiency = (
             rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
             * 1e-24
-        )  # m/YJ
+        ).astype(state.dtype)  # m/YJ
 
         ohc_3d = self.OHC_change[:, None, :]
         # Efficiency shape: (nt, num_members, 1)
