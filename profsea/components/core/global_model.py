@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
-import os
-from pathlib import Path
 
 import numpy as np
 import xarray as xr
