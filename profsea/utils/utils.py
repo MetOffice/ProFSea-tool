@@ -207,14 +207,14 @@ def fetch_zenodo_fingerprints(
 
     # 1. Check if data already exists
     if target_dir.exists() and any(target_dir.iterdir()):
-        console.log("[bold green]✓ ProFSea assets found locally![/bold green]")
+        logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
         return
 
     # Create the base directory if it doesn't exist
     data_dir.mkdir(parents=True, exist_ok=True)
     zip_path = data_dir / "temp_fingerprints.zip"
 
-    console.log(f"Initiating download from {zenodo_url}...")
+    logger.info(f"Initiating download from {zenodo_url}...")
 
     # 2. Stream the download with a rich progress bar
     try:
@@ -242,12 +242,12 @@ def fetch_zenodo_fingerprints(
                         progress.update(download_task, advance=len(chunk))
 
     except requests.exceptions.RequestException as e:
-        console.log(f"[bold red]Failed to download data: {e}[/bold red]")
+        logger.error(f"[bold red]Failed to download data: {e}[/bold red]")
         if zip_path.exists():
             zip_path.unlink()  # Clean up partial downloads
         raise
 
-    console.log("Extracting data...")
+    logger.info("Extracting data...")
     try:
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             # Filter out the __MACOSX directory and its contents
@@ -258,11 +258,11 @@ def fetch_zenodo_fingerprints(
             ]
             zip_ref.extractall(data_dir, members=valid_members)
 
-        console.log(
+        logger.info(
             f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
         )
     except zipfile.BadZipFile:
-        console.log(
+        logger.error(
             "[bold red]Error: Downloaded file is not a valid zip archive.[/bold red]"
         )
         raise
@@ -279,36 +279,44 @@ def save_components(
     output_prefix: str = "projection",
     output_dir: str = ".",
     output_format: str = "zarr",
-    output_dtype: str = "float32",
+    output_dtype: str | None = None,
+    description: str = "Spatial sea level rise projections",
 ) -> None:
     """
-    Stream all regional sea level projections to disk in a single file/store.
+    Stream sea level projections to disk in a single file/store.
 
     Parameters
     ----------
     components: dict[str, xr.DataArray]
         Dictionary of component names and their corresponding Xarray DataArrays.
-    output_format: str
-        Format to save the output in. Must be either 'netcdf' or 'zarr'.
-    output_dir: str
-        Directory to save components to.
     scenario_name: str
         Name of the scenario you've run the emulator for.
     output_prefix: str
-        Prefix for the output file name (e.g., 'projection' will result in 'ssp
-    output_dtype: str
-        Data type to save the output in. Default is 'float32'.
+        Prefix for the output file name (e.g., 'projection' or 'global').
+    output_dir: str
+        Directory to save components to.
+    output_format: str
+        Format to save the output in. Must be either 'netcdf' or 'zarr'.
+    output_dtype: str | None
+        Data type to force the output to (e.g., 'float32'). If None, the dtype
+        is dynamically inferred from each individual component.
+    description: str
+        Metadata description attached to the dataset attributes.
 
     Returns
     -------
     None
     """
+    if not components:
+        logger.warning("No components provided to save.")
+        return
+
     ds = xr.Dataset(components)
 
     # Add ProFSea version and scenario metadata
     ds.attrs["source"] = "ProFSea v3.0"
     ds.attrs["scenario"] = scenario_name
-    ds.attrs["description"] = "Spatial sea level rise projections"
+    ds.attrs["description"] = description
 
     output_format = output_format.lower()
     if output_format not in ["netcdf", "zarr"]:
@@ -324,32 +332,45 @@ def save_components(
 
         compressor = Blosc(cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
 
-    # Set the encoding/compression for each variable based on the output format
+    # Set the encoding dynamically, overriding with output_dtype if provided
     for name, component in components.items():
+        comp_dtype = output_dtype if output_dtype else component.dtype.name
+
         if output_format == "netcdf":
-            encoding[name] = {"zlib": True, "complevel": 1, "dtype": output_dtype}
+            encoding[name] = {"zlib": True, "complevel": 1, "dtype": comp_dtype}
         elif output_format == "zarr":
-            encoding[name] = {"compressor": compressor, "dtype": output_dtype}
+            encoding[name] = {"compressor": compressor, "dtype": comp_dtype}
 
     file_name = f"{scenario_name}_{output_prefix}"
+
+    # Dynamically adjust console message string based on the prefix
+    log_prefix = "Global " if "global" in output_prefix.lower() else ""
 
     # Stream the computation and write to disk
     if output_format == "netcdf":
         out_path = os.path.join(output_dir, f"{file_name}.nc")
         with console.status(
-            "[bold cyan]Computing and saving NetCDF...[/bold cyan]", spinner="dots"
+            f"[bold cyan]Computing and saving {log_prefix}NetCDF...[/bold cyan]",
+            spinner="dots",
         ):
+            # Let xarray handle streaming directly to avoid RAM overload
             ds.compute().to_netcdf(out_path, encoding=encoding)
+
         logger.info(f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}")
 
     elif output_format == "zarr":
         out_path = os.path.join(output_dir, f"{file_name}.zarr")
         with console.status(
-            "[bold cyan]Streaming computation and saving Zarr...[/bold cyan]",
+            f"[bold cyan]Streaming computation and saving {log_prefix}Zarr...[/bold cyan]",
             spinner="dots",
         ):
             ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
+
         logger.info(f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}")
 
-    dims_str = ", ".join(ds[name].dims)
-    logger.info(f"Output shape was {ds[name].shape} ({dims_str})")
+    # Safely get a sample name to log the shape (fixes the scope-leak bug)
+    sample_name = "total_gmslr" if "total_gmslr" in ds else list(ds.data_vars.keys())[0]
+    dims_str = ", ".join(ds[sample_name].dims)
+    logger.info(
+        f"{log_prefix}Output shape for '{sample_name}' was {ds[sample_name].shape} ({dims_str})"
+    )

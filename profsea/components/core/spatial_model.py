@@ -72,6 +72,7 @@ class Spatial:
         self.output_percentiles = output_percentiles
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
+        self.dtype = dtype
 
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_members = len(self.output_percentiles)
