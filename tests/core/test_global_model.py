@@ -53,7 +53,11 @@ def test_save_components(tmp_path):
 
     # Save the output to the temporary directory
     global_model.save_components(
-        components, output_dir=str(tmp_path), scenario_name="test"
+        components,
+        output_dir=str(tmp_path),
+        scenario_name="test",
+        output_prefix="global",
+        output_format="netcdf",
     )
 
     expected_file = tmp_path / "test_global.nc"
