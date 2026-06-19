@@ -382,7 +382,13 @@ def main(args):
             "glacier": Glacier(),
         }
 
-        global_model = Global(components=slr_components, end_yr=2301, num_members=1)
+        global_model = Global(
+            components=slr_components,
+            end_yr=2301,
+            num_members=1000,
+            dtype="float32",
+            parallel=False,
+        )
         projections = global_model.run(
             scenario=scenario,
             T_change=tas_scen,

@@ -37,6 +37,7 @@ class Spatial:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
+        dtype: np.dtype = np.float32,
     ) -> None:
         """
         Parameters
@@ -54,6 +55,8 @@ class Spatial:
             Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
+        dtype: np.dtype, optional
+            Data type for the output arrays. Default is np.float32.
         """
         # Define the path where the data should live
 
@@ -69,6 +72,7 @@ class Spatial:
         self.output_percentiles = output_percentiles
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
+        self.dtype = dtype
 
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_members = len(self.output_percentiles)
@@ -196,6 +200,7 @@ class Spatial:
             grid_interpolation="linear",
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
+            dtype=self.dtype,
         )
 
         child_seeds = seed_seq.spawn(len(self.components))
@@ -240,13 +245,6 @@ class Spatial:
         total_rsl = xr.concat(components.values(), dim="component").sum(
             dim="component", skipna=False
         )
-
-        # Optionally, apply attributes so it matches the other DataArrays
-        total_rsl.attrs = {
-            "units": "m",
-            "long_name": "Regional total sea-level projections",
-            "source": "ProFSea-Climate v0.1",
-        }
-
+        total_rsl.attrs["units"] = "m"
         components["total_rsl"] = total_rsl
         return total_rsl
