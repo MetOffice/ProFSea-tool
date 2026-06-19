@@ -11,9 +11,13 @@
 
       ProFSea
 
+      .. rst-class:: display-8 font-weight-light
+      
+      (pronouced "pro-fe-see")
+
       .. rst-class:: lead
 
-      **🌊 A modular, easy-to-setup, and self-contained sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC.**
+      **🌊 The Met Office's modular, accessible, fast sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature.**
 
       .. container:: d-flex gap-3 pt-3
          
@@ -44,7 +48,15 @@
 
 ----
 
-ProFSea makes complex sea-level rise simulations accessible and fast. All you need is global mean surface temperature and ocean heat content forcing anomalies, using any baseline period, and you're good to go. ProFSea development is supported by the MetOffice.
+ProFSea makes complex sea-level rise simulations easy and efficient. All you need is global mean surface temperature and ocean heat content forcing anomalies, using any baseline period, and you're good to go.
+
+We simulate sea-level change contributions from:
+
+- Antartic Ice Sheet 🇦🇶
+- Greenland Ice Sheet 🧊
+- Glacier melt 🏔️
+- Thermal expansion 🌡️
+- Landwater ⛰️
 
 Quick Install
 -------------
