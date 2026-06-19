@@ -17,7 +17,7 @@
 
       .. rst-class:: lead
 
-      **🌊 The Met Office's modular, accessible, fast sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature.**
+      **🌊 The Met Office's modular, accessible, and *fast* sea-level rise simulator based on statistical emulations of physical modelling experiments and lines of evidence from the IPCC and across the literature.**
 
       .. container:: d-flex gap-3 pt-3
          

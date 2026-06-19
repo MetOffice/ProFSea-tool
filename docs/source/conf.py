@@ -71,6 +71,7 @@ html_theme_options = {
     "show_nav_level": 2,
     "header_links_before_dropdown": 4,
     "secondary_sidebar_items": [],
+    "navbar_start": ["mo_logo", "navbar-logo"],
     "icon_links": [
         {
             "name": "GitHub",
