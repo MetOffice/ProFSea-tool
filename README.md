@@ -40,6 +40,8 @@ This work has built on the original publication of ProFSea V1, which was support
 ## Licence
 ProFSea is licensed under the [Open Government Licence 3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
 
+Please note, the current version of this tool does not fully represent the methodologies under UK Climate Projections 2018 (UKCP18) or UK Climate Information. For generating UKCP18 sea-level projections, please refer to V1 of this tool.
+
 If you have any queries about this tool please contact: enquiries@metoffice.gov.uk
 
 <h5 align="center">
