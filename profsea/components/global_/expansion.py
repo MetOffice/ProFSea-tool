@@ -24,7 +24,7 @@ class ThermalExpansion(Component):
         self,
         data_input: np.ndarray,
         distribution_scaler: float = 1.0,
-        OHC_change: bool = True
+        OHC_change: bool = True,
     ):
 
         self.data_input = data_input
@@ -65,6 +65,6 @@ class ThermalExpansion(Component):
         else:
             expansion = np.broadcast_to(
                 self.data_input[:, None, :], (state.nt, state.num_members, state.nyr)
-                    )
+            )
 
         return expansion.reshape(state.num_members * state.nt, state.nyr)
