@@ -20,8 +20,13 @@ class ThermalExpansion(Component):
         If False, assumes input is the global-mean sea level change.
     """
 
-    def __init__(self, data_input: np.ndarray, distribution_scaler: float = 1.0,
-                 OHC_change: bool = True):
+    def __init__(
+        self,
+        data_input: np.ndarray,
+        distribution_scaler: float = 1.0,
+        OHC_change: bool = True
+    ):
+
         self.data_input = data_input
         self.distribution_scaler = distribution_scaler
         self.OHC_change = OHC_change
@@ -45,7 +50,9 @@ class ThermalExpansion(Component):
             std_eff = 0.013 * self.distribution_scaler
 
             exp_efficiency = (
-                rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
+                rng.normal(
+                    loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members)
+                )
                 * 1e-24
             ).astype(state.dtype)  # m/YJ
 
@@ -56,8 +63,8 @@ class ThermalExpansion(Component):
             expansion = ohc_3d * exp_efficiency_3d
 
         else:
-            expansion = np.broadcast_to(self.data_input[:, None, :],
-                    (state.nt, state.num_members, state.nyr)
+            expansion = np.broadcast_to(
+                self.data_input[:, None, :], (state.nt, state.num_members, state.nyr)
                     )
 
         return expansion.reshape(state.num_members * state.nt, state.nyr)
