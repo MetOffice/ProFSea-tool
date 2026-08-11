@@ -56,6 +56,8 @@ class ThermalExpansion(Component):
             expansion = ohc_3d * exp_efficiency_3d
         
         else:
-            expansion =  self.data_input[:, None, :]
+            expansion = np.broadcast_to(self.data_input[:, None, :],
+                    (state.nt, state.num_members, state.nyr)
+                    )
             
         return expansion.reshape(state.num_members * state.nt, state.nyr)
