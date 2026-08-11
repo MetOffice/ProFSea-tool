@@ -11,41 +11,51 @@ class ThermalExpansion(Component):
     """
     Parameters and Attributes
     -------------------------
-    OHC_change: np.ndarray
-        Array of ocean heat content change values.
-    exp_efficiency: float
-        Sensitivity of thermosteric SLR to ocean heat content change.
+    data_input: np.ndarray
+        Array of ocean heat content (or thermosteric sea level) change values.
+    distribution_scaler: float
+        Controls distribution of sensitivity of thermosteric SLR to ocean heat content change.
+    OHC_change: bool
+        If True, assumes input is ocean heat content change.
+        If False, assumes input is the global-mean sea level change.
     """
 
-    def __init__(self, OHC_change: np.ndarray, distribution_scaler: float = 1.0):
-        self.OHC_change = OHC_change
+    def __init__(self, data_input: np.ndarray, distribution_scaler: float = 1.0,
+                 OHC_change: bool = True):
+        self.data_input = data_input
         self.distribution_scaler = distribution_scaler
+        self.OHC_change = OHC_change
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-        self.OHC_change = np.asarray(self.OHC_change, dtype=state.dtype)
+        self.data_input = np.asarray(self.data_input, dtype=state.dtype)
 
         # check the shape here
-        check_shapes(self.OHC_change, state.nyr)
+        check_shapes(self.data_input, state.nyr)
 
-        # Ensure OHC_change is 2D
-        if self.OHC_change.ndim > 2:
-            self.OHC_change = np.squeeze(self.OHC_change)
-        if self.OHC_change.ndim == 1:
-            self.OHC_change = np.expand_dims(self.OHC_change, axis=0)
+        # Ensure data_input is 2D
+        if self.data_input.ndim > 2:
+            self.data_input = np.squeeze(self.data_input)
+        if self.data_input.ndim == 1:
+            self.data_input = np.expand_dims(self.data_input, axis=0)
 
-        # Sensitivity of thermosteric SLR to ocean heat content change
-        # From Turner et al. (2023)
-        mean_eff = 0.113
-        std_eff = 0.013 * self.distribution_scaler
-
-        exp_efficiency = (
-            rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
-            * 1e-24
-        ).astype(state.dtype)  # m/YJ
-
-        ohc_3d = self.OHC_change[:, None, :]
-        # Efficiency shape: (nt, num_members, 1)
-        exp_efficiency_3d = exp_efficiency[:, :, None]
-
-        expansion = ohc_3d * exp_efficiency_3d
+        if self.OHC_change:
+            # Sensitivity of thermosteric SLR to ocean heat content change
+            # From Turner et al. (2023)
+            mean_eff = 0.113
+            std_eff = 0.013 * self.distribution_scaler
+    
+            exp_efficiency = (
+                rng.normal(loc=mean_eff, scale=std_eff, size=(state.nt, state.num_members))
+                * 1e-24
+            ).astype(state.dtype)  # m/YJ
+    
+            ohc_3d = self.data_input[:, None, :]
+            # Efficiency shape: (nt, num_members, 1)
+            exp_efficiency_3d = exp_efficiency[:, :, None]
+    
+            expansion = ohc_3d * exp_efficiency_3d
+        
+        else:
+            expansion =  self.data_input[:, None, :]
+            
         return expansion.reshape(state.num_members * state.nt, state.nyr)
