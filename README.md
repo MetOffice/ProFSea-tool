@@ -1,4 +1,4 @@
-# ProFSea-tool
+# ProFSea-tool v2.0.0
 
 [![DOI](https://zenodo.org/badge/713453340.svg)](https://zenodo.org/doi/10.5281/zenodo.10255467)
 

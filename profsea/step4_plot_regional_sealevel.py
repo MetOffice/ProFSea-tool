@@ -29,13 +29,14 @@ def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
     :return: years, scenario uncertainty, model uncertainty, internal
     variability
     """
-    nyrs = np.range(2007, settings["projection_end_year"] + 1).size
+    nyrs = np.arange(2007, settings["projection_end_year"] + 1).size
     allpmid = np.zeros([3, nyrs])
     allunc = np.zeros([3, nyrs])
 
     # Estimate internal variability from de-trended gauge data
     tg_years_arr = np.array(tg_years, dtype='int')
-    vals = np.ma.masked_values(tg_amsl, -99999.)
+    vals = np.ma.masked_invalid(tg_amsl)
+    vals = np.ma.masked_values(vals, -99999.)
     IntV = compute_variability(tg_years_arr / 1000., vals / 1.)
 
     # Get the values of the multi-index: years and percentile values
@@ -54,7 +55,7 @@ def compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl):
     # Model Uncertainty (already expressed as 90% confidence interval)
     UncM = np.mean(allunc, axis=0)
 
-    return years, UncS, UncM, IntV
+    return years, np.squeeze(UncS), np.squeeze(UncM), IntV
 
 
 def compute_variability(x, y, factor=1.645):
@@ -65,10 +66,8 @@ def compute_variability(x, y, factor=1.645):
     :param factor: multiplication factor
     :return: internal variability component of uncertainty
     """
-    mask = np.ma.getmask(y)
-    index = np.where(mask is True)
-    new_x = np.delete(x, index)
-    new_y = np.delete(y, index)
+    new_x = x[~y.mask]
+    new_y = y[~y.mask]
     fit = np.polyfit(new_x, new_y, 1)
     fit_data = new_x * fit[0] + fit[1]
     stdev = np.std(new_y - fit_data)
@@ -260,7 +259,8 @@ def plot_figure_two(r_df_list, tg_name, nflag, flag, tg_years, non_missing,
     plot_zeroline(ax, xlim)
 
     # Plot the annual mean sea levels from the tide gauge data
-    plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name)
+    if settings['plot_tide_gauge_data']:
+        plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name)
 
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
@@ -712,6 +712,36 @@ def plot_figure_seven(g_df_list, r_df_list, site_name, scenarios, fig_dir):
     plt.close()
 
 
+def plot_figure_eight(df_r_list, tg_years, tg_amsl, site_name, scenarios, fig_dir):
+    years, UncS, UncM, IntV = compute_uncertainties(df_r_list, scenarios, tg_years, tg_amsl)
+    
+    IntV = np.full(UncS.shape, IntV)
+    
+    UncT = np.sum([UncS, UncM, IntV], axis=0)
+    
+    fig = plt.figure(figsize=(4.5, 4.5))
+    
+    ax = fig.add_subplot(111)
+    matplotlib.rcParams['font.size'] = 9
+    
+    ax.fill_between(years, 0, UncM/UncT, color='blue', label='Model')
+    ax.fill_between(years, UncM/UncT, (UncM+UncS)/UncT, color='green', label='Scenario')
+    ax.fill_between(years, (UncM + UncS)/UncT, 1, color='orange', label='Variability')
+    
+    ax.legend(loc='lower right', fancybox=True, framealpha=1)
+    ax.set_title(f'{location_string(site_name)}')
+    ax.set_xlabel('Year')
+    ax.set_ylabel('Fraction of total variance')
+    
+    ax.set_xlim(2000, years[-1])
+    ax.set_ylim(0, 1)
+    
+    fig.tight_layout()
+    outfile = f'{fig_dir}08_{site_name}_uncertainty_budget.png'
+    plt.savefig(outfile, dpi=200, format='png')
+    plt.close()
+
+
 def plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name):
     """
     Plot the annual mean sea levels from the tide gauge data.
@@ -729,11 +759,11 @@ def plot_tg_data(ax, nflag, flag, tg_years, non_missing, tg_amsl, tg_name):
         print(f'Tide gauge data has been flagged for attention - ' +
               f'{tg_years[(flag & non_missing)]}')
         ax.plot(tg_years[(flag & non_missing)], tg_amsl[(flag & non_missing)],
-                marker='o', mec='black', mfc='None',
-                markersize=3, linestyle='None', label='TG flagged')
+                lw=1, color='black', mfc='None',
+                linestyle='None', label='TG flagged')
     if nflag < len(flag):
         ax.plot(tg_years[(~flag & non_missing)],
-                tg_amsl[(~flag & non_missing)], 'ko', markersize=3,
+                tg_amsl[(~flag & non_missing)], lw=1, color='black',
                 label=f'{location_string(tg_name)} TG')
 
 
@@ -968,6 +998,12 @@ def main():
         # Same style as Figure 4 Howard and Palmer (2019)
         plot_figure_seven(g_df_list, r_df_list, df_loc, rcp_scenarios,
                           sealev_fdir)
+        
+        # Figure 8
+        # Uncertainty budget for local sea level projections, 
+        # based on Hawkins & Sutton (2009)
+        plot_figure_eight(r_df_list, tg_years, tg_amsl, df_loc, 
+                          rcp_scenarios, sealev_fdir)
 
 
 if __name__ == '__main__':
