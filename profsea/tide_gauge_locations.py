@@ -124,7 +124,7 @@ def extract_site_info(data_source, data_type, region, site_name, latlon):
                                 print('Invalid option, please enter either 1 or 2')
 
             df_temp = pd.DataFrame(site_data).transpose()
-            dfObj = dfObj.append(df_temp)
+            dfObj = dfObj._append(df_temp)
 
         elif latlon != [[]]:
             print(f'{site_to_check} - Site metadata taken from user input')
@@ -139,7 +139,7 @@ def extract_site_info(data_source, data_type, region, site_name, latlon):
                 'Location', 'Dataset type', 'Station ID', 'Latitude',
                 'Longitude'])
             df_temp = df_temp.set_index('Location')
-            dfObj = dfObj.append(df_temp)
+            dfObj = dfObj._append(df_temp)
 
         else:
             raise IndexError(f'No site metadata for this site: {site_to_check}, have you spelled it correctly?')            

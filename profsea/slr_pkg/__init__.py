@@ -42,7 +42,11 @@ def extract_dyn_steric_regression(models, df, scenarios):
     :param scenarios: list of RCP scenarios
     """
     # Base directory for CMIP "zos" and "zostoga" data
-    datadir = settings["cmipinfo"]["sealevelbasedir"]
+    if settings["datalocation"] != "":
+        datadir = os.path.join(settings["datalocation"],"cmip5/")
+    else:
+        datadir = settings["cmipinfo"]["sealevelbasedir"]
+
     # Dictionary of CMIP models and experiments
     zos_dict = cmip.zos_dictionary()
 
@@ -88,21 +92,21 @@ def extract_dyn_steric_regression(models, df, scenarios):
                 try:
                     # dynamic sea level (zos)
                     zos_date = zos_dict[model][scenario]['driftcorr']
-                    zos_file = f'{datadir}normalized_zos_Omon_{model}_' \
-                               f'{scenario}_{zos_date}_driftcorr.nc'
+                    zos_file = os.path.join(datadir, f'normalized_zos_Omon_{model}_' \
+                               f'{scenario}_{zos_date}_driftcorr.nc')
                     zos = cubedata.read_zos_cube(zos_file)[0][:, j, i]
                     # --------------------------------------------------------
                     # global mean thermosteric (zostoga)
                     # Extract, and drift-correct CMIP "zostoga" data
                     # Normal (concatenated)
                     zostoga_date = zos_dict[model][scenario]['zostoga']
-                    zostoga_file = f'{datadir}zostoga_Omon_{model}_' \
-                                   f'{scenario}_{zostoga_date}.nc'
+                    zostoga_file = os.path.join(datadir, f'zostoga_Omon_{model}_' \
+                                   f'{scenario}_{zostoga_date}.nc')
                     zostoga_raw = cubedata.read_zos_cube(zostoga_file)[0]
                     # piControl (concatenated)
                     piControl_date = zos_dict[model][scenario]['piControl']
-                    zostoga_pic_file = f'{datadir}zostoga_Omon_' \
-                                       f'{model}_piControl_{piControl_date}.nc'
+                    zostoga_pic_file = os.path.join(datadir, f'zostoga_Omon_' \
+                                       f'{model}_piControl_{piControl_date}.nc')
                     zostoga_pic = cubedata.read_zos_cube(zostoga_pic_file)[0]
 
                     regr = process.Regress('linear')
@@ -384,9 +388,18 @@ def choose_montecarlo_dir():
     """
     end_yr = settings["projection_end_year"]
     if (end_yr >= 2050) & (end_yr <= 2100):
-        mcdir = settings["short_montecarlodir"]
+        if settings["datalocation"] != "":
+            mcdir = os.path.join(settings["datalocation"],
+                                 "monte_carlo_timeseries")
+        else:
+            mcdir = settings["short_montecarlodir"]
+
     elif (end_yr > 2100) & (end_yr <= 2300):
-        mcdir = settings["long_montecarlodir"]
+        if settings["datalocation"] != "":
+            mcdir = os.path.join(settings["datalocation"], "slr")
+        else:
+            mcdir = settings["long_montecarlodir"]       
+    
     else:
         raise ValueError('Projection end year must be between 2050 and 2300')
     

@@ -72,7 +72,11 @@ def extract_ssh_data(cmip_sea):
     :param cmip_sea: variable to distinguish between which CMIP models to use
     :return: CMIP model names, and associated SSH data cubes
     """
-    cmip_dir = settings["cmipinfo"]["sealevelbasedir"]
+    if settings["datalocation"] != "":
+        cmip_dir = os.path.join(settings["datalocation"],"cmip5/")
+    else:
+        cmip_dir = settings["cmipinfo"]["sealevelbasedir"]
+    
     # Select CMIP models to use depending on whether location is within a
     # marginal sea
     if cmip_sea == 'all':
@@ -89,8 +93,14 @@ def extract_ssh_data(cmip_sea):
     for model in model_names:
         print(f'Getting data for {model} model')
         cmip_date = cmip_dict[model]['historical']
-        cmip_file = f'{cmip_dir}zos_Omon_{model}_historical_{cmip_date}.nc'
-        cube = cubeutils.loadcube(cmip_file, ncvar='zos')[0]
+        cmip_file = os.path.join(cmip_dir, f'zos_Omon_{model}_historical_{cmip_date}.nc')
+        try:
+            cube = cubeutils.loadcube(cmip_file, ncvar='zos')[0]
+        except IOError:
+            raise FileNotFoundError(os.path.join(cmip_file),
+                                    '- CMIP5 sea level data not found, please' \
+                                    ' check file path')            
+        
         cubes.append(cube.slices(['latitude', 'longitude']).next())
 
     return model_names, cubes
@@ -299,9 +309,9 @@ def main():
         print(f'    No lat lon specified - use tide gauge metadata if '
               f'available')
     print(f'User specified science method is: {settings["sciencemethod"]}')
-    if {settings["cmipinfo"]["cmip_sea"]} == {'all'}:
+    if {settings["cmip_sea"]} == {'all'}:
         print('User specified all CMIP models')
-    elif {settings["cmipinfo"]["cmip_sea"]} == {'marginal'}:
+    elif {settings["cmip_sea"]} == {'marginal'}:
         print('User specified CMIP models for marginal seas only')
 
     # Extract site data from station list (e.g. tide gauge location) or
@@ -314,7 +324,7 @@ def main():
 
     # Find the nearest, appropriate ocean point in CMIP models to specified
     # site location
-    cmip_models, ssh_cubes = extract_ssh_data(settings["cmipinfo"]["cmip_sea"])
+    cmip_models, ssh_cubes = extract_ssh_data(settings["cmip_sea"])
     ocean_point_wrapper(df_site_data, cmip_models, ssh_cubes)
 
 
