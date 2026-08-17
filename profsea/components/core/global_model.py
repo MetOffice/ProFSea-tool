@@ -219,112 +219,13 @@ class Global:
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
+                data = data.reshape()  # reshape to 2D
                 results[comp_name] = sample_members_2D(
                     data, self.output_percentiles, dtype=self.dtype
                 )
 
         self.results = self._arr_to_xr(results)
         return self.results
-
-    # def save_components(
-    #     self,
-    #     components: dict[str, xr.DataArray],
-    #     scenario_name: str,
-    #     output_prefix: str = "global",
-    #     output_dir: str = ".",
-    #     output_format: str = "netcdf",
-    # ) -> None:
-    #     """
-    #     Stream all global sea level projections to disk in a single file/store.
-
-    #     Parameters
-    #     ----------
-    #     components: dict[str, xr.DataArray]
-    #         Dictionary of component names and their corresponding Xarray DataArrays.
-    #     scenario_name: str
-    #         Name of the scenario you've run the emulator for.
-    #     output_prefix: str
-    #         Prefix for the output file name (default: 'global').
-    #     output_dir: str
-    #         Directory to save components to.
-    #     output_format: str
-    #         Format to save the output in. Must be either 'netcdf' or 'zarr'.
-
-    #     Returns
-    #     -------
-    #     None
-    #     """
-    #     ds = xr.Dataset(components)
-
-    #     # Add ProFSea version and scenario metadata
-    #     ds.attrs["source"] = "ProFSea v3.0"
-    #     ds.attrs["scenario"] = scenario_name
-    #     ds.attrs["description"] = "Global sea level rise projections"
-
-    #     output_format = output_format.lower()
-    #     if output_format not in ["netcdf", "zarr"]:
-    #         raise ValueError("output_format must be either 'netcdf' or 'zarr'.")
-
-    #     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    #     encoding = {}
-
-    #     # Sort out Zarr encoding
-    #     if output_format == "zarr":
-    #         import numcodecs
-    #         from numcodecs.zarr3 import Blosc
-
-    #         compressor = Blosc(
-    #             cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE
-    #         )
-
-    #     # Set the encoding/compression dynamically based on the component's actual dtype
-    #     for name, component in components.items():
-    #         comp_dtype = (
-    #             component.dtype.name
-    #         )  # Captures 'float32' or 'float64' dynamically
-
-    #         if output_format == "netcdf":
-    #             encoding[name] = {"zlib": True, "complevel": 1, "dtype": comp_dtype}
-    #         elif output_format == "zarr":
-    #             encoding[name] = {"compressor": compressor, "dtype": comp_dtype}
-
-    #     file_name = f"{scenario_name}_{output_prefix}"
-
-    #     # Stream the computation and write to disk
-    #     if output_format == "netcdf":
-    #         out_path = os.path.join(output_dir, f"{file_name}.nc")
-    #         with console.status(
-    #             "[bold cyan]Computing and saving Global NetCDF...[/bold cyan]",
-    #             spinner="dots",
-    #         ):
-    #             # If using Dask, .compute() is required before .to_netcdf()
-    #             # If arrays are already eager NumPy arrays, .compute() is a harmless no-op
-    #             if hasattr(ds, "compute"):
-    #                 ds.compute().to_netcdf(out_path, encoding=encoding)
-    #             else:
-    #                 ds.to_netcdf(out_path, encoding=encoding)
-
-    #         logger.info(
-    #             f"[bold green]✓ Successfully saved NetCDF:[/bold green] {out_path}"
-    #         )
-
-    #     elif output_format == "zarr":
-    #         out_path = os.path.join(output_dir, f"{file_name}.zarr")
-    #         with console.status(
-    #             "[bold cyan]Streaming computation and saving Global Zarr...[/bold cyan]",
-    #             spinner="dots",
-    #         ):
-    #             ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
-    #         logger.info(
-    #             f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}"
-    #         )
-
-    #     # Log the shape of the total_gmslr (or the first available component)
-    #     sample_name = (
-    #         "total_gmslr" if "total_gmslr" in ds else list(ds.data_vars.keys())[0]
-    #     )
-    #     dims_str = ", ".join(ds[sample_name].dims)
-    #     logger.info(f"Global output shape was {ds[sample_name].shape} ({dims_str})")
 
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """

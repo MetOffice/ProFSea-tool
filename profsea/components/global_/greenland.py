@@ -39,13 +39,17 @@ class GreenlandAR6(Component):
         if tas.ndim == 1:
             tas = np.expand_dims(tas, axis=0)
 
-        nt = tas.shape[0]
+        if tas.shape[0] != state.nt:
+            raise ValueError(
+                f"T_ens contains {tas.shape[0]} trajectories, but state.nt={state.nt}"
+            )
+
         time_delta = np.arange(state.nyr, dtype=state.dtype)
 
         df = self.df
         n_models = len(df)
 
-        model_indices = rng.integers(0, n_models, size=(nt, state.num_members))
+        model_indices = rng.integers(0, n_models, size=(state.nt, state.num_members))
 
         # Extract parameters and reshape to 3D: (nt, nm, 1)
         b0 = df["b0"].values[model_indices][:, :, None].astype(state.dtype)
@@ -63,7 +67,7 @@ class GreenlandAR6(Component):
         a_bound = (0.0 - trend_mean) / trend_std
         b_bound = (99999.9 - trend_mean) / trend_std  # Or just np.inf
         trend = truncnorm.ppf(
-            rng.random((nt, state.num_members)),
+            rng.random((state.nt, state.num_members)),
             a=a_bound,
             b=b_bound,
             loc=trend_mean,

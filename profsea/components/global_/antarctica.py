@@ -206,7 +206,7 @@ class AntarcticaDynAR5(Component):
         # This is a naive solution to calculating the AntDyn contribution
         # for any given scenario. Basically linear regressions through existing data
         # to find rough relationship between cumulative emissions and AntDyn contribution.
-        if self.cum_emissions_total:
+        if self.cum_emissions_total is not None:
             upper = (0.000110 * self.cum_emissions_total) + 0.375  # in metres
             lower = (1.363e-05 * self.cum_emissions_total) + 0.0392  # in metres
             final = [lower, upper]

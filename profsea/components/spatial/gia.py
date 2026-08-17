@@ -22,25 +22,43 @@ class GIA(SpatialComponent):
 
     def __init__(
         self,
-        gia_dir: str | Path = None,
+        gia_paths: str | Path = None,
         sample_spatial: bool = False,
     ) -> None:
         """
-        Parameters
-        ----------
-        gia_dir: str, Path, or list of str/Path
-            Path to a directory containing GIA files.
+        gia_paths: str, Path, list of str/Path, or None
+            Path(s) to a directory containing GIA files or direct paths to specific GIA NetCDF files.
+            Defaults to the main GIA_DIR if None.
         sample_spatial: bool, optional
             Whether to sample spatial patterns probabilistically. Default is False.
         """
         self.sample_spatial = sample_spatial
 
-        if gia_dir is None:
-            self.gia_dir = GIA_DIR
+        if gia_paths is None:
+            raw_paths = [GIA_DIR]
+        elif isinstance(gia_paths, (str, Path)):
+            raw_paths = [Path(gia_paths)]
         else:
-            self.gia_dir = Path(gia_dir)
+            raw_paths = [Path(p) for p in gia_paths]
 
-        # Dummy property required by the base Spatial architecture
+        # Resolve directories into files, and keep direct file paths
+        self.gia_files = []
+        for p in raw_paths:
+            if not p.exists():
+                raise FileNotFoundError(f"Provided GIA path does not exist: {p}")
+
+            if p.is_dir():
+                # Extract all .nc files if a directory is passed
+                self.gia_files.extend(list(p.glob("*.nc")))
+            elif p.is_file() and p.suffix == ".nc":
+                # Keep direct NetCDF files
+                self.gia_files.append(p)
+
+        if not self.gia_files:
+            raise FileNotFoundError(
+                f"No GIA NetCDF files found in the provided paths: {raw_paths}"
+            )
+
         self._global_projection = da.zeros((1, 1))
 
     @property
@@ -62,13 +80,8 @@ class GIA(SpatialComponent):
         da.Array
             A Dask array of shape (total_models, lat, lon) containing the regridded GIA rates.
         """
-        gia_paths = list(self.gia_dir.glob("*.nc"))
-
-        if not gia_paths:
-            raise FileNotFoundError(f"No GIA NetCDF files found in {self.gia_dir}")
-
         grids = []
-        for path in gia_paths:
+        for path in self.gia_files:
             gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
             interp_da = self.extract_spatial(gia_da, state)
             data = interp_da.data
@@ -111,7 +124,7 @@ class GIA(SpatialComponent):
         midyr = (
             state.baseline_yrs[1] - state.baseline_yrs[0] + 1
         ) * 0.5 + state.baseline_yrs[0]
-        Tdelta = 2006 - midyr
+        Tdelta = state.endofhistory - midyr
         unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
 
         # Broadcast 1D time series to match expected (members, years) signature
@@ -128,7 +141,7 @@ class GIA(SpatialComponent):
                 rgiai = rng.integers(n_patterns, size=state.n_members)
                 selected_gia = gia_rates[rgiai, ...]
             else:
-                mean_gia = da.mean(gia_rates, axis=0)
+                mean_gia = da.nanmean(gia_rates, axis=0)
                 selected_gia = da.broadcast_to(
                     mean_gia,
                     (state.n_members, *spatial_shape),
