@@ -32,13 +32,15 @@ Ongoing developments include:
 - [x] 🛠️ Full code documentation
 
 ## Contributors
-Several people have contributed to the development of the ProFSea tool and User Guide documentation, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks and Gregory Munday.
+Several people have contributed to the development of the ProFSea tool, documentation and user guide, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks, Gregory Munday, Isabella Ascione and Hemant Khatri.
 
 ## Acknowledgements
-This work was supported by the UK Research & Innovation (UKRI) Strategic Priorities Fund UK Climate Resilience programme. The programme is co-delivered by the Met Office and NERC on behalf of UKRI partners AHRC, EPSRC and ESRC. It was further supported by the Met Office Hadley Centre Climate Programme funded by BEIS and Defra.
+This work has built on the original publication of ProFSea V1, which was supported by the UK Research & Innovation (UKRI) Strategic Priorities Fund UK Climate Resilience programme. The programme was co-delivered by the Met Office and NERC on behalf of UKRI partners AHRC, EPSRC and ESRC. Further development of the tool has been supported by the Met Office Hadley Centre Climate Programme, funded by DSIT.
 
 ## Licence
 ProFSea is licensed under the [Open Government Licence 3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
+
+Please note, the current version of this tool does not fully represent the methodologies under UK Climate Projections 2018 (UKCP18) or UK Climate Information. For generating UKCP18 sea-level projections, please refer to V1 of this tool.
 
 If you have any queries about this tool please contact: enquiries@metoffice.gov.uk
 
