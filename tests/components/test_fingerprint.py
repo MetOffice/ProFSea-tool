@@ -1,12 +1,13 @@
-import pytest
-import numpy as np
-import xarray as xr
-import dask.array as da
 from pathlib import Path
 from unittest.mock import patch
 
-from profsea.components.spatial.fingerprint import Fingerprint, FP_PATH_MAP
+import dask.array as da
+import numpy as np
+import pytest
+import xarray as xr
+
 from profsea.components.core.state import SpatialState
+from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
 
 
 def get_dummy_spatial_state(

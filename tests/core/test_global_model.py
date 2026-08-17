@@ -1,6 +1,5 @@
 import numpy as np
 import xarray as xr
-import pytest
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import Global

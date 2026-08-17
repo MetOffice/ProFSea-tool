@@ -1,12 +1,13 @@
-import pytest
-import numpy as np
-import dask.array as da
 from pathlib import Path
 from unittest.mock import patch
 
-from profsea.components.spatial.gia import GIA
+import dask.array as da
+import numpy as np
+import pytest
+
+from profsea.components.core.state import LocalState, SpatialState
 from profsea.components.spatial.fingerprint import Fingerprint
-from profsea.components.core.state import SpatialState, LocalState
+from profsea.components.spatial.gia import GIA
 
 
 @pytest.fixture

@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.greenland import (

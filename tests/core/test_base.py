@@ -1,9 +1,10 @@
-import pytest
-import numpy as np
-import xarray as xr
-import dask.array as da
-from unittest.mock import patch
 from types import SimpleNamespace
+from unittest.mock import patch
+
+import dask.array as da
+import numpy as np
+import pytest
+import xarray as xr
 
 # Adjust import path based on your package structure
 from profsea.components.core.base import SpatialComponent
