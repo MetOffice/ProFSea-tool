@@ -80,19 +80,48 @@ def extract_site_info(data_source, data_type, region, site_name, latlon):
             site_data = df.loc[site_to_check, :]
 
             if data_source == 'PSMSL':
-                if 'NEWPORT' in site_to_check:
-                    print(f'CAUTION - There are two Newport gauges listed in' +
-                          'the file list from PSMSL')
-                    user_input = input('Location of Newport required, UK or ' +
-                                       'US?')
-                    if user_input == 'UK':
-                        print('Newport in the UK selected')
-                        site_data = site_data[~site_data.index.duplicated(
-                            keep='last')].transpose()
+                duplicate_dict = {
+                    'NEWPORT': ['USA', 'UK'],
+                    'DEVONPORT': ['UK', 'Australia'],
+                    'MANZANILLO': ['Mexico', 'Cuba'],
+                    'PALERMO': ['Italy', 'Argentina'],
+                    'SAN JOSE': ['Guatemala', 'Philippines'],
+                    'SAN JUAN': ['Peru', 'Puerto Rico']
+                }
+                if site_to_check in duplicate_dict.keys():
+                    nation_1 = duplicate_dict[site_to_check][0]
+                    nation_2 = duplicate_dict[site_to_check][1]
+
+                    if settings['sciencemethod'] == 'UK':
+                        if site_to_check == 'NEWPORT':
+                            site_data = site_data[~site_data.index.duplicated(
+                                keep='last')].transpose()
+                        elif site_to_check == 'DEVONPORT':
+                            site_data = site_data[~site_data.index.duplicated(
+                                keep='first')].transpose()
+                            
                     else:
-                        print('Newport in the US selected')
-                        site_data = site_data[~site_data.index.duplicated(
-                            keep='first')].transpose()
+                        print(f'CAUTION - There are two {site_to_check} ' +
+                            'gauges listed in the file list from PSMSL')
+                        while True:
+                            user_input = input('Please enter either 1 or 2 ' +
+                                               'to select correct location \n' +
+                                                f'1.{site_to_check}, '
+                                                f'{nation_1} \n' +
+                                                f'2.{site_to_check}, '
+                                                f'{nation_2} \n')
+                            if user_input == '1':
+                                print(f'{site_to_check} in {nation_1} selected')
+                                site_data = site_data[~site_data.index.duplicated(
+                                    keep='first')].transpose()
+                                break
+                            elif user_input == '2':
+                                print(f'{site_to_check} in {nation_2} selected')
+                                site_data = site_data[~site_data.index.duplicated(
+                                    keep='last')].transpose()
+                                break
+                            else:
+                                print('Invalid option, please enter either 1 or 2')
 
             df_temp = pd.DataFrame(site_data).transpose()
             dfObj = dfObj.append(df_temp)
