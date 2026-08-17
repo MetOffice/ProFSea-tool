@@ -171,26 +171,56 @@ class SpatialComponent(Component):
     ) -> da.Array:
         """
         Dynamically multiplies a temporal series by a spatial pattern.
+        Handles both 2D (members, time) and 3D (climate_members, process_members, time)
+        temporal arrays.
 
         Parameters
         ----------
         temporal_array: dask.array.Array
-            2D array of shape (members, years)
+            2D array of shape (members, years) OR 3D array of shape (climate_members, process_members, years).
         spatial_array: dask.array.Array
-            Either 2D (members, site) or 3D (members, lat,
+            Either 2D (num_output_members, site) or 3D (num_output_members, lat, lon).
         """
-        # Determine how many spatial dimensions we are dealing with
         spatial_dims = spatial_array.ndim - 1
 
-        if spatial_dims == 1:
-            # 3D Output: (members, years, site)
-            return temporal_array[:, :, None] * spatial_array[:, None, :]
-        elif spatial_dims == 2:
-            # 4D Output: (members, years, lat, lon)
-            return temporal_array[:, :, None, None] * spatial_array[:, None, :, :]
+        if temporal_array.ndim == 2:
+            # 2D Temporal: (members, years)
+            if spatial_dims == 1:
+                # Output: (members, years, site)
+                return temporal_array[:, :, None] * spatial_array[:, None, :]
+            elif spatial_dims == 2:
+                # Output: (members, years, lat, lon)
+                return temporal_array[:, :, None, None] * spatial_array[:, None, :, :]
+            else:
+                raise ValueError(
+                    f"Unexpected spatial dimensions. Expected 1 or 2, got {spatial_dims}."
+                )
+
+        elif temporal_array.ndim == 3:
+            # 3D Temporal: (climate_members, process_members, years)
+            nc, np_mem, _ = temporal_array.shape
+
+            # Unpack the flattened ensemble dimension in the spatial array to match the temporal shape
+            spatial_reshaped = spatial_array.reshape(
+                (nc, np_mem, *spatial_array.shape[1:])
+            )
+
+            if spatial_dims == 1:
+                # Output: (climate_members, process_members, years, site)
+                return temporal_array[:, :, :, None] * spatial_reshaped[:, :, None, :]
+            elif spatial_dims == 2:
+                # Output: (climate_members, process_members, years, lat, lon)
+                return (
+                    temporal_array[:, :, :, None, None]
+                    * spatial_reshaped[:, :, None, :, :]
+                )
+            else:
+                raise ValueError(
+                    f"Unexpected spatial dimensions. Expected 1 or 2, got {spatial_dims}."
+                )
         else:
             raise ValueError(
-                f"Unexpected spatial dimensions. Expected 1 or 2, got {spatial_dims}."
+                f"Unexpected temporal dimensions. Expected 2 or 3, got {temporal_array.ndim}."
             )
 
     @property

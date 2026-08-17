@@ -61,7 +61,8 @@ def test_glacier_valid_parameter_sets(glaciermip):
     projection = glacier.project(state, rng)
 
     assert projection.shape == (
-        state.nt * state.num_members,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 
@@ -78,7 +79,8 @@ def test_glacier_projection_shape():
     projection = glacier.project(state, rng)
 
     assert projection.shape == (
-        state.nt * state.num_members,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 
@@ -245,6 +247,7 @@ def test_glacier_accepts_one_dimensional_temperature():
     )
 
     assert projection.shape == (
+        state.nt,
         state.num_members,
         state.nyr,
     )

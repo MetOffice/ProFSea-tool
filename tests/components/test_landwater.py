@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 import xarray as xr
 
@@ -80,7 +81,8 @@ def test_landwater_ar6_projection_shape():
     projection = landwater.project(state, rng)
 
     assert projection.shape == (
-        state.nt * state.num_members,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 
@@ -161,9 +163,10 @@ def test_landwater_ar6_skips_first_interpolated_year():
         np.random.default_rng(42),
     )
 
+    # Added an extra bracket layer to make this a 3D array (1, 1, 4)
     expected = (
         np.array(
-            [[1.0, 2.0, 3.0, 4.0]],
+            [[[1.0, 2.0, 3.0, 4.0]]],
             dtype=np.float32,
         )
         * 1e-3
@@ -192,7 +195,8 @@ def test_landwater_ar6_samples_only_existing_projection_members():
     expected_sample_0 = np.array([1, 2, 3, 4]) * 1e-3
     expected_sample_1 = np.array([2, 4, 6, 8]) * 1e-3
 
-    for row in projection:
+    # Flatten the (climate, process) dims so we iterate strictly over 1D time-series rows
+    for row in projection.reshape(-1, projection.shape[-1]):
         assert np.allclose(row, expected_sample_0) or np.allclose(
             row, expected_sample_1
         )
@@ -234,7 +238,7 @@ def test_landwater_ar5_uses_expected_parameters(monkeypatch):
         captured["nfinal"] = nfinal
 
         return np.zeros(
-            (state.nt * state.num_members, state.nyr),
+            (state.nt, state.num_members, state.nyr),
             dtype=state.dtype,
         )
 
@@ -271,7 +275,7 @@ def test_landwater_ar5_uses_twenty_year_final_average(monkeypatch):
         captured["nfinal"] = nfinal
 
         return np.zeros(
-            (state.nt * state.num_members, state.nyr),
+            (state.nt, state.num_members, state.nyr),
             dtype=state.dtype,
         )
 
@@ -297,7 +301,8 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
         state.nt * state.num_members * state.nyr,
         dtype=np.float32,
     ).reshape(
-        state.nt * state.num_members,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 

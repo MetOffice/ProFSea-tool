@@ -141,11 +141,9 @@ class TestExtractPoints:
 
 
 class TestBroadcastSpatiotemporal:
-    def test_broadcast_1d_spatial(self, dummy_component):
-        """Test broadcasting temporal (members, years) with spatial (members, sites)."""
-        # Shape (2 members, 3 years)
+    def test_broadcast_2d_temporal_1d_spatial(self, dummy_component):
+        """Test broadcasting 2D temporal (members, years) with 1D spatial (members, sites)."""
         temporal = da.ones((2, 3))
-        # Shape (2 members, 4 sites)
         spatial = da.ones((2, 4)) * 2
 
         result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
@@ -154,11 +152,9 @@ class TestBroadcastSpatiotemporal:
         assert result.shape == (2, 3, 4)  # (members, years, site)
         assert result.compute()[0, 0, 0] == 2.0
 
-    def test_broadcast_2d_spatial(self, dummy_component):
-        """Test broadcasting temporal (members, years) with spatial (members, lat, lon)."""
-        # Shape (2 members, 3 years)
+    def test_broadcast_2d_temporal_2d_spatial(self, dummy_component):
+        """Test broadcasting 2D temporal (members, years) with 2D spatial (members, lat, lon)."""
         temporal = da.ones((2, 3))
-        # Shape (2 members, 4 lats, 5 lons)
         spatial = da.ones((2, 4, 5)) * 3
 
         result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
@@ -167,11 +163,48 @@ class TestBroadcastSpatiotemporal:
         assert result.shape == (2, 3, 4, 5)  # (members, years, lat, lon)
         assert result.compute()[0, 0, 0, 0] == 3.0
 
+    def test_broadcast_3d_temporal_1d_spatial(self, dummy_component):
+        """Test broadcasting 3D temporal (climate, process, years) with 1D spatial (total_members, site)."""
+        # Shape: (2 climate_members, 3 process_members, 4 years)
+        temporal = da.ones((2, 3, 4))
+
+        # Spatial comes in flattened: 2*3 = 6 output members. Shape: (6 members, 5 sites)
+        spatial = da.ones((6, 5)) * 4
+
+        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+
+        # Output should be un-flattened: (climate, process, years, site)
+        assert result.ndim == 4
+        assert result.shape == (2, 3, 4, 5)
+        assert result.compute()[0, 0, 0, 0] == 4.0
+
+    def test_broadcast_3d_temporal_2d_spatial(self, dummy_component):
+        """Test broadcasting 3D temporal (climate, process, years) with 2D spatial (total_members, lat, lon)."""
+        # Shape: (2 climate_members, 3 process_members, 4 years)
+        temporal = da.ones((2, 3, 4))
+
+        # Spatial comes in flattened: (6 members, 5 lats, 6 lons)
+        spatial = da.ones((6, 5, 6)) * 5
+
+        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+
+        # Output should be un-flattened: (climate, process, years, lat, lon)
+        assert result.ndim == 5
+        assert result.shape == (2, 3, 4, 5, 6)
+        assert result.compute()[0, 0, 0, 0, 0] == 5.0
+
     def test_invalid_spatial_dimensions(self, dummy_component):
         """Test ValueError when spatial dimensions are invalid."""
         temporal = da.ones((2, 3))
-        # Invalid shape: just 1 dimension
-        spatial = da.ones((2,))
+        spatial = da.ones((2,))  # Missing spatial dimension entirely
 
         with pytest.raises(ValueError, match="Unexpected spatial dimensions"):
+            dummy_component.broadcast_spatiotemporal(temporal, spatial)
+
+    def test_invalid_temporal_dimensions(self, dummy_component):
+        """Test ValueError when temporal dimensions are invalid."""
+        temporal = da.ones((2,))  # 1D temporal array
+        spatial = da.ones((2, 4))
+
+        with pytest.raises(ValueError, match="Unexpected temporal dimensions"):
             dummy_component.broadcast_spatiotemporal(temporal, spatial)

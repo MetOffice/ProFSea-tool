@@ -145,7 +145,9 @@ class GreenlandSMBAR5(Component):
 
         ztgreen = state.T_ens - dtgreen
 
-        greensmb = ff[np.newaxis, :, np.newaxis] * self._fettweis(ztgreen)
+        greensmb = (
+            ff[np.newaxis, :, np.newaxis] * self._fettweis(ztgreen)[:, np.newaxis, :]
+        )
 
         if state.palmer_method and state.end_yr > state.endofAR5:
             greensmb[:, :, 95:] = greensmb[:, :, 94:95]

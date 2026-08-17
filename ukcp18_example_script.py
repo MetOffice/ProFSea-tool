@@ -90,7 +90,7 @@ spatial_model.save_components(
 ### Plot example ###
 fig = plt.figure(figsize=(10, 4), layout="constrained")
 
-total_rsl = spatial_model.results["total_rsl"][2, -1, :, :]
+total_rsl = spatial_model.results["total_rsl"].isel(percentile=2, time=-1)
 vmax = np.nanmax(np.abs(total_rsl))
 vmin = -vmax
 

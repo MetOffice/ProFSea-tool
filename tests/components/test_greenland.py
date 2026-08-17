@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.greenland import (
@@ -65,7 +66,8 @@ def test_greenland_ar6_projection_shape():
     projection = greenland.project(state, rng)
 
     assert projection.shape == (
-        state.num_members * state.nt,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 
@@ -109,11 +111,11 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend():
     )
 
     # Trend is multiplied by time_delta, so the first timestep must be zero.
-    np.testing.assert_allclose(projection[:, 0], 0.0)
+    np.testing.assert_allclose(projection[:, :, 0], 0.0)
 
     # The truncated trend distribution is non-negative, so projections should
     # not decrease when all emulator coefficients are zero.
-    assert np.all(np.diff(projection, axis=1) >= 0.0)
+    assert np.all(np.diff(projection, axis=2) >= 0.0)
 
 
 def test_greenland_ar6_accepts_one_dimensional_temperature():
@@ -130,6 +132,7 @@ def test_greenland_ar6_accepts_one_dimensional_temperature():
     )
 
     assert projection.shape == (
+        state.nt,
         state.num_members,
         state.nyr,
     )
@@ -151,8 +154,8 @@ def test_greenland_ar6_persists_2100_rate():
 
     idx_2100 = 94
 
-    rate_2100 = projection[:, idx_2100] - projection[:, idx_2100 - 1]
-    rate_after = projection[:, idx_2100 + 1] - projection[:, idx_2100]
+    rate_2100 = projection[:, :, idx_2100] - projection[:, :, idx_2100 - 1]
+    rate_after = projection[:, :, idx_2100 + 1] - projection[:, :, idx_2100]
 
     np.testing.assert_allclose(
         rate_after,
@@ -195,7 +198,8 @@ def test_greenland_smb_projection_shape():
     projection = greenland.project(state, rng)
 
     assert projection.shape == (
-        state.num_members * state.nt,
+        state.nt,
+        state.num_members,
         state.nyr,
     )
 
@@ -256,8 +260,8 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
     # project() freezes the annual contribution from index 95 onward
     # before applying cumulative sum. Therefore subsequent increments
     # should be equal.
-    increment_95 = projection[:, 95] - projection[:, 94]
-    increment_96 = projection[:, 96] - projection[:, 95]
+    increment_95 = projection[:, :, 95] - projection[:, :, 94]
+    increment_96 = projection[:, :, 96] - projection[:, :, 95]
 
     np.testing.assert_allclose(
         increment_95,
@@ -285,7 +289,7 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
         captured["median"] = median
         captured["uncertainty"] = uncertainty
         captured["final"] = final
-        return np.zeros((state.num_members * state.nt, state.nyr))
+        return np.zeros((state.nt, state.num_members, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -318,7 +322,7 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.num_members * state.nt, state.nyr))
+        return np.zeros((state.nt, state.num_members, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -349,7 +353,7 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.num_members * state.nt, state.nyr))
+        return np.zeros((state.nt, state.num_members, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -370,7 +374,7 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
     state = get_dummy_state()
 
     def mock_time_projection(*args, **kwargs):
-        return np.zeros((state.num_members * state.nt, state.nyr))
+        return np.zeros((state.nt, state.num_members, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",

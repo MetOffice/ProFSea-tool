@@ -55,7 +55,7 @@ class LandwaterAR6(Component):
         # Resulting shape: (nt, nm, nyr)
         lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]
 
-        return lw_ens
+        return lw_ens.reshape(state.nt, state.num_members, state.nyr)
 
 
 class LandwaterAR5(Component):

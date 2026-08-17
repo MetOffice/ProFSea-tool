@@ -149,5 +149,12 @@ class GIA(SpatialComponent):
                     (state.num_output_members, *spatial_shape),
                 )
 
-        # Delegate dimensional multiplication to the base class
-        return self.broadcast_spatiotemporal(temporal_array, selected_gia)
+        projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
+
+        # Unpack the flattened member dimension back into climate and process dimensions
+        if getattr(state, "output_percentiles", None) is None:
+            return projected.reshape(
+                state.nt, state.num_members, state.n_years, *spatial_shape
+            )
+
+        return projected

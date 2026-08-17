@@ -50,6 +50,7 @@ class LocalState:
     n_years: int
     nt: int
     num_members: int
+    num_output_members: int
     interpolation_method: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray

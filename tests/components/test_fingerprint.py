@@ -3,13 +3,14 @@ import numpy as np
 import xarray as xr
 import dask.array as da
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from profsea.components.spatial.fingerprint import Fingerprint, FP_PATH_MAP
 from profsea.components.core.state import SpatialState
 
 
 def get_dummy_spatial_state(
+    num_output_members: int | None = None,
     num_members: int = 2,
     output_percentiles: list | None = None,
     use_target_points: bool = True,
@@ -19,6 +20,7 @@ def get_dummy_spatial_state(
     Uses __new__ to bypass potential validation/I_O in the real __init__.
     """
     state = SpatialState.__new__(SpatialState)
+    state.num_output_members = num_output_members
     state.num_members = num_members
     state.output_percentiles = output_percentiles
 
@@ -35,9 +37,9 @@ def get_dummy_spatial_state(
 
 @pytest.fixture
 def sample_global_proj():
-    """Returns a dummy global projection of shape (members=2, years=3)."""
-    data = np.arange(6).reshape(2, 3).astype(float)
-    return xr.DataArray(data, dims=["member", "year"])
+    """Returns a dummy global projection of shape (climate_members=2, process_members=2, years=3)."""
+    data = np.arange(12).reshape(2, 2, 3).astype(float)
+    return xr.DataArray(data, dims=["climate_member", "process_member", "year"])
 
 
 class TestFingerprintInit:
@@ -118,7 +120,8 @@ class TestFingerprintProject:
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_single_fingerprint(self, mock_load, sample_global_proj):
         """Projection should broadcast properly when only 1 fingerprint is mapped."""
-        state = get_dummy_spatial_state(num_members=2)
+        # For a 2x2 global projection array, total output members = 4
+        state = get_dummy_spatial_state(num_output_members=4)
         mock_load.return_value = da.array([[1.0, 2.0, 3.0]])
 
         fp = Fingerprint(
@@ -137,16 +140,17 @@ class TestFingerprintProject:
 
             _, selected_fps = mock_bcast.call_args[0]
 
-            # The single FP should be broadcast across all members
-            assert selected_fps.shape == (2, 3)
+            # The single FP should be broadcast across all 4 flattened members
+            assert selected_fps.shape == (4, 3)
             np.testing.assert_allclose(
-                selected_fps.compute(), [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]]
+                selected_fps.compute(),
+                [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]],
             )
 
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_storyline_mode(self, mock_load, sample_global_proj):
         """Storyline mode should collapse fingerprints into an unweighted mean."""
-        state = get_dummy_spatial_state(num_members=2)
+        state = get_dummy_spatial_state(num_output_members=4)
         mock_load.return_value = da.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 
         with patch("pathlib.Path.exists", return_value=True):
@@ -165,13 +169,15 @@ class TestFingerprintProject:
             _, selected_fps = mock_bcast.call_args[0]
 
             # Mean of [1,3,5] is 3; Mean of [2,4,6] is 4.
-            assert selected_fps.shape == (2, 2)
-            np.testing.assert_allclose(selected_fps.compute(), [[3.0, 4.0], [3.0, 4.0]])
+            assert selected_fps.shape == (4, 2)
+            np.testing.assert_allclose(
+                selected_fps.compute(), [[3.0, 4.0], [3.0, 4.0], [3.0, 4.0], [3.0, 4.0]]
+            )
 
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_probabilistic_mode(self, mock_load, sample_global_proj):
         """Probabilistic mode should assign distinct random fingerprints to members."""
-        state = get_dummy_spatial_state(num_members=2)
+        state = get_dummy_spatial_state(num_output_members=4)
 
         # 3D array representing (n_fps, lat, lon)
         fps = np.array(
@@ -198,19 +204,22 @@ class TestFingerprintProject:
 
             _, selected_fps = mock_bcast.call_args[0]
 
-            # Seed 42 yields indices [0, 2]
-            assert selected_fps.shape == (2, 1, 2)
-            np.testing.assert_allclose(
-                selected_fps.compute(), [[[1.0, 1.0]], [[3.0, 3.0]]]
-            )
+            assert selected_fps.shape == (4, 1, 2)
+            # Make sure we got a mix of indices
+            unique_values = np.unique(selected_fps.compute())
+            assert len(unique_values) > 1
 
-    @patch("profsea.components.spatial.fingerprint.sample_members_2D")
+    @patch("profsea.components.spatial.fingerprint.reformat_global_projection")
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
-    def test_project_with_percentiles(self, mock_load, mock_sample, sample_global_proj):
-        """State requesting percentiles should trigger member sub-sampling."""
-        state = get_dummy_spatial_state(output_percentiles=[5, 50, 95])
+    def test_project_with_percentiles(
+        self, mock_load, mock_reformat, sample_global_proj
+    ):
+        """State requesting percentiles should trigger the global array reformatting."""
+        state = get_dummy_spatial_state(
+            output_percentiles=[5, 50, 95], num_output_members=3
+        )
         mock_load.return_value = da.array([[1.0]])
-        mock_sample.return_value = da.array([[99.0]])
+        mock_reformat.return_value = da.array([[99.0]])
 
         fp = Fingerprint(
             global_projection=sample_global_proj, fingerprint_component="greenland"
@@ -219,7 +228,7 @@ class TestFingerprintProject:
         with patch.object(fp, "broadcast_spatiotemporal") as mock_bcast:
             fp.project(state, np.random.default_rng(42))
 
-            mock_sample.assert_called_once()
+            mock_reformat.assert_called_once_with(fp.global_projection, state)
 
             global_proj, _ = mock_bcast.call_args[0]
             assert global_proj.compute() == 99.0

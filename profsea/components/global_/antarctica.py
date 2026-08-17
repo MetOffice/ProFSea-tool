@@ -171,7 +171,9 @@ class AntarcticaISMIP6(Component):
         )
         term_fast = beta * tas_int[t_indices]
 
-        return term_slow + term_fast
+        total_ais = term_slow + term_fast
+
+        return total_ais.reshape(state.nt, state.num_members, n_time)
 
 
 class AntarcticaDynAR5(Component):
@@ -298,7 +300,9 @@ class AntarcticaSMBAR5(Component):
         ainterfactor = 1 - fraction * smax
 
         z = moaoKg * ainterfactor
-        z = z[:, :, np.newaxis]
-        antsmb = z * state.T_int_ens
+        z = z[:, :, np.newaxis]  # (climate_mem, process_mem, 1)
+        antsmb = (
+            z * state.T_int_ens[:, np.newaxis, :]
+        )  # (climate_mem, process_mem, time)
 
         return antsmb  # (climate_mem, process_mem, time)
