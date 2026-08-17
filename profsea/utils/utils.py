@@ -21,6 +21,8 @@ from rich.progress import (
 )
 from scipy.spatial.distance import cdist
 
+from profsea.components.core.state import ClimateState
+
 console = Console()
 logger = logging.getLogger(__name__)
 
@@ -374,3 +376,19 @@ def save_components(
     logger.info(
         f"{log_prefix}Output shape for '{sample_name}' was {ds[sample_name].shape} ({dims_str})"
     )
+
+
+def reformat_global_projection(
+    raw_projection: np.ndarray, state: ClimateState
+) -> np.ndarray:
+    if state.output_percentiles is not None:
+        flattened_projection = raw_projection.reshape(
+            state.nt * state.num_members, state.n_years
+        )
+        global_projection = sample_members_2D(
+            flattened_projection, state.output_percentiles
+        )
+    else:
+        global_projection = raw_projection
+
+    return global_projection

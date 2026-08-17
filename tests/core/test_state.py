@@ -16,7 +16,7 @@ def real_spatial_state():
         grid_lats=np.array([0, 10, 20]),
         grid_lons=np.array([-180, 0, 180]),
         n_years=3,
-        n_members=2,
+        num_members=2,
         grid_interpolation="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -31,7 +31,7 @@ def real_local_state():
         target_lats=[5.0, 15.0],
         target_lons=[45.0, 55.0],
         n_years=3,
-        n_members=2,
+        num_members=2,
         interpolation_method="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -62,7 +62,7 @@ class TestComponentIntegration:
         # Expected shape: (members, years, lats, lons)
         # Because mock_load returned 1D array here to simplify, broadcast handles it
         assert isinstance(result, da.Array)
-        assert result.shape[0] == real_spatial_state.n_members
+        assert result.shape[0] == real_spatial_state.num_members
         assert result.shape[1] == real_spatial_state.n_years
 
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
@@ -105,4 +105,4 @@ class TestComponentIntegration:
         result = fp.project(real_spatial_state, np.random.default_rng(42))
 
         assert isinstance(result, da.Array)
-        assert result.shape[0] == real_spatial_state.n_members
+        assert result.shape[0] == real_spatial_state.num_members

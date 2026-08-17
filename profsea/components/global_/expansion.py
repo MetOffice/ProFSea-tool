@@ -52,4 +52,5 @@ class ThermalExpansion(Component):
         ]  # (climate_member, process_member, 1)
 
         expansion = ohc_3d * exp_efficiency_3d  # (climate_member, process_member, time)
-        return expansion.reshape(state.num_members * state.nt, state.nyr)
+
+        return expansion

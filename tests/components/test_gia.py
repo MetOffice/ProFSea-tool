@@ -11,13 +11,13 @@ from profsea.components.core.state import SpatialState
 
 
 def get_dummy_spatial_state(
-    n_members: int = 2,
+    num_members: int = 2,
     n_years: int = 3,
     use_target_points: bool = True,
 ) -> SpatialState:
     """Helper to generate a SpatialState for GIA testing."""
     state = SpatialState.__new__(SpatialState)
-    state.n_members = n_members
+    state.num_members = num_members
     state.n_years = n_years
     state.baseline_yrs = [1995, 2014]  # 20-year period, midpoint 2005
     state.endofhistory = 2006  # Added for the updated time vector logic
@@ -129,7 +129,7 @@ class TestGIAProject:
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
     def test_project_time_vector_logic(self, mock_load, mocked_gia):
         """Should accurately calculate the accumulation time vector based on state.endofhistory."""
-        state = get_dummy_spatial_state(n_members=1, n_years=3)
+        state = get_dummy_spatial_state(num_members=1, n_years=3)
         # Midpoint of 1995-2014 is 2005. Tdelta = 2006 - 2005 = 1.
         # Vector should be (np.arange(3) + 1) * 0.001 -> [0.001, 0.002, 0.003]
 
@@ -151,7 +151,7 @@ class TestGIAProject:
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
     def test_project_single_pattern(self, mock_load, mocked_gia):
         """Should broadcast automatically if only 1 GIA pattern exists."""
-        state = get_dummy_spatial_state(n_members=2, n_years=1)
+        state = get_dummy_spatial_state(num_members=2, n_years=1)
         mock_load.return_value = da.array([[10.0, 20.0]])  # 1 pattern, 2 sites
 
         with patch.object(mocked_gia, "broadcast_spatiotemporal") as mock_bcast:
@@ -166,7 +166,7 @@ class TestGIAProject:
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
     def test_project_storyline_mode_with_nans(self, mock_load, mocked_gia_storyline):
         """Should take the nanmean of spatial patterns in storyline mode."""
-        state = get_dummy_spatial_state(n_members=2, n_years=1)
+        state = get_dummy_spatial_state(num_members=2, n_years=1)
 
         # Introduce a NaN to ensure da.nanmean is used, not da.mean
         mock_load.return_value = da.array([[10.0, 20.0], [np.nan, 40.0]])
@@ -186,7 +186,7 @@ class TestGIAProject:
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
     def test_project_probabilistic_mode(self, mock_load, mocked_gia_probabilistic):
         """Should randomly sample patterns in probabilistic mode."""
-        state = get_dummy_spatial_state(n_members=2, n_years=1)
+        state = get_dummy_spatial_state(num_members=2, n_years=1)
         fps = np.array(
             [
                 [[10.0]],  # model 0

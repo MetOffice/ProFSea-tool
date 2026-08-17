@@ -128,23 +128,25 @@ class GIA(SpatialComponent):
         unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
 
         # Broadcast 1D time series to match expected (members, years) signature
-        temporal_array = da.broadcast_to(unit_series, (state.n_members, state.n_years))
+        temporal_array = da.broadcast_to(
+            unit_series, (state.num_output_members, state.n_years)
+        )
 
         # Handle sampling if required
         if n_patterns == 1:
             selected_gia = da.broadcast_to(
                 gia_rates[0],
-                (state.n_members, *spatial_shape),
+                (state.num_output_members, *spatial_shape),
             )
         else:
             if self.sample_spatial:
-                rgiai = rng.integers(n_patterns, size=state.n_members)
+                rgiai = rng.integers(n_patterns, size=state.num_output_members)
                 selected_gia = gia_rates[rgiai, ...]
             else:
                 mean_gia = da.nanmean(gia_rates, axis=0)
                 selected_gia = da.broadcast_to(
                     mean_gia,
-                    (state.n_members, *spatial_shape),
+                    (state.num_output_members, *spatial_shape),
                 )
 
         # Delegate dimensional multiplication to the base class

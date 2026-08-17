@@ -21,7 +21,7 @@ class MockLocalComponent(SpatialComponent):
         return np.zeros((1, 1))
 
     def project(self, state, rng):
-        # Return a dummy array of shape (n_members, n_years, n_locations)
+        # Return a dummy array of shape (num_members, n_years, n_locations)
         return np.ones((state.num_members, state.n_years, len(state.target_lats)))
 
 

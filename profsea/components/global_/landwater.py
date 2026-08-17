@@ -39,10 +39,9 @@ class LandwaterAR6(Component):
         lw_ds = self.lw_ds.astype(state.dtype)
 
         # Interpolate to annual projections
-        interp_ds = (
-            lw_ds.interp(years=np.arange(2005, 2301, 1), method="linear")
-            .astype(state.dtype)
-        )
+        interp_ds = lw_ds.interp(
+            years=np.arange(2005, 2301, 1), method="linear"
+        ).astype(state.dtype)
 
         # Base array: Shape (n_samples_in_nc, 296)
         lw_base = interp_ds["sea_level_change"].values * 1e-3
@@ -55,7 +54,8 @@ class LandwaterAR6(Component):
 
         # Resulting shape: (nt, nm, nyr)
         lw_ens = lw_base[sample_indices, 1 : state.nyr + 1]
-        return lw_ens.reshape(state.nt * state.num_members, state.nyr)
+
+        return lw_ens
 
 
 class LandwaterAR5(Component):

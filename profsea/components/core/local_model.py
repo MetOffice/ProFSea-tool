@@ -179,7 +179,7 @@ class Local:
         Returns
         -------
         dict
-            Dictionary of local projections for each component, where keys are component names and values are xarray DataArrays of shape (n_members, n_years, n_sites).
+            Dictionary of local projections for each component, where keys are component names and values are xarray DataArrays of shape (num_members, n_years, n_sites).
         """
         seed_seq = np.random.SeedSequence(member_seed)
 
@@ -189,7 +189,7 @@ class Local:
 
         state = LocalState(
             n_years=self.n_years,
-            n_members=self.num_members,
+            num_members=self.num_members,
             target_lats=self.target_lats,
             target_lons=self.target_lons,
             interpolation_method=self.interpolation_method,

@@ -103,26 +103,34 @@ class Global:
             Dictionary of xarray DataArrays, where keys are component names and values are xarray DataArrays.
         """
         xr_dict = {}
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
+        if self.output_percentiles:
+            for name, arr in arr_dict.items():
+                xr_dict[name] = xr.DataArray(
+                    arr,
+                    dims=["percentile", "time"],
+                    coords={
+                        "percentile": self.output_percentiles,
+                        "time": np.arange(
+                            self.endofhistory, self.endofhistory + arr.shape[1]
+                        ),
+                    },
+                )
+                xr_dict[name].attrs["units"] = "m"
 
-        for name, arr in arr_dict.items():
-            member_coords = (
-                self.output_percentiles
-                if self.output_percentiles is not None
-                else np.arange(arr.shape[0])
-            )
-
-            xr_dict[name] = xr.DataArray(
-                arr,
-                dims=[member_dim, "time"],
-                coords={
-                    member_dim: member_coords,
-                    "time": np.arange(
-                        self.endofhistory, self.endofhistory + arr.shape[1]
-                    ),
-                },
-            )
-            xr_dict[name].attrs["units"] = "m"
+        else:
+            for name, arr in arr_dict.items():
+                xr_dict[name] = xr.DataArray(
+                    arr,
+                    dims=["climate_member", "process_member", "time"],
+                    coords={
+                        "climate_member": np.arange(arr.shape[0]),
+                        "process_member": np.arange(arr.shape[1]),
+                        "time": np.arange(
+                            self.endofhistory, self.endofhistory + arr.shape[2]
+                        ),
+                    },
+                )
+                xr_dict[name].attrs["units"] = "m"
 
         return xr_dict
 
@@ -162,7 +170,7 @@ class Global:
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
 
         # Shared physical correlation state
-        fraction = run_rng.random(self.num_members * self.nt).astype(self.dtype)
+        fraction = run_rng.random((self.nt, self.num_members)).astype(self.dtype)
 
         state = ClimateState(
             scenario=scenario,
@@ -219,7 +227,9 @@ class Global:
                 f"Sampling {len(self.output_percentiles)} members per component..."
             )
             for comp_name, data in results.items():
-                data = data.reshape()  # reshape to 2D
+                data = data.reshape(
+                    self.nt * self.num_members, data.shape[-1]
+                )  # reshape to 2D
                 results[comp_name] = sample_members_2D(
                     data, self.output_percentiles, dtype=self.dtype
                 )

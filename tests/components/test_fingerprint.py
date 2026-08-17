@@ -10,7 +10,7 @@ from profsea.components.core.state import SpatialState
 
 
 def get_dummy_spatial_state(
-    n_members: int = 2,
+    num_members: int = 2,
     output_percentiles: list | None = None,
     use_target_points: bool = True,
 ) -> SpatialState:
@@ -19,7 +19,7 @@ def get_dummy_spatial_state(
     Uses __new__ to bypass potential validation/I_O in the real __init__.
     """
     state = SpatialState.__new__(SpatialState)
-    state.n_members = n_members
+    state.num_members = num_members
     state.output_percentiles = output_percentiles
 
     if use_target_points:
@@ -118,7 +118,7 @@ class TestFingerprintProject:
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_single_fingerprint(self, mock_load, sample_global_proj):
         """Projection should broadcast properly when only 1 fingerprint is mapped."""
-        state = get_dummy_spatial_state(n_members=2)
+        state = get_dummy_spatial_state(num_members=2)
         mock_load.return_value = da.array([[1.0, 2.0, 3.0]])
 
         fp = Fingerprint(
@@ -146,7 +146,7 @@ class TestFingerprintProject:
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_storyline_mode(self, mock_load, sample_global_proj):
         """Storyline mode should collapse fingerprints into an unweighted mean."""
-        state = get_dummy_spatial_state(n_members=2)
+        state = get_dummy_spatial_state(num_members=2)
         mock_load.return_value = da.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 
         with patch("pathlib.Path.exists", return_value=True):
@@ -171,7 +171,7 @@ class TestFingerprintProject:
     @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
     def test_project_probabilistic_mode(self, mock_load, sample_global_proj):
         """Probabilistic mode should assign distinct random fingerprints to members."""
-        state = get_dummy_spatial_state(n_members=2)
+        state = get_dummy_spatial_state(num_members=2)
 
         # 3D array representing (n_fps, lat, lon)
         fps = np.array(

@@ -100,15 +100,15 @@ ax = fig.add_subplot(121)
 yrs = np.arange(2006, 2301)
 ax.plot(
     yrs,
-    np.median(gmslr, axis=0),
+    np.median(gmslr, axis=(0, 1)),
     label="Global Projection",
     color="royalblue",
 )
 # fill between 1 and 4 members
 ax.fill_between(
     yrs,
-    np.percentile(gmslr, 17, axis=0),
-    np.percentile(gmslr, 83, axis=0),
+    np.percentile(gmslr, 17, axis=(0, 1)),
+    np.percentile(gmslr, 83, axis=(0, 1)),
     alpha=0.3,
     color="skyblue",
 )
