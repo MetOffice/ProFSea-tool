@@ -248,6 +248,16 @@ def plot_ij(cube, model, location, idx, lat, lon, save_map=True, rad=5):
     if targetlon > 180:
         targetlon -= 360
 
+    # ensure between max and min lon
+    if plotlon > maxlon:
+        plotlon -= 360
+    if plotlon < minlon:
+        plotlon += 360
+    if targetlon > maxlon:
+        targetlon -= 360
+    if targetlon < minlon:
+        targetlon += 360
+
     fig = plt.figure()
     ax = cubeplot.block(cube, land=False, region=region, cmin=-1, cmax=1,
                         plotcbar=True, nlevels=25, cent_lon=targetlon,
