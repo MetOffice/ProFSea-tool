@@ -12,7 +12,10 @@ dependencies:
   - numcodecs
   - numpy
   - pandas
-  - pandoc
+  - pandocpyt
+  - pip 
+  - pip:
+    - -e .[dev]
   - pre-commit
   - pydata-sphinx-theme
   - pytest
@@ -26,4 +29,5 @@ dependencies:
   - sphinx
   - sphinx-design
   - xarray
-  - zarr
+  - zarr>=3.1.3
+

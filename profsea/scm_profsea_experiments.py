@@ -373,7 +373,7 @@ def main(args):
         ohc_scen = ohc_matrix[idx, :, :]
 
         slr_components = {
-            "expansion": ThermalExpansion(OHC_change=ohc_scen),
+            "expansion": ThermalExpansion(data_input=ohc_scen),
             "greenland": GreenlandAR6(),
             "landwater": LandwaterAR6(),
             "wais": AntarcticaISMIP6(region="wais"),
