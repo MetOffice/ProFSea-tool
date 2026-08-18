@@ -15,9 +15,9 @@ class ThermalExpansion(Component):
         Array of ocean heat content (or thermosteric sea level) change values.
     distribution_scaler: float
         Controls distribution of sensitivity of thermosteric SLR to ocean heat content change.
-OHC_change: bool
-    If True, assumes input is ocean heat content change.
-    If False, assumes input is thermosteric sea level change (e.g., zostoga) and skips OHC→SLR conversion.
+    OHC_change: bool
+        If True, assumes input is ocean heat content change.
+        If False, assumes input is thermosteric sea level change (e.g., zostoga) and skips OHC→SLR conversion.
     """
 
     def __init__(
