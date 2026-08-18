@@ -41,10 +41,11 @@ def time_projection(
     time = np.arange(state.end_yr - state.endofhistory, dtype=state.dtype) + 1
 
     if fraction is None:
-        fraction = rng.random((state.nt, state.num_members), dtype=state.dtype)
-    else:
-        if fraction.shape != (state.nt, state.num_members):
-            raise ValueError("fraction array is the wrong shape")
+        fraction = rng.random((state.num_members, state.nt), dtype=state.dtype)
+    elif fraction.size != state.num_members * state.nt:
+        raise ValueError("fraction is the wrong size")
+
+    fraction = fraction.reshape(state.num_members, state.nt)
 
     # Convert inputs to startrate (m yr-1) and afinal (m), where both are
     # arrays with the size of fraction
@@ -89,4 +90,8 @@ def time_projection(
 
     quadratic += linear
 
-    return quadratic  # (climate_mem, process_mem, time)
+    quadratic = quadratic.reshape(
+        quadratic.shape[0] * quadratic.shape[1], quadratic.shape[2]
+    )
+
+    return quadratic

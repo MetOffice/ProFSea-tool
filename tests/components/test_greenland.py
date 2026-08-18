@@ -13,12 +13,12 @@ def get_dummy_state(
     T_change_val: float = 1.0,
     scenario: str = "rcp45",
     *,
-    n_years: int = 4,
+    nyr: int = 4,
     end_yr: int = 2010,
     palmer_method: bool = True,
 ) -> ClimateState:
     """Helper to generate a small ClimateState with constant temperature."""
-    T_ens = np.ones((2, n_years), dtype=np.float32) * T_change_val
+    T_ens = np.ones((2, nyr), dtype=np.float32) * T_change_val
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
 
@@ -32,7 +32,7 @@ def get_dummy_state(
         endofAR5=2100,
         endofhistory=2006,
         end_yr=end_yr,
-        n_years=n_years,
+        nyr=nyr,
         nt=2,
         num_members=2,
     )
@@ -65,9 +65,8 @@ def test_greenland_ar6_projection_shape():
     projection = greenland.project(state, rng)
 
     assert projection.shape == (
-        state.nt,
-        state.num_members,
-        state.n_years,
+        state.num_members * state.nt,
+        state.nyr,
     )
 
 
@@ -110,11 +109,11 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend():
     )
 
     # Trend is multiplied by time_delta, so the first timestep must be zero.
-    np.testing.assert_allclose(projection[:, :, 0], 0.0)
+    np.testing.assert_allclose(projection[:, 0], 0.0)
 
     # The truncated trend distribution is non-negative, so projections should
     # not decrease when all emulator coefficients are zero.
-    assert np.all(np.diff(projection, axis=2) >= 0.0)
+    assert np.all(np.diff(projection, axis=1) >= 0.0)
 
 
 def test_greenland_ar6_accepts_one_dimensional_temperature():
@@ -122,7 +121,7 @@ def test_greenland_ar6_accepts_one_dimensional_temperature():
     greenland = get_dummy_ar6()
     state = get_dummy_state()
 
-    state.T_ens = np.ones(state.n_years, dtype=np.float32)
+    state.T_ens = np.ones(state.nyr, dtype=np.float32)
     state.nt = 1
 
     projection = greenland.project(
@@ -131,18 +130,17 @@ def test_greenland_ar6_accepts_one_dimensional_temperature():
     )
 
     assert projection.shape == (
-        state.nt,
         state.num_members,
-        state.n_years,
+        state.nyr,
     )
 
 
 def test_greenland_ar6_persists_2100_rate():
     """After 2100, AR6 should continue using the 2100 rate of change."""
-    n_years = 100
+    nyr = 100
     greenland = get_dummy_ar6()
     state = get_dummy_state(
-        n_years=n_years,
+        nyr=nyr,
         end_yr=2105,
     )
 
@@ -153,8 +151,8 @@ def test_greenland_ar6_persists_2100_rate():
 
     idx_2100 = 94
 
-    rate_2100 = projection[:, :, idx_2100] - projection[:, :, idx_2100 - 1]
-    rate_after = projection[:, :, idx_2100 + 1] - projection[:, :, idx_2100]
+    rate_2100 = projection[:, idx_2100] - projection[:, idx_2100 - 1]
+    rate_after = projection[:, idx_2100 + 1] - projection[:, idx_2100]
 
     np.testing.assert_allclose(
         rate_after,
@@ -197,9 +195,8 @@ def test_greenland_smb_projection_shape():
     projection = greenland.project(state, rng)
 
     assert projection.shape == (
-        state.nt,
-        state.num_members,
-        state.n_years,
+        state.num_members * state.nt,
+        state.nyr,
     )
 
 
@@ -246,7 +243,7 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
 
     state = get_dummy_state(
         T_change_val=1.0,
-        n_years=100,
+        nyr=100,
         end_yr=2105,
         palmer_method=True,
     )
@@ -259,8 +256,8 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
     # project() freezes the annual contribution from index 95 onward
     # before applying cumulative sum. Therefore subsequent increments
     # should be equal.
-    increment_95 = projection[:, :, 95] - projection[:, :, 94]
-    increment_96 = projection[:, :, 96] - projection[:, :, 95]
+    increment_95 = projection[:, 95] - projection[:, 94]
+    increment_96 = projection[:, 96] - projection[:, 95]
 
     np.testing.assert_allclose(
         increment_95,
@@ -288,7 +285,7 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
         captured["median"] = median
         captured["uncertainty"] = uncertainty
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -321,7 +318,7 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -352,7 +349,7 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -373,7 +370,7 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
     state = get_dummy_state()
 
     def mock_time_projection(*args, **kwargs):
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",

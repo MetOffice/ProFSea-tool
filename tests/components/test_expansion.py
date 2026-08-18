@@ -6,12 +6,12 @@ from profsea.components.global_.expansion import ThermalExpansion
 
 def get_dummy_state(
     *,
-    n_years: int = 4,
+    nyr: int = 4,
     nt: int = 2,
     num_members: int = 3,
 ) -> ClimateState:
     """Helper to generate a small ClimateState."""
-    T_ens = np.ones((nt, n_years), dtype=np.float32)
+    T_ens = np.ones((nt, nyr), dtype=np.float32)
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
 
@@ -25,7 +25,7 @@ def get_dummy_state(
         endofAR5=2100,
         endofhistory=2006,
         end_yr=2010,
-        n_years=n_years,
+        nyr=nyr,
         nt=nt,
         num_members=num_members,
     )
@@ -33,7 +33,7 @@ def get_dummy_state(
 
 def test_expansion_ohc_change_true_scales_input_with_efficiency():
     """When OHC_change is True, output should be OHC multiplied by sampled efficiency."""
-    state = get_dummy_state(nt=2, num_members=3, n_years=4)
+    state = get_dummy_state(nt=2, num_members=3, nyr=4)
 
     data_input = np.array(
         [
@@ -55,16 +55,16 @@ def test_expansion_ohc_change_true_scales_input_with_efficiency():
     expected = (data_input[:, None, :] * expected_efficiency).astype(np.float32)
     expected = np.broadcast_to(
         expected,
-        (state.nt, state.num_members, state.n_years),
-    )
+        (state.nt, state.num_members, state.nyr),
+    ).reshape(state.nt * state.num_members, state.nyr)
 
-    assert projection.shape == (state.nt, state.num_members, state.n_years)
+    assert projection.shape == (state.nt * state.num_members, state.nyr)
     np.testing.assert_allclose(projection, expected)
 
 
 def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     """When OHC_change is False, input should be broadcast to all members unchanged."""
-    state = get_dummy_state(nt=2, num_members=3, n_years=4)
+    state = get_dummy_state(nt=2, num_members=3, nyr=4)
 
     data_input = np.array(
         [
@@ -83,8 +83,8 @@ def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
 
     expected = np.broadcast_to(
         data_input[:, None, :],
-        (state.nt, state.num_members, state.n_years),
-    )
+        (state.nt, state.num_members, state.nyr),
+    ).reshape(state.nt * state.num_members, state.nyr)
 
-    assert projection.shape == (state.nt, state.num_members, state.n_years)
+    assert projection.shape == (state.nt * state.num_members, state.nyr)
     np.testing.assert_allclose(projection, expected)

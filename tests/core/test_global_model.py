@@ -8,8 +8,8 @@ from profsea.components.core.state import ClimateState
 
 class MockGlobalComponent(Component):
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-        # Update shape to (climate_members, process_members, time)
-        return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
+        # Just return an array of 1s with the correct shape
+        return np.ones((state.nt * state.num_members, state.nyr), dtype=state.dtype)
 
 
 def test_calculate_drivers_math():
@@ -30,29 +30,25 @@ def test_calculate_drivers_math():
 def test_run_orchestration():
     components = {"mock1": MockGlobalComponent(), "mock2": MockGlobalComponent()}
 
-    # nt=2 (climate members), num_members=3 (process members), n_years=4 (2010-2006)
+    # 2 time series, 3 members each -> output shape should be (6, nyr)
     global_model = Global(components=components, end_yr=2010, nt=2, num_members=3)
 
-    # Shape: (nt=2, n_years=4)
+    # Shape: (nt=2, nyr=4)
     T_change = np.zeros((2, 4))
     results = global_model.run(scenario="ssp119", T_change=T_change)
 
     assert "mock1" in results
     assert "mock2" in results
-
-    # Assert the new 3D matrix shape
-    assert results["mock1"].shape == (2, 3, 4)
+    assert results["mock1"].shape == (6, 4)
 
 
 def test_save_components(tmp_path):
     # tmp_path is a built-in pytest fixture that creates a temporary directory
     global_model = Global(components={}, end_yr=2010)
 
-    # Create dummy result matching the new 3D dimensional structure
+    # Create dummy result: 5 members, 4 years
     components = {
-        "mock_comp": xr.DataArray(
-            np.random.rand(2, 3, 4), dims=["climate_member", "process_member", "time"]
-        )
+        "mock_comp": xr.DataArray(np.random.rand(5, 4), dims=["member", "time"])
     }
 
     # Save the output to the temporary directory
@@ -70,8 +66,8 @@ def test_save_components(tmp_path):
     # Verify the contents of the NetCDF
     ds = xr.open_dataset(expected_file)
     assert "mock_comp" in ds.data_vars
-    assert ds["mock_comp"].shape == (2, 3, 4)
-    assert list(ds.dims) == ["climate_member", "process_member", "time"]
+    assert ds["mock_comp"].shape == (5, 4)
+    assert list(ds.dims) == ["member", "time"]
 
 
 def test_return_types():
@@ -89,7 +85,7 @@ def test_return_types():
         ThermalExpansion,
     )
 
-    tas = np.zeros((2, 95))  # 2 trajectories, 95 years
+    tas = np.zeros((2, 95))  # 2 trajectories, 4 years
     ohc = np.zeros((2, 95))
 
     components = {
@@ -113,8 +109,6 @@ def test_return_types():
     for comp_name, data in results.items():
         assert isinstance(data, xr.DataArray)
         assert data.dtype == np.float64
-        # Assert that the real components correctly return the 3D structure
-        assert data.shape == (2, 3, 95)
 
     global_model_float32 = Global(
         components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float32
@@ -124,4 +118,3 @@ def test_return_types():
     for comp_name, data in results.items():
         assert isinstance(data, xr.DataArray)
         assert data.dtype == np.float32
-        assert data.shape == (2, 3, 95)
