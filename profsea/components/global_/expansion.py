@@ -25,7 +25,7 @@ class ThermalExpansion(Component):
         self.OHC_change = np.asarray(self.OHC_change, dtype=state.dtype)
 
         # check the shape here (climate_member, time)
-        check_shapes(self.OHC_change, state.nyr)
+        check_shapes(self.OHC_change, state.n_years)
 
         # Ensure OHC_change is 2D
         if self.OHC_change.ndim > 2:

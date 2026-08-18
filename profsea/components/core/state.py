@@ -18,7 +18,7 @@ class ClimateState:
     endofAR5: int
     endofhistory: int
     end_yr: int
-    nyr: int
+    n_years: int
     nt: int
     num_members: int
     dtype: np.dtype = np.float32

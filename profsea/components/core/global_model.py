@@ -54,7 +54,7 @@ class Global:
         First year of AR5 projections.
     endofAR5: int
         Last year of AR5 projections.
-    nyr: int
+    n_years: int
         Length of projections.
     """
 
@@ -84,7 +84,7 @@ class Global:
 
         self.endofhistory = 2006
         self.endofAR5 = 2100
-        self.nyr = self.end_yr - self.endofhistory
+        self.n_years = self.end_yr - self.endofhistory
 
     # Inject method!
     save_components = save_components
@@ -103,7 +103,7 @@ class Global:
             Dictionary of xarray DataArrays, where keys are component names and values are xarray DataArrays.
         """
         xr_dict = {}
-        if self.output_percentiles:
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             for name, arr in arr_dict.items():
                 xr_dict[name] = xr.DataArray(
                     arr,
@@ -154,9 +154,9 @@ class Global:
         seed_seq = np.random.SeedSequence(member_seed)
         run_rng = np.random.default_rng(seed_seq)
 
-        check_shapes(T_change, self.nyr)
+        check_shapes(T_change, self.n_years)
 
-        # Standardize T_change shape to (nt, nyr)
+        # Standardize T_change shape to (nt, n_years)
         if T_change.ndim > 2:
             T_change = np.squeeze(T_change)
         if T_change.ndim == 1:
@@ -182,7 +182,7 @@ class Global:
             endofAR5=self.endofAR5,
             endofhistory=self.endofhistory,
             end_yr=self.end_yr,
-            nyr=self.nyr,
+            n_years=self.n_years,
             nt=self.nt,
             num_members=self.num_members,
             dtype=self.dtype,

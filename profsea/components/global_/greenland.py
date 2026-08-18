@@ -44,7 +44,7 @@ class GreenlandAR6(Component):
                 f"T_ens contains {tas.shape[0]} trajectories, but state.nt={state.nt}"
             )
 
-        time_delta = np.arange(state.nyr, dtype=state.dtype)
+        time_delta = np.arange(state.n_years, dtype=state.dtype)
 
         df = self.df
         n_models = len(df)
@@ -98,7 +98,7 @@ class GreenlandAR6(Component):
             idx_2100 = 94
             rate = np.diff(sle_ens, axis=2)[:, :, idx_2100 - 1]
             sle_ens[:, :, idx_2100 + 1 :] = sle_ens[:, :, idx_2100 : idx_2100 + 1] + (
-                rate[:, :, None] * time_delta[None, None, 1 : state.nyr - idx_2100]
+                rate[:, :, None] * time_delta[None, None, 1 : state.n_years - idx_2100]
             )
 
         return sle_ens  # (climate_mem, process_mem, time)

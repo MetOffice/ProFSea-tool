@@ -9,7 +9,7 @@ from profsea.components.core.state import ClimateState
 class MockGlobalComponent(Component):
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
         # Update shape to (climate_members, process_members, time)
-        return np.ones((state.nt, state.num_members, state.nyr), dtype=state.dtype)
+        return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
 
 
 def test_calculate_drivers_math():
@@ -30,10 +30,10 @@ def test_calculate_drivers_math():
 def test_run_orchestration():
     components = {"mock1": MockGlobalComponent(), "mock2": MockGlobalComponent()}
 
-    # nt=2 (climate members), num_members=3 (process members), nyr=4 (2010-2006)
+    # nt=2 (climate members), num_members=3 (process members), n_years=4 (2010-2006)
     global_model = Global(components=components, end_yr=2010, nt=2, num_members=3)
 
-    # Shape: (nt=2, nyr=4)
+    # Shape: (nt=2, n_years=4)
     T_change = np.zeros((2, 4))
     results = global_model.run(scenario="ssp119", T_change=T_change)
 

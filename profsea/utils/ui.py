@@ -59,8 +59,8 @@ def print_spatial_preflight(model) -> None:
         output_str = f"Percentiles: {model.output_percentiles}"
         members = len(model.output_percentiles)
     else:
-        output_str = f"Full Distribution ({model.num_members} members)"
-        members = model.num_members
+        members = model.num_members * model.nt
+        output_str = f"Full Distribution ({members} members)"
 
     # Memory estimation
     bytes_per_element = 8

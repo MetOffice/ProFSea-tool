@@ -42,6 +42,9 @@ def time_projection(
 
     if fraction is None:
         fraction = rng.random((state.nt, state.num_members), dtype=state.dtype)
+    else:
+        if fraction.shape != (state.nt, state.num_members):
+            raise ValueError("fraction array is the wrong shape")
 
     # Convert inputs to startrate (m yr-1) and afinal (m), where both are
     # arrays with the size of fraction

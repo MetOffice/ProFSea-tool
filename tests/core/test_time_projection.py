@@ -7,14 +7,14 @@ from profsea.components.core.time_projection import time_projection
 
 def get_dummy_state(
     *,
-    nyr: int = 4,
+    n_years: int = 4,
     nt: int = 2,
     num_members: int = 2,
     end_yr: int = 2010,
     palmer_method: bool = False,
 ) -> ClimateState:
     """Helper to generate a small ClimateState."""
-    T_ens = np.ones((nt, nyr), dtype=np.float32)
+    T_ens = np.ones((nt, n_years), dtype=np.float32)
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
 
@@ -33,7 +33,7 @@ def get_dummy_state(
         endofAR5=2100,
         endofhistory=2006,
         end_yr=end_yr,
-        nyr=nyr,
+        n_years=n_years,
         nt=nt,
         num_members=num_members,
     )
@@ -55,7 +55,7 @@ def test_time_projection_output_shape():
     assert projection.shape == (
         state.nt,
         state.num_members,
-        state.nyr,
+        state.n_years,
     )
 
 
@@ -96,7 +96,7 @@ def test_time_projection_wrong_fraction_shape():
     # when it tries to multiply `fraction` (shape 3,) by `startrate` (shape 2,)
     # or by `final` depending on broadcasting. I updated the match string to reflect this
     # or just catch general ValueErrors since the original code didn't have an explicit raise for it.
-    with pytest.raises(IndexError):
+    with pytest.raises(ValueError, match="fraction array is the wrong shape"):
         time_projection(
             state,
             startratemean=0.5,
@@ -253,7 +253,7 @@ def test_time_projection_accepts_final_array():
     assert projection.shape == (
         state.nt,
         state.num_members,
-        state.nyr,
+        state.n_years,
     )
 
 
@@ -291,15 +291,15 @@ def test_time_projection_nfinal_changes_final_mean_constraint():
 
 def test_time_projection_palmer_method_matches_quadratic_before_2100():
     """Palmer extrapolation should not alter the projection before index 95."""
-    nyr = 100
+    n_years = 100
 
     state_normal = get_dummy_state(
-        nyr=nyr,
+        n_years=n_years,
         end_yr=2106,
         palmer_method=False,
     )
     state_palmer = get_dummy_state(
-        nyr=nyr,
+        n_years=n_years,
         end_yr=2106,
         palmer_method=True,
     )
@@ -336,7 +336,7 @@ def test_time_projection_palmer_method_matches_quadratic_before_2100():
 def test_time_projection_palmer_method_becomes_linear_after_2100():
     """Palmer extrapolation should continue at a constant rate after 2100."""
     state = get_dummy_state(
-        nyr=100,
+        n_years=100,
         end_yr=2106,
         palmer_method=True,
     )

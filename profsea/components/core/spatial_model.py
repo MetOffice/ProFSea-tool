@@ -109,8 +109,8 @@ class Spatial:
         bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
         self.num_out_mems = (
             len(output_percentiles)
-            if self.output_percentiles is not None
-            else self.num_members
+            if self.output_percentiles is not None and len(self.output_percentiles) > 0
+            else self.num_members * self.nt
         )
 
         future_size = (
@@ -151,7 +151,7 @@ class Spatial:
         """
         xr_dict = {}
 
-        if self.output_percentiles:
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             for name, arr in arr_dict.items():
                 xr_dict[name] = xr.DataArray(
                     arr,
