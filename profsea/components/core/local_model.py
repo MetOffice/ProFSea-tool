@@ -71,6 +71,12 @@ class Local:
         self.target_lats = [coords[0] for coords in locations.values()]
         self.target_lons = [coords[1] for coords in locations.values()]
 
+        # Check if components is non-empty
+        if not self.components:
+            raise ValueError(
+                "The components dictionary is empty. Please provide at least one component."
+            )
+
         temp_proj = next(iter(self.components.values())).global_projection
         self.nt = temp_proj.shape[0]
         self.num_members = temp_proj.shape[1]

@@ -74,6 +74,12 @@ class Spatial:
         self.n_years = self.end_year - self.start_year
         self.dtype = dtype
 
+        # Check if components is non-empty
+        if not self.components:
+            raise ValueError(
+                "The components dictionary is empty. Please provide at least one component."
+            )
+
         temp_component = next(iter(self.components.values()))
         self.nt = temp_component.global_projection.shape[0]
         self.num_members = temp_component.global_projection.shape[1]
