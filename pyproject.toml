@@ -8,9 +8,9 @@ dynamic = ["version"]
 description = "A rapid, modular sea-level simulator."
 readme = "README.md"
 authors = [
-    {name = "Jennifer Weeks", email = "jennifer.weeks@metoffice.gov.uk"},
-    {name = "Gregory Munday", email = "gregory.munday@keble.ox.ac.uk"},
-    {name = "Hemant Khatri", email = "hemant.khatri@metoffice.gov.uk"}
+    { name = "Jennifer Weeks", email = "jennifer.weeks@metoffice.gov.uk" },
+    { name = "Gregory Munday", email = "gregory.munday@keble.ox.ac.uk" },
+    { name = "Hemant Khatri", email = "hemant.khatri@metoffice.gov.uk" },
 ]
 dependencies = [
     "numpy",
