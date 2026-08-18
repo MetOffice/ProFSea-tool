@@ -21,6 +21,8 @@ from rich.progress import (
 )
 from scipy.spatial.distance import cdist
 
+from profsea.components.core.state import ClimateState
+
 console = Console()
 logger = logging.getLogger(__name__)
 
@@ -328,8 +330,9 @@ def save_components(
     # Sort out Zarr encoding
     if output_format == "zarr":
         import numcodecs
-        from numcodecs.zarr3 import Blosc
+        from zarr.codecs.numcodecs import Blosc
 
+        # We use the Zarr 3 wrapper (Blosc), but feed it the integer constant from numcodecs
         compressor = Blosc(cname="zstd", clevel=5, shuffle=numcodecs.Blosc.BITSHUFFLE)
 
     # Set the encoding dynamically, overriding with output_dtype if provided
@@ -339,7 +342,7 @@ def save_components(
         if output_format == "netcdf":
             encoding[name] = {"zlib": True, "complevel": 1, "dtype": comp_dtype}
         elif output_format == "zarr":
-            encoding[name] = {"compressor": compressor, "dtype": comp_dtype}
+            encoding[name] = {"compressors": [compressor], "dtype": comp_dtype}
 
     file_name = f"{scenario_name}_{output_prefix}"
 
@@ -364,7 +367,14 @@ def save_components(
             f"[bold cyan]Streaming computation and saving {log_prefix}Zarr...[/bold cyan]",
             spinner="dots",
         ):
-            ds.to_zarr(out_path, encoding=encoding, mode="w", compute=True)
+            ds.to_zarr(
+                out_path,
+                encoding=encoding,
+                mode="w",
+                compute=True,
+                zarr_format=3,
+                consolidated=True,
+            )
 
         logger.info(f"[bold green]✓ Successfully saved Zarr:[/bold green] {out_path}")
 
@@ -374,3 +384,18 @@ def save_components(
     logger.info(
         f"{log_prefix}Output shape for '{sample_name}' was {ds[sample_name].shape} ({dims_str})"
     )
+
+
+def reformat_global_projection(
+    raw_projection: np.ndarray, state: ClimateState
+) -> np.ndarray:
+
+    if state.output_percentiles is None or len(state.output_percentiles) == 0:
+        return raw_projection
+
+    if raw_projection.ndim == 3:
+        flat_projection = raw_projection.reshape(-1, raw_projection.shape[-1])
+    else:
+        flat_projection = raw_projection
+
+    return sample_members_2D(flat_projection, state.output_percentiles)
