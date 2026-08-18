@@ -44,7 +44,7 @@ class GreenlandAR6(Component):
                 f"T_ens contains {tas.shape[0]} trajectories, but state.nt={state.nt}"
             )
 
-        time_delta = np.arange(state.n_years, dtype=state.dtype)
+        time_delta = np.arange(state.nyr, dtype=state.dtype)
 
         df = self.df
         n_models = len(df)
@@ -98,10 +98,11 @@ class GreenlandAR6(Component):
             idx_2100 = 94
             rate = np.diff(sle_ens, axis=2)[:, :, idx_2100 - 1]
             sle_ens[:, :, idx_2100 + 1 :] = sle_ens[:, :, idx_2100 : idx_2100 + 1] + (
-                rate[:, :, None] * time_delta[None, None, 1 : state.n_years - idx_2100]
+                rate[:, :, None] * time_delta[None, None, 1 : state.nyr - idx_2100]
             )
 
-        return sle_ens  # (climate_mem, process_mem, time)
+        sle_ens = sle_ens.reshape((state.num_members * state.nt, state.nyr))
+        return sle_ens
 
 
 class GreenlandSMBAR5(Component):
@@ -145,9 +146,7 @@ class GreenlandSMBAR5(Component):
 
         ztgreen = state.T_ens - dtgreen
 
-        greensmb = (
-            ff[np.newaxis, :, np.newaxis] * self._fettweis(ztgreen)[:, np.newaxis, :]
-        )
+        greensmb = ff[:, np.newaxis, np.newaxis] * self._fettweis(ztgreen)
 
         if state.palmer_method and state.end_yr > state.endofAR5:
             greensmb[:, :, 95:] = greensmb[:, :, 94:95]
@@ -156,7 +155,10 @@ class GreenlandSMBAR5(Component):
 
         greensmb += (1 - self.fgreendyn) * self.dgreen
 
-        return greensmb  # (climate_mem, process_mem, time)
+        greensmb = greensmb.reshape(
+            greensmb.shape[0] * greensmb.shape[1], greensmb.shape[2]
+        )
+        return greensmb
 
     def _fettweis(self, ztgreen: np.ndarray) -> np.ndarray:
         """Calculate Greenland SMB in m yr-1 SLE from global mean temperature

@@ -171,9 +171,7 @@ class AntarcticaISMIP6(Component):
         )
         term_fast = beta * tas_int[t_indices]
 
-        total_ais = term_slow + term_fast
-
-        return total_ais.reshape(state.nt, state.num_members, n_time)
+        return term_slow + term_fast
 
 
 class AntarcticaDynAR5(Component):
@@ -223,7 +221,7 @@ class AntarcticaDynAR5(Component):
 
             ascale = norm.ppf(state.fraction).astype(state.dtype)
             final = np.exp(lcoeff[2] * ascale**2 + lcoeff[1] * ascale + lcoeff[0])
-
+            final = final.reshape(state.num_members, state.nt)
         return (
             time_projection(
                 state,
@@ -277,11 +275,11 @@ class AntarcticaSMBAR5(Component):
         # Generate a distribution of products of the above two factors
         pcoKg = (
             pcoK[0]
-            + rng.standard_normal([state.nt, state.num_members], dtype=state.dtype)
+            + rng.standard_normal([state.num_members, state.nt], dtype=state.dtype)
             * pcoK[1]
         ) * (
             KoKg[0]
-            + rng.standard_normal([state.nt, state.num_members], dtype=state.dtype)
+            + rng.standard_normal([state.num_members, state.nt], dtype=state.dtype)
             * KoKg[1]
         )
         meansmb = 1923  # model-mean time-mean 1979-2010 Gt yr-1 from 13.3.3.2
@@ -290,19 +288,17 @@ class AntarcticaSMBAR5(Component):
         )  # m yr-1 of SLE per K of global warming
 
         if state.fraction is None:
-            fraction = rng.random((state.nt, state.num_members), dtype=state.dtype)
-        elif state.fraction.size != state.nt * state.num_members:
+            fraction = rng.random((state.num_members, state.nt), dtype=state.dtype)
+        elif state.fraction.size != state.num_members * state.nt:
             raise ValueError("fraction is the wrong size")
         else:
-            fraction = state.fraction.reshape((state.nt, state.num_members))
+            fraction = state.fraction.reshape((state.num_members, state.nt))
 
         smax = 0.35  # max value of S in 13.SM.1.5
         ainterfactor = 1 - fraction * smax
 
         z = moaoKg * ainterfactor
-        z = z[:, :, np.newaxis]  # (climate_mem, process_mem, 1)
-        antsmb = (
-            z * state.T_int_ens[:, np.newaxis, :]
-        )  # (climate_mem, process_mem, time)
-
-        return antsmb  # (climate_mem, process_mem, time)
+        z = z[:, :, np.newaxis]
+        antsmb = z * state.T_int_ens
+        antsmb = antsmb.reshape(antsmb.shape[0] * antsmb.shape[1], antsmb.shape[2])
+        return antsmb

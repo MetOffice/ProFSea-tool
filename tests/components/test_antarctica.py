@@ -33,7 +33,7 @@ def get_dummy_state(
         endofAR5=2100,
         endofhistory=2006,
         end_yr=2010,
-        n_years=4,
+        nyr=4,
         nt=2,
         num_members=2,
     )
@@ -89,7 +89,7 @@ def test_ismip6_zero_temperature_zero_projection():
 
     projection = antarctica.project(state, rng)
 
-    assert projection.shape == (state.nt, state.num_members, state.n_years)
+    assert projection.shape == (state.num_members * state.nt, state.nyr)
     np.testing.assert_allclose(projection, 0.0, atol=1e-7)
 
 
@@ -102,8 +102,7 @@ def test_ismip6_projection_shape():
     projection = antarctica.project(state, rng)
 
     assert projection.shape == (
-        state.nt,
-        state.num_members,
+        state.num_members * state.nt,
         state.T_ens.shape[1],
     )
 
@@ -187,7 +186,7 @@ def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.antarctica.time_projection",
@@ -212,7 +211,7 @@ def test_antarctica_dyn_adds_d_ant(monkeypatch):
     state = get_dummy_state()
 
     def mock_time_projection(*args, **kwargs):
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros((state.num_members * state.nt, state.nyr))
 
     monkeypatch.setattr(
         "profsea.components.global_.antarctica.time_projection",
@@ -243,8 +242,7 @@ def test_antarctica_smb_projection_shape():
     projection = antarctica.project(state, rng)
 
     assert projection.shape == (
-        state.nt,
-        state.num_members,
+        state.num_members * state.nt,
         state.T_int_ens.shape[1],
     )
 

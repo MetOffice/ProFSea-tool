@@ -74,15 +74,12 @@ class Spatial:
         self.n_years = self.end_year - self.start_year
         self.dtype = dtype
 
-        # Check if components is non-empty
-        if not self.components:
-            raise ValueError(
-                "The components dictionary is empty. Please provide at least one component."
-            )
-
-        temp_component = next(iter(self.components.values()))
-        self.nt = temp_component.global_projection.shape[0]
-        self.num_members = temp_component.global_projection.shape[1]
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            self.num_members = len(self.output_percentiles)
+        else:
+            self.num_members = next(
+                iter(self.components.values())
+            ).global_projection.shape[0]
 
         if grid_config is None:
             grid_config: dict = {
@@ -113,14 +110,9 @@ class Spatial:
         # Log the size of each component and provide an estimate of their memory usage
         # Output shape will be (num_members, n_years, n_lats, n_lons)
         bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
-        self.num_out_mems = (
-            len(output_percentiles)
-            if self.output_percentiles is not None and len(self.output_percentiles) > 0
-            else self.num_members * self.nt
-        )
 
         future_size = (
-            self.num_out_mems
+            self.num_members
             * self.n_years
             * len(self.grid_lats)
             * len(self.grid_lons)
@@ -148,7 +140,7 @@ class Spatial:
         Parameters
         ----------
         arr_dict: Dict[str, da.Array]
-            Dictionary where keys are component names and values are Dask arrays of shape (num_members, n_years, n_lats, n_lons).
+            Dictionary where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
 
         Returns
         -------
@@ -156,47 +148,26 @@ class Spatial:
             Dictionary where keys are component names and values are xarray DataArrays with dimensions (member, time, lat, lon) and appropriate coordinates.
         """
         xr_dict = {}
+        member_dim = "percentile" if self.output_percentiles is not None else "member"
 
-        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
-            for name, arr in arr_dict.items():
-                xr_dict[name] = xr.DataArray(
-                    arr,
-                    dims=["percentile", "time", "lat", "lon"],
-                    coords={
-                        "percentile": self.output_percentiles,
-                        "time": np.arange(
-                            self.start_year, self.start_year + arr.shape[1]
-                        ),
-                        "lat": self.grid_lats,
-                        "lon": self.grid_lons,
-                    },
-                    attrs={
-                        "units": "m",
-                        "long_name": f"Regional {name} sea-level projections",
-                        "source": "ProFSea-Climate v0.1",
-                    },
-                )
-
-        else:
-            for name, arr in arr_dict.items():
-                xr_dict[name] = xr.DataArray(
-                    arr,
-                    dims=["climate_member", "process_member", "time", "lat", "lon"],
-                    coords={
-                        "climate_member": np.arange(arr.shape[0]),
-                        "process_member": np.arange(arr.shape[1]),
-                        "time": np.arange(
-                            self.start_year, self.start_year + arr.shape[2]
-                        ),
-                        "lat": self.grid_lats,
-                        "lon": self.grid_lons,
-                    },
-                    attrs={
-                        "units": "m",
-                        "long_name": f"Regional {name} sea-level projections",
-                        "source": "ProFSea-Climate v0.1",
-                    },
-                )
+        for name, arr in arr_dict.items():
+            xr_dict[name] = xr.DataArray(
+                arr,
+                dims=[member_dim, "time", "lat", "lon"],
+                coords={
+                    member_dim: self.output_percentiles
+                    if self.output_percentiles is not None
+                    else np.arange(arr.shape[0]),
+                    "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
+                    "lat": self.grid_lats,
+                    "lon": self.grid_lons,
+                },
+                attrs={
+                    "units": "m",
+                    "long_name": f"Regional {name} sea-level projections",
+                    "source": "ProFSea-Climate v0.1",
+                },
+            )
 
         return xr_dict
 
@@ -212,7 +183,7 @@ class Spatial:
         Returns
         -------
         Dict[str, da.Array]
-            Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (num_members, n_years, n_lats, n_lons).
+            Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
         """
         print_spatial_preflight(self)
         seed_seq = np.random.SeedSequence(member_seed)
@@ -223,9 +194,7 @@ class Spatial:
 
         state = SpatialState(
             n_years=self.n_years,
-            nt=self.nt,
-            num_output_members=self.num_out_mems,
-            num_members=self.num_members,
+            n_members=self.num_members,
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
             grid_interpolation="linear",

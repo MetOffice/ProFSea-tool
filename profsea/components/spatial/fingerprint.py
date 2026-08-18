@@ -8,7 +8,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import reformat_global_projection
+from profsea.utils import sample_members_2D
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
@@ -141,7 +141,13 @@ class Fingerprint(SpatialComponent):
         fps = self._load_and_interpolate(state)  # Shape: (n_fps, lat, lon)
         spatial_shape = fps.shape[1:]
 
-        global_projection = reformat_global_projection(self.global_projection, state)
+        # Handle the global projection
+        if state.output_percentiles is not None:
+            global_proj = sample_members_2D(
+                self.global_projection, state.output_percentiles
+            )
+        else:
+            global_proj = self.global_projection
 
         # Determine the spatial fingerprint for each member
         n_fps = fps.shape[0]
@@ -150,19 +156,19 @@ class Fingerprint(SpatialComponent):
             # Only one fingerprint available
             selected_fps = da.broadcast_to(
                 fps[0],
-                (state.num_output_members, *spatial_shape),
+                (state.n_members, *spatial_shape),
             )
         elif self.sample_spatial:
             # Probabilistic mode: pick a random fingerprint per member
-            fp_indices = rng.integers(0, n_fps, size=state.num_output_members)
+            fp_indices = rng.integers(0, n_fps, size=state.n_members)
             selected_fps = fps[fp_indices, ...]
         else:
             # Storyline mode: take the mean of the available fingerprints
             mean_fp = da.nanmean(fps, axis=0)
             selected_fps = da.broadcast_to(
                 mean_fp,
-                (state.num_output_members, *spatial_shape),
+                (state.n_members, *spatial_shape),
             )
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
-        return self.broadcast_spatiotemporal(global_projection, selected_fps)
+        return self.broadcast_spatiotemporal(global_proj, selected_fps)
