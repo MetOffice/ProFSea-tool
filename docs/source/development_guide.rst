@@ -1,7 +1,8 @@
-.. _set-up-profsea:
+.. _development-guide:
 
-Set Up ProFSea
---------------
+Development Guide
+=================
+
 Before making any changes, you need to set up your local workspace and install the package in "editable" mode. This allows your local changes to take effect immediately without needing to reinstall the package.
 
 1. **Clone the Repository**
