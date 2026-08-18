@@ -1,13 +1,13 @@
-import pytest
-import numpy as np
-import xarray as xr
-import dask.array as da
 from pathlib import Path
 from unittest.mock import patch
 
-# Adjust import path based on your package structure
-from profsea.components.spatial.gia import GIA, GIA_DIR
+import dask.array as da
+import numpy as np
+import pytest
+import xarray as xr
+
 from profsea.components.core.state import SpatialState
+from profsea.components.spatial.gia import GIA
 
 
 def get_dummy_spatial_state(

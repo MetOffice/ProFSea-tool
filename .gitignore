@@ -5,6 +5,7 @@ data/
 .pytest_cache/
 .ipynb_checkpoints/
 .ruff_cache/
+.vscode/
 profsea/profsea-assets/
 
 # Ignore the documentation build directory
