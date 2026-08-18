@@ -381,7 +381,7 @@ def save_components(
 def reformat_global_projection(
     raw_projection: np.ndarray, state: ClimateState
 ) -> np.ndarray:
-    if state.output_percentiles is not None:
+    if state.output_percentiles is not None and len(state.output_percentiles) > 0:
         flattened_projection = raw_projection.reshape(
             state.nt * state.num_members, state.n_years
         )
