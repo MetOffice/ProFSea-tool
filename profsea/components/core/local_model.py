@@ -71,12 +71,14 @@ class Local:
         self.target_lats = [coords[0] for coords in locations.values()]
         self.target_lons = [coords[1] for coords in locations.values()]
 
+        temp_proj = next(iter(self.components.values())).global_projection
+        self.nt = temp_proj.shape[0]
+        self.num_members = temp_proj.shape[1]
+
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
-            self.num_members = len(self.output_percentiles)
+            self.num_output_members = len(self.output_percentiles)
         else:
-            self.num_members = next(
-                iter(self.components.values())
-            ).global_projection.shape[0]
+            self.num_output_members = self.nt * self.num_members
 
         logger.info(
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
@@ -101,27 +103,48 @@ class Local:
             Dictionary of xarray DataArrays with site coordinates. Keys are the same as in arr_dict.
         """
         xr_dict = {}
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            for name, arr in arr_dict.items():
+                xr_dict[name] = xr.DataArray(
+                    arr,
+                    dims=["percentile", "time", "site"],
+                    coords={
+                        "percentile": self.output_percentiles,
+                        "time": np.arange(
+                            self.start_year, self.start_year + arr.shape[1]
+                        ),
+                        "site": self.site_names,
+                        "lat": ("site", self.target_lats),
+                        "lon": ("site", self.target_lons),
+                    },
+                    attrs={
+                        "units": "m",
+                        "long_name": f"Local {name} sea-level projections",
+                        "source": "ProFSea-Climate v0.1",
+                    },
+                )
+        else:
+            for name, arr in arr_dict.items():
+                xr_dict[name] = xr.DataArray(
+                    arr,
+                    dims=["climate_member", "process_member", "time", "site"],
+                    coords={
+                        "climate_member": np.arange(arr.shape[0]),
+                        "process_member": np.arange(arr.shape[1]),
+                        "time": np.arange(
+                            self.start_year, self.start_year + arr.shape[2]
+                        ),
+                        "site": self.site_names,
+                        "lat": ("site", self.target_lats),
+                        "lon": ("site", self.target_lons),
+                    },
+                    attrs={
+                        "units": "m",
+                        "long_name": f"Local {name} sea-level projections",
+                        "source": "ProFSea-Climate v0.1",
+                    },
+                )
 
-        for name, arr in arr_dict.items():
-            xr_dict[name] = xr.DataArray(
-                arr,
-                dims=[member_dim, "time", "site"],
-                coords={
-                    member_dim: self.output_percentiles
-                    if self.output_percentiles is not None
-                    else np.arange(arr.shape[0]),
-                    "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
-                    "site": self.site_names,
-                    "lat": ("site", self.target_lats),
-                    "lon": ("site", self.target_lons),
-                },
-                attrs={
-                    "units": "m",
-                    "long_name": f"Local {name} sea-level projections",
-                    "source": "ProFSea-Climate v0.1",
-                },
-            )
         return xr_dict
 
     def _apply_universal_mask(self) -> None:
@@ -141,10 +164,15 @@ class Local:
         if not hasattr(self, "results") or not self.results:
             return
 
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
-        spatial_slices = [
-            comp.isel({member_dim: 0, "time": 0}) for comp in self.results.values()
-        ]
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            spatial_slices = [
+                comp.isel(percentile=0, time=0) for comp in self.results.values()
+            ]
+        else:
+            spatial_slices = [
+                comp.isel(climate_member=0, process_member=0, time=0)
+                for comp in self.results.values()
+            ]
 
         # Site is valid if it is non-NaN in ALL components
         stacked_slices = xr.concat(spatial_slices, dim="component")
@@ -189,7 +217,9 @@ class Local:
 
         state = LocalState(
             n_years=self.n_years,
+            nt=self.nt,
             num_members=self.num_members,
+            num_output_members=self.num_output_members,
             target_lats=self.target_lats,
             target_lons=self.target_lons,
             interpolation_method=self.interpolation_method,

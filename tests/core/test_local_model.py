@@ -1,28 +1,36 @@
+from unittest.mock import patch
+
 import dask.array as da
 import numpy as np
 import pytest
 import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
+from profsea.components.core.local_model import Local
 
 
 class DummyState:
-    """Mock state object to hold target coordinates."""
+    """Mock state object to hold target coordinates and ensemble dimensions."""
 
     def __init__(self, lats, lons):
         self.target_lats = np.atleast_1d(lats)
         self.target_lons = np.atleast_1d(lons)
+        self.nt = 2
+        self.num_members = 3
+        self.n_years = 4
 
 
 class MockLocalComponent(SpatialComponent):
     @property
     def global_projection(self):
-        # Return a dummy array to satisfy the abstract base class requirement
-        return np.zeros((1, 1))
+        # 3D: (climate_member, process_member, time)
+        return np.zeros((2, 3, 4))
 
     def project(self, state, rng):
-        # Return a dummy array of shape (num_members, n_years, n_locations)
-        return np.ones((state.num_members, state.n_years, len(state.target_lats)))
+        # 4D for site projections: (climate_member, process_member, time, site)
+        return np.ones(
+            (state.nt, state.num_members, state.n_years, len(state.target_lats))
+        )
 
 
 class TestLazyLocalExtraction:
@@ -103,3 +111,50 @@ class TestLazyLocalExtraction:
             ValueError, match="State object is missing required spatial attributes"
         ):
             component.extract_spatial(lazy_grid, state)
+
+
+class TestLocalMetadataGeneration:
+    @patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
+    def test_local_arr_to_xr_metadata_with_percentiles(self, mock_fetch):
+        """Metadata generator should produce 3D structure when percentiles are active."""
+        components = {"mock_comp": MockLocalComponent()}
+        locations = {"Newlyn": (50.1, -5.5)}
+        local = Local(
+            components=components,
+            locations=locations,
+            end_year=2010,
+            output_percentiles=[5, 50, 95],
+        )
+
+        # Mocking 3D output: (percentile, time, site)
+        arr = da.zeros((3, 4, 1))
+        xr_dict = local._arr_to_xr({"mock_comp": arr})
+
+        da_out = xr_dict["mock_comp"]
+        assert list(da_out.dims) == ["percentile", "time", "site"]
+        assert len(da_out.percentile) == 3
+
+    @patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
+    def test_local_arr_to_xr_metadata_no_percentiles(self, mock_fetch):
+        """Metadata generator should produce 4D tensor when percentiles are None."""
+        components = {"mock_comp": MockLocalComponent()}
+        locations = {"Newlyn": (50.1, -5.5)}
+        local = Local(
+            components=components,
+            locations=locations,
+            end_year=2010,
+            output_percentiles=None,
+        )
+
+        # Local model should read the 2x3 shape from the dummy component's global projection
+        assert local.nt == 2
+        assert local.num_members == 3
+
+        # Mocking 4D output: (climate_member, process_member, time, site)
+        arr = da.zeros((2, 3, 4, 1))
+        xr_dict = local._arr_to_xr({"mock_comp": arr})
+
+        da_out = xr_dict["mock_comp"]
+        assert list(da_out.dims) == ["climate_member", "process_member", "time", "site"]
+        assert len(da_out.climate_member) == 2
+        assert len(da_out.process_member) == 3
