@@ -35,7 +35,7 @@ class ThermalExpansion(Component):
         self.data_input = np.asarray(self.data_input, dtype=state.dtype)
 
         # check the shape here (climate_member, time)
-        check_shapes(self.OHC_change, state.nyr)
+        check_shapes(self.data_input, state.nyr)
 
         # Ensure data_input is 2D
         if self.data_input.ndim > 2:
