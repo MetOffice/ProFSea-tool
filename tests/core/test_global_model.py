@@ -102,7 +102,7 @@ def test_return_types():
         "Glacier": Glacier(),
         "LandwaterAR5": LandwaterAR5(),
         "LandwaterAR6": LandwaterAR6(),
-        "ThermalExpansion": ThermalExpansion(OHC_change=ohc),
+        "ThermalExpansion": ThermalExpansion(data_input=ohc),
     }
 
     global_model_float64 = Global(
