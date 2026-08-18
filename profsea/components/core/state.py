@@ -33,6 +33,7 @@ class SpatialState:
     n_years: int
     n_members: int
     grid_interpolation: str
+    endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
@@ -47,6 +48,7 @@ class LocalState:
     n_years: int
     n_members: int
     interpolation_method: str
+    endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32

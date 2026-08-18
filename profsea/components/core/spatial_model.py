@@ -201,6 +201,7 @@ class Spatial:
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
             dtype=self.dtype,
+            endofhistory=self.start_year,
         )
 
         child_seeds = seed_seq.spawn(len(self.components))

@@ -36,12 +36,11 @@ class LandwaterAR6(Component):
         np.ndarray
             Land water storage contribution to GMSLR.
         """
-        self.lw_ds = self.lw_ds.astype(state.dtype)
+        lw_ds = self.lw_ds.astype(state.dtype)
 
         # Interpolate to annual projections
         interp_ds = (
-            self.lw_ds.interp(years=np.arange(2005, 2301, 1), method="linear")
-            .squeeze()
+            lw_ds.interp(years=np.arange(2005, 2301, 1), method="linear")
             .astype(state.dtype)
         )
 

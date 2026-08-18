@@ -161,7 +161,7 @@ class Fingerprint(SpatialComponent):
         elif self.sample_spatial:
             # Probabilistic mode: pick a random fingerprint per member
             fp_indices = rng.integers(0, n_fps, size=state.n_members)
-            selected_fps = fps[fp_indices, :, :]
+            selected_fps = fps[fp_indices, ...]
         else:
             # Storyline mode: take the mean of the available fingerprints
             mean_fp = da.nanmean(fps, axis=0)

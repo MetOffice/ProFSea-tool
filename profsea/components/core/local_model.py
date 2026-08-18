@@ -195,6 +195,7 @@ class Local:
             interpolation_method=self.interpolation_method,
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
+            endofhistory=self.start_year,  # Use start_year as endofhistory for local projections
         )
 
         child_seeds = seed_seq.spawn(len(self.components))

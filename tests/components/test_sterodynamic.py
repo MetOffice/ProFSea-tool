@@ -69,6 +69,7 @@ def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
         grid_interpolation="nearest",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
+        endofhistory=2006,
     )
 
     # Test Storyline Mode
@@ -110,6 +111,7 @@ def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
         grid_interpolation="nearest",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
+        endofhistory=2006,
     )
 
     stero_sampled = SterodynamicCMIP6(
