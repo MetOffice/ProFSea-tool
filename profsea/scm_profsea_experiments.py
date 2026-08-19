@@ -255,12 +255,51 @@ def save_to_netcdf(components: dict, filename: str) -> None:
     ds = xr.Dataset(data_vars)
     ds.attrs = {
         "title": "ProFSea GMSLR Projections",
-        "source": "FAIR v2.2 + ProFSea Emulator",
+        "source": "FAIR v3.0.0 + ProFSea Emulator",
     }
 
     encoding = {var: {"zlib": True, "complevel": 5} for var in data_vars}
     ds.to_netcdf(filename, encoding=encoding)
     console.log(f"Successfully saved full ensemble to {filename}")
+
+
+def save_forcing(
+    tas: np.ndarray,
+    ohc: np.ndarray,
+    scenarios: list,
+    output_dir: str,
+    output_filename: str,
+) -> None:
+    years = np.arange(2006, 2301)
+    members = np.arange(tas.shape[1])
+
+    tas_da = xr.DataArray(
+        data=tas,
+        dims=["scenario", "member", "year"],
+        coords={"scenario": scenarios, "member": members, "year": years},
+        attrs={
+            "units": "K",
+            "description": "Global mean surface air temperature anomaly",
+        },
+    )
+
+    ohc_da = xr.DataArray(
+        data=ohc,
+        dims=["scenario", "member", "year"],
+        coords={"scenario": scenarios, "member": members, "year": years},
+        attrs={"units": "J", "description": "Global ocean heat content anomaly"},
+    )
+
+    ds = xr.Dataset({"tas": tas_da, "ohc": ohc_da})
+    ds.attrs = {
+        "title": "ProFSea Climate Forcing",
+        "source": "FAIR v3.0.0",
+    }
+
+    forcing_filename = Path(output_dir) / output_filename.replace(".nc", "_forcing.nc")
+    encoding = {var: {"zlib": True, "complevel": 5} for var in ds.data_vars}
+    ds.to_netcdf(forcing_filename, encoding=encoding)
+    console.log(f"Successfully saved climate forcing to {forcing_filename}")
 
 
 def plot_component(
@@ -407,6 +446,7 @@ def main(args):
 
     output_dir = Path(args.output_dir) / args.output_filename
     save_to_netcdf(sampled_components, output_dir)
+    save_forcing(tas, ohc, scenarios, args.output_dir, args.output_filename)
 
     fig = plt.figure(figsize=(16, 8), layout="constrained")
     ax = fig.add_subplot(231)

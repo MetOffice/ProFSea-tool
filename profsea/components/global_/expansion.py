@@ -45,7 +45,7 @@ class ThermalExpansion(Component):
 
         if self.OHC_change:
             # Sensitivity of thermosteric SLR to ocean heat content change
-            # From Turner et al. (2023)
+            # From IPCC AR6 WG1 Chapter 9: https://www.ipcc.ch/report/ar6/wg1/chapter/chapter-9/#9.2.4.1
             mean_eff = 0.113
             std_eff = 0.013 * self.distribution_scaler
 
