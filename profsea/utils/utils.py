@@ -60,7 +60,7 @@ def validate_component_map(
             reason = "component class provided; instantiate it with ()"
         else:
             reason = (
-                f"expected {expected_type.__name__} instance, got "f"{type(comp).__name__}"
+                f"expected {expected_type.__name__} instance, got {type(comp).__name__}"
             )
 
         invalid_entries.append(f"{name}: {reason}")
