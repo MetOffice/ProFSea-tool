@@ -8,7 +8,11 @@ import xarray as xr
 from rich.console import Console
 from rich.progress import track
 
-from profsea.utils import fetch_zenodo_fingerprints, save_components, validate_component_map
+from profsea.utils import (
+    fetch_zenodo_fingerprints,
+    save_components,
+    validate_component_map,
+)
 
 from .base import SpatialComponent
 from .state import LocalState

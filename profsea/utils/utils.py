@@ -20,6 +20,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from scipy.spatial.distance import cdist
+
 from profsea.components.core.state import ClimateState
 
 console = Console()
