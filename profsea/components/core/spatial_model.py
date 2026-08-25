@@ -10,10 +10,10 @@ import xarray as xr
 from rich.console import Console
 from rich.progress import track
 
-from profsea.utils import fetch_zenodo_fingerprints, save_components
+from profsea.utils import fetch_zenodo_fingerprints, save_components, validate_component_map
 from profsea.utils.ui import print_spatial_preflight
 
-from .base import Component
+from .base import Component, SpatialComponent
 from .state import SpatialState
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,8 @@ class Spatial:
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
         self.dtype = dtype
+
+        validate_component_map(self.components, SpatialComponent, "Spatial")
 
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_members = len(self.output_percentiles)

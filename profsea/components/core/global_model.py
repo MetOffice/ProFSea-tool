@@ -8,7 +8,12 @@ import xarray as xr
 from rich.console import Console
 from rich.progress import track
 
-from profsea.utils import check_shapes, sample_members_2D, save_components
+from profsea.utils import (
+    check_shapes,
+    sample_members_2D,
+    save_components,
+    validate_component_map,
+)
 from profsea.utils.ui import print_global_preflight
 
 from .base import Component
@@ -86,6 +91,8 @@ class Global:
         self.endofAR5 = 2100
         self.nyr = self.end_yr - self.endofhistory
 
+        validate_component_map(self.components, Component, "Global")
+
     # Inject method!
     save_components = save_components
 
@@ -129,7 +136,7 @@ class Global:
     def run(
         self,
         scenario: str,
-        T_change: np.ndarray,
+        T_change: np.ndarray | xr.DataArray,
         member_seed: int = 42,
     ) -> dict[str, np.ndarray]:
         """Run the emulator to project GMSLR components for a specific state.
@@ -137,11 +144,16 @@ class Global:
         ----------
         scenario: str
             Name of the scenario.
-        T_change: np.ndarray
-            Array of temperature change values.
+        T_change: np.ndarray | xr.DataArray
+            Array/DataArray of temperature change values.
         member_seed: int
             Seed for numpy.random.
         """
+
+        if isinstance(T_change, xr.DataArray):
+            T_change = T_change.to_numpy()
+        else:
+            T_change = np.asarray(T_change)
 
         seed_seq = np.random.SeedSequence(member_seed)
         run_rng = np.random.default_rng(seed_seq)
