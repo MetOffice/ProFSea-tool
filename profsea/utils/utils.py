@@ -44,7 +44,9 @@ def validate_component_map(
         Human-readable label used in error messages.
     """
     if not isinstance(components, dict):
-        msg = "'components' must be a dictionary of the form {name: component_instance}."
+        msg = (
+            "'components' must be a dictionary of the form {name: component_instance}."
+        )
         logger.error(msg)
         console.print(f"[red]{msg}[/red]")
         raise ValueError(msg)
@@ -58,8 +60,7 @@ def validate_component_map(
             reason = "component class provided; instantiate it with ()"
         else:
             reason = (
-                f"expected {expected_type.__name__} instance, got "
-                f"{type(comp).__name__}"
+                f"expected {expected_type.__name__} instance, got "f"{type(comp).__name__}"
             )
 
         invalid_entries.append(f"{name}: {reason}")
