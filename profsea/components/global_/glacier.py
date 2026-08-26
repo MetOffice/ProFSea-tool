@@ -87,13 +87,12 @@ class Glacier(Component):
         # Passes (1, 1, nyr) + (nt, nm, 1) -> Returns (nt, nm, nyr)
         mgl = self._project_glacier1(T_int_med_3d, factors, exponents, state)
 
-        # 6. Apply variance and clip using 3D matrix math
+        # Apply variance and clip
         glacier = zgl + (mgl * r * cvgls)
         glacier += dmz
         np.clip(glacier, None, glmass, out=glacier)
 
-        # 7. Flatten to standard 2D output for easy summation
-        return glacier.reshape(state.nt * state.num_members, state.nyr)
+        return glacier  # (climate_mem, process_mem, time)
 
     def _project_glacier1(
         self,

@@ -10,13 +10,13 @@ from profsea.components.global_.landwater import (
 
 def get_dummy_state(
     *,
-    nyr: int = 4,
+    n_years: int = 4,
     nt: int = 2,
     num_members: int = 2,
     end_yr: int = 2010,
 ) -> ClimateState:
     """Helper to generate a small ClimateState."""
-    T_ens = np.ones((nt, nyr), dtype=np.float32)
+    T_ens = np.ones((nt, n_years), dtype=np.float32)
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
 
@@ -35,7 +35,7 @@ def get_dummy_state(
         endofAR5=2100,
         endofhistory=2006,
         end_yr=end_yr,
-        nyr=nyr,
+        n_years=n_years,
         nt=nt,
         num_members=num_members,
     )
@@ -80,8 +80,9 @@ def test_landwater_ar6_projection_shape():
     projection = landwater.project(state, rng)
 
     assert projection.shape == (
-        state.nt * state.num_members,
-        state.nyr,
+        state.nt,
+        state.num_members,
+        state.n_years,
     )
 
 
@@ -153,7 +154,7 @@ def test_landwater_ar6_skips_first_interpolated_year():
     state = get_dummy_state(
         nt=1,
         num_members=1,
-        nyr=4,
+        n_years=4,
     )
 
     projection = landwater.project(
@@ -161,9 +162,10 @@ def test_landwater_ar6_skips_first_interpolated_year():
         np.random.default_rng(42),
     )
 
+    # Added an extra bracket layer to make this a 3D array (1, 1, 4)
     expected = (
         np.array(
-            [[1.0, 2.0, 3.0, 4.0]],
+            [[[1.0, 2.0, 3.0, 4.0]]],
             dtype=np.float32,
         )
         * 1e-3
@@ -192,7 +194,8 @@ def test_landwater_ar6_samples_only_existing_projection_members():
     expected_sample_0 = np.array([1, 2, 3, 4]) * 1e-3
     expected_sample_1 = np.array([2, 4, 6, 8]) * 1e-3
 
-    for row in projection:
+    # Flatten the (climate, process) dims so we iterate strictly over 1D time-series rows
+    for row in projection.reshape(-1, projection.shape[-1]):
         assert np.allclose(row, expected_sample_0) or np.allclose(
             row, expected_sample_1
         )
@@ -234,7 +237,7 @@ def test_landwater_ar5_uses_expected_parameters(monkeypatch):
         captured["nfinal"] = nfinal
 
         return np.zeros(
-            (state.nt * state.num_members, state.nyr),
+            (state.nt, state.num_members, state.n_years),
             dtype=state.dtype,
         )
 
@@ -271,7 +274,7 @@ def test_landwater_ar5_uses_twenty_year_final_average(monkeypatch):
         captured["nfinal"] = nfinal
 
         return np.zeros(
-            (state.nt * state.num_members, state.nyr),
+            (state.nt, state.num_members, state.n_years),
             dtype=state.dtype,
         )
 
@@ -294,11 +297,12 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
     state = get_dummy_state()
 
     expected = np.arange(
-        state.nt * state.num_members * state.nyr,
+        state.nt * state.num_members * state.n_years,
         dtype=np.float32,
     ).reshape(
-        state.nt * state.num_members,
-        state.nyr,
+        state.nt,
+        state.num_members,
+        state.n_years,
     )
 
     def mock_time_projection(*args, **kwargs):

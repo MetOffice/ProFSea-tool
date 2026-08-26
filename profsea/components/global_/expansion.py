@@ -39,7 +39,7 @@ class ThermalExpansion(Component):
             self.data_input = np.asarray(self.data_input, dtype=state.dtype)
 
         # check the shape here (climate_member, time)
-        check_shapes(self.data_input, state.nyr)
+        check_shapes(self.data_input, state.n_years)
 
         # Ensure data_input is 2D
         if self.data_input.ndim > 2:
@@ -64,11 +64,14 @@ class ThermalExpansion(Component):
             # Efficiency shape: (nt, num_members, 1)
             exp_efficiency_3d = exp_efficiency[:, :, None]
 
-            expansion = ohc_3d * exp_efficiency_3d
+            expansion = (
+                ohc_3d * exp_efficiency_3d
+            )  # (climate_member, process_member, time)
 
         else:
             expansion = np.broadcast_to(
-                self.data_input[:, None, :], (state.nt, state.num_members, state.nyr)
+                self.data_input[:, None, :],
+                (state.nt, state.num_members, state.n_years),
             )
 
-        return expansion.reshape(state.num_members * state.nt, state.nyr)
+        return expansion
