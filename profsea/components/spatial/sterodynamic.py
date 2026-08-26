@@ -9,7 +9,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
-from profsea.utils import sample_members_2D
+from profsea.utils import reformat_global_projection
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -152,7 +152,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         if self.sample_spatial:
             rand_samples = rng.choice(
-                coeffs.shape[0], size=state.n_members, replace=True
+                coeffs.shape[0], size=state.num_output_members, replace=True
             )
             return coeffs[rand_samples, :, :]
         else:
@@ -160,7 +160,7 @@ class SterodynamicCMIP6(SpatialComponent):
             mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
-                (state.n_members, *spatial_shape),
+                (state.num_output_members, *spatial_shape),
             )
 
     def project(self, state: ClimateState, rng) -> np.ndarray:
@@ -180,16 +180,10 @@ class SterodynamicCMIP6(SpatialComponent):
             A numpy array of shape (members, years, lat, lon) containing the sterodynamic component for each member and year.
         """
         # Calculate percentiles locally without mutating self
-        if state.output_percentiles is not None:
-            current_projection = sample_members_2D(
-                self.global_projection, state.output_percentiles
-            )
-        else:
-            current_projection = self.global_projection
-
+        global_projection = reformat_global_projection(self.global_projection, state)
         expansion_contribution = self._calc_expansion_contribution(rng, state)
 
-        return self.broadcast_spatiotemporal(current_projection, expansion_contribution)
+        return self.broadcast_spatiotemporal(global_projection, expansion_contribution)
 
 
 class SterodynamicCMIP5(SpatialComponent):
@@ -207,4 +201,4 @@ class SterodynamicCMIP5(SpatialComponent):
         else:
             spatial_shape = (state.grid_lats.shape[0], state.grid_lons.shape[0])
 
-        return da.zeros((state.n_members, state.n_years, *spatial_shape))
+        return da.zeros((state.num_members, state.n_years, *spatial_shape))

@@ -55,16 +55,16 @@ def print_spatial_preflight(model) -> None:
     n_lon = len(model.grid_lons)
     grid_str = f"{n_lat} × {n_lon} cells"
 
-    # Memory estimation
-    bytes_per_element = 8
-    future_size_gb = (
-        model.num_members * model.n_years * n_lat * n_lon * bytes_per_element
-    ) / 1e9
-
     if model.output_percentiles is not None:
         output_str = f"Percentiles: {model.output_percentiles}"
+        members = len(model.output_percentiles)
     else:
-        output_str = f"Full Distribution ({model.num_members} members)"
+        members = model.num_members * model.nt
+        output_str = f"Full Distribution ({members} members)"
+
+    # Memory estimation
+    bytes_per_element = 8
+    future_size_gb = (members * model.n_years * n_lat * n_lon * bytes_per_element) / 1e9
 
     table.add_row("Components", components_list)
     table.add_row("Timeframe", f"{model.start_year} -> {model.end_year}")
