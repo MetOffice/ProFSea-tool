@@ -8,7 +8,11 @@ import xarray as xr
 from rich.console import Console
 from rich.progress import track
 
-from profsea.utils import fetch_zenodo_fingerprints, save_components
+from profsea.utils import (
+    fetch_zenodo_fingerprints,
+    save_components,
+    validate_component_map,
+)
 
 from .base import SpatialComponent
 from .state import LocalState
@@ -65,6 +69,8 @@ class Local:
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
         self.interpolation_method = interpolation_method
+
+        validate_component_map(self.components, SpatialComponent, "Local")
 
         # Parse the locations dictionary
         self.site_names = list(locations.keys())
