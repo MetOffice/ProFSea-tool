@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.state import ClimateState
@@ -11,7 +12,7 @@ class ThermalExpansion(Component):
     """
     Parameters and Attributes
     -------------------------
-    data_input: np.ndarray
+    data_input: np.ndarray | xr.DataArray
         Array of ocean heat content (or thermosteric sea level) change values.
     distribution_scaler: float
         Controls distribution of sensitivity of thermosteric SLR to ocean heat content change.
@@ -22,7 +23,7 @@ class ThermalExpansion(Component):
 
     def __init__(
         self,
-        data_input: np.ndarray,
+        data_input: np.ndarray | xr.DataArray,
         distribution_scaler: float = 1.0,
         OHC_change: bool = True,
     ):
@@ -32,7 +33,10 @@ class ThermalExpansion(Component):
         self.OHC_change = OHC_change
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-        self.data_input = np.asarray(self.data_input, dtype=state.dtype)
+        if isinstance(self.data_input, xr.DataArray):
+            self.data_input = self.data_input.to_numpy()
+        else:
+            self.data_input = np.asarray(self.data_input, dtype=state.dtype)
 
         # check the shape here (climate_member, time)
         check_shapes(self.data_input, state.n_years)

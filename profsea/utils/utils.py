@@ -27,6 +27,56 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 
+def validate_component_map(
+    components: dict,
+    expected_type: type,
+    model_name: str = "model",
+) -> None:
+    """Validate a component dictionary before model construction.
+
+    Parameters
+    ----------
+    components: dict
+        Dictionary keyed by component name and valued by component instances.
+    expected_type: type
+        Base component type expected in the mapping.
+    model_name: str, optional
+        Human-readable label used in error messages.
+    """
+    if not isinstance(components, dict):
+        msg = (
+            "'components' must be a dictionary of the form {name: component_instance}."
+        )
+        logger.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise ValueError(msg)
+
+    invalid_entries = []
+    for name, comp in components.items():
+        if isinstance(comp, expected_type):
+            continue
+
+        if isinstance(comp, type) and issubclass(comp, expected_type):
+            reason = "component class provided; instantiate it with ()"
+        else:
+            reason = (
+                f"expected {expected_type.__name__} instance, got {type(comp).__name__}"
+            )
+
+        invalid_entries.append(f"{name}: {reason}")
+
+    if invalid_entries:
+        msg = (
+            f"Invalid entries in 'components' for {model_name}: "
+            f"{'; '.join(invalid_entries)}. "
+            "If you see NameError before this step, a component class was not "
+            "imported in your script."
+        )
+        logger.error(msg)
+        console.print(f"[red]{msg}[/red]")
+        raise ValueError(msg)
+
+
 def sample_members_2D(
     array: np.ndarray | da.Array,
     percentiles: list | np.ndarray,

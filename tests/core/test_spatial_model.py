@@ -4,12 +4,13 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.spatial_model import Spatial
 
 
 def get_dummy_components(nt=2, num_members=3, n_years=4):
     """Helper to create a dummy component dictionary with the expected shape."""
-    mock_comp = MagicMock()
+    mock_comp = MagicMock(spec=SpatialComponent)
     # 3D Shape: (climate_member, process_member, time)
     mock_comp.global_projection.shape = (nt, num_members, n_years)
     return {"mock_comp": mock_comp}
