@@ -14,7 +14,7 @@ from profsea.utils import reformat_global_projection
 logging.basicConfig(level=logging.WARNING)
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
-PATTERNS_DIR = PROFSEA_DIR / "profsea-assets" / "cmip6-patterns"
+PATTERNS_DIR = PROFSEA_DIR / "profsea-assets"
 
 
 class SterodynamicCMIP6(SpatialComponent):
@@ -29,6 +29,7 @@ class SterodynamicCMIP6(SpatialComponent):
         self,
         global_projection: xr.DataArray,
         patterns_dir: str = None,
+        cmip_era: str = "CMIP6",
         sample_spatial: bool = False,
     ) -> None:
         """
@@ -37,16 +38,20 @@ class SterodynamicCMIP6(SpatialComponent):
         global_projection: xr.DataArray
              A 2D array (members x years) of global projections to apply the fingerprints to.
         patterns_dir: str, optional
-             Path to directory containing CMIP6 sterodynamic patterns.
+             Path to directory containing {cmip_era} sterodynamic patterns.
+        cmip_era: str, optional
+             The CMIP era to use for the sterodynamic patterns. Default is "CMIP6", other option is "CMIP5".
         sample_spatial: bool, optional
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
         # Convert to dask array for cheap as possible compute
         self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.sample_spatial = sample_spatial
+        self.cmip_era = cmip_era.lower()
 
         if patterns_dir is None:
-            self.patterns_dir = PATTERNS_DIR
+            cmip_str = self.cmip_era + "-patterns"
+            self.patterns_dir = PATTERNS_DIR / cmip_str
         else:
             self.patterns_dir = Path(patterns_dir)
 
@@ -72,7 +77,7 @@ class SterodynamicCMIP6(SpatialComponent):
             each CMIP6 model, if present.
         """
         slope_files = sorted(
-            Path(self.patterns_dir).glob("*/zos_regression_ssp585_*.nc"),
+            Path(self.patterns_dir).glob("*/zos_regression_*85_*.nc"),
             key=lambda p: p.name,
         )
 
@@ -94,7 +99,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Read land mask if present
         mask_files = sorted(
-            Path(self.patterns_dir).glob("*/zos_mask_ssp585_*.nc"), key=lambda p: p.name
+            Path(self.patterns_dir).glob("*/zos_mask_*85_*.nc"), key=lambda p: p.name
         )
 
         if mask_files:
