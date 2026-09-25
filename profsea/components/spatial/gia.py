@@ -32,6 +32,8 @@ class GIA(SpatialComponent):
         sample_spatial: bool, optional
             Whether to sample spatial patterns probabilistically. Default is False.
         """
+
+        self.fetch_assets()
         self.sample_spatial = sample_spatial
 
         if gia_paths is None:
