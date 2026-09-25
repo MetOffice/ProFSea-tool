@@ -4,8 +4,23 @@ from unittest.mock import patch
 import numpy as np
 import xarray as xr
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.sterodynamic import SterodynamicCMIP6
+
+
+class TestSterodynamicInit:
+    @patch.object(SpatialComponent, "fetch_assets")
+    def test_fetches_assets_on_initialisation(
+        self,
+        mock_fetch_assets,
+    ):
+        """Should fetch assets during Sterodynamic initialisation."""
+        dummy_global = xr.DataArray(np.zeros((3, 4, 100)))
+
+        SterodynamicCMIP6(global_projection=dummy_global)
+
+        mock_fetch_assets.assert_called_once()
 
 
 @patch("profsea.components.spatial.sterodynamic.xr.open_dataset")

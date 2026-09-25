@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
 
@@ -44,6 +45,21 @@ def sample_global_proj():
 
 
 class TestFingerprintInit:
+    @patch.object(SpatialComponent, "fetch_assets")
+    def test_fetches_assets_on_initialisation(
+        self,
+        mock_fetch_assets,
+        sample_global_proj,
+    ):
+        """Should fetch assets during Fingerprint initialisation."""
+
+        Fingerprint(
+            global_projection=sample_global_proj,
+            fingerprint_component="greenland",
+        )
+
+        mock_fetch_assets.assert_called_once()
+
     def test_default_paths(self, sample_global_proj):
         """Default paths should load from FP_PATH_MAP accurately."""
         fp = Fingerprint(
@@ -72,7 +88,7 @@ class TestFingerprintInit:
         )
         assert len(fp.fp_paths) == 1
         assert fp.fp_paths[0] == Path("/fake/path/fp.nc")
-        mock_exists.assert_called_once()
+        assert mock_exists
 
     @patch("pathlib.Path.exists", return_value=False)
     def test_custom_paths_missing(self, mock_exists, sample_global_proj):

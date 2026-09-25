@@ -71,6 +71,8 @@ class Fingerprint(SpatialComponent):
         sample_spatial: bool, optional
              If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
         """
+
+        self.fetch_assets()
         self._global_projection = da.from_array(global_projection.data, chunks="auto")
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial

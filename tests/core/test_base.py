@@ -36,6 +36,15 @@ def sample_da():
     return xr.DataArray(data, coords=[lats, lons], dims=["lat", "lon"])
 
 
+def test_fetch_assets_calls_zenodo_download(dummy_component):
+    """Test that fetch_zenodo_fingerprints() is called from SpatialComponent"""
+
+    with patch("profsea.components.core.base.fetch_zenodo_fingerprints") as mock_fetch:
+        dummy_component.fetch_assets()
+
+        mock_fetch.assert_called_once()
+
+
 class TestExtractSpatialRouting:
     def test_routes_to_extract_points(self, dummy_component, sample_da):
         """Test that extract_spatial routes to point extraction when target_lats exist."""
