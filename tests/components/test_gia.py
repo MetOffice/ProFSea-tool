@@ -8,6 +8,7 @@ import xarray as xr
 
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.gia import GIA
+from profsea.components.core.base import SpatialComponent
 
 
 def get_dummy_spatial_state(
@@ -39,6 +40,18 @@ def get_dummy_spatial_state(
 
 
 class TestGIAInit:
+    @patch.object(SpatialComponent, "fetch_assets")
+    @patch("pathlib.Path.glob", return_value=[Path("dummy.nc")])
+    @patch("pathlib.Path.is_dir", return_value=True)
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_fetches_assets_on_initialisation(
+        self, mock_exists, mock_isdir, mock_glob, mock_fetch_assets,
+    ):
+        """Should fetch profsea assets before resolving GIA files."""
+        GIA()
+
+        mock_fetch_assets.assert_called_once()
+
     @patch("pathlib.Path.glob", return_value=[Path("dummy.nc")])
     @patch("pathlib.Path.is_dir", return_value=True)
     @patch("pathlib.Path.exists", return_value=True)
