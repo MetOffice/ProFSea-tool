@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.gia import GIA
-from profsea.components.core.base import SpatialComponent
 
 
 def get_dummy_spatial_state(

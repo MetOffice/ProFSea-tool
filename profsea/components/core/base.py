@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 import dask.array as da
 import numpy as np
 import xarray as xr
-from pathlib import Path
 
 from profsea.utils import fetch_zenodo_fingerprints
 
@@ -31,7 +31,7 @@ class SpatialComponent(Component):
             data_dir=PROFSEA_DIR,
             expected_folder_name="profsea-assets",
         )
-    
+
     def extract_spatial(self, da_input: xr.DataArray, state) -> xr.DataArray:
         if hasattr(state, "target_lats"):
             return self._extract_points(da_input, state.target_lats, state.target_lons)

@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
-from profsea.components.core.base import SpatialComponent
 
 
 def get_dummy_spatial_state(
@@ -50,12 +50,12 @@ class TestFingerprintInit:
         self, mock_fetch_assets, sample_global_proj,
     ):
         """Should fetch assets during Fingerprint initialisation."""
-    
+
         Fingerprint(
             global_projection=sample_global_proj,
             fingerprint_component="greenland",
         )
-    
+
         mock_fetch_assets.assert_called_once()
 
     def test_default_paths(self, sample_global_proj):
