@@ -12,9 +12,10 @@ from profsea.components.spatial.sterodynamic import SterodynamicCMIP6
 class TestSterodynamicInit:
     @patch.object(SpatialComponent, "fetch_assets")
     def test_fetches_assets_on_initialisation(
-        self, mock_fetch_assets,
+        self,
+        mock_fetch_assets,
     ):
-        """ Should fetch assets during Sterodynamic initialisation. """
+        """Should fetch assets during Sterodynamic initialisation."""
         dummy_global = xr.DataArray(np.zeros((3, 4, 100)))
 
         SterodynamicCMIP6(global_projection=dummy_global)

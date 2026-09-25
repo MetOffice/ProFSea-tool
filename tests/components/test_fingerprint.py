@@ -47,7 +47,9 @@ def sample_global_proj():
 class TestFingerprintInit:
     @patch.object(SpatialComponent, "fetch_assets")
     def test_fetches_assets_on_initialisation(
-        self, mock_fetch_assets, sample_global_proj,
+        self,
+        mock_fetch_assets,
+        sample_global_proj,
     ):
         """Should fetch assets during Fingerprint initialisation."""
 

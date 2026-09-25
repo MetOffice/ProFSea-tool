@@ -45,7 +45,11 @@ class TestGIAInit:
     @patch("pathlib.Path.is_dir", return_value=True)
     @patch("pathlib.Path.exists", return_value=True)
     def test_fetches_assets_on_initialisation(
-        self, mock_exists, mock_isdir, mock_glob, mock_fetch_assets,
+        self,
+        mock_exists,
+        mock_isdir,
+        mock_glob,
+        mock_fetch_assets,
     ):
         """Should fetch profsea assets before resolving GIA files."""
         GIA()
