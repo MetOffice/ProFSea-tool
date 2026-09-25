@@ -29,7 +29,7 @@
             
             Get Started
             
-         .. button-link:: [https://github.com/MetOffice/ProFSea-tool](https://github.com/MetOffice/ProFSea-tool)
+         .. button-link:: https://github.com/MetOffice/ProFSea-tool
             :color: secondary
             :shadow:
             :outline:

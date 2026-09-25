@@ -51,3 +51,6 @@ Spatial Components
 
 .. automodule:: profsea.components.spatial.gia
    :members: GIA
+
+.. automodule:: profsea.components.core.local_model
+    :members: Local

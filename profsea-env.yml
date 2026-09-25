@@ -12,7 +12,7 @@ dependencies:
   - numcodecs
   - numpy
   - pandas
-  - pandocpyt
+  - pandoc
   - pip 
   - pip:
     - -e .[dev]
