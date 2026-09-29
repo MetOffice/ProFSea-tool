@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as package_version
 import logging
 import os
 import zipfile
@@ -25,6 +26,11 @@ from profsea.components.core.state import ClimateState
 
 console = Console()
 logger = logging.getLogger(__name__)
+
+try:
+    PROFSEA_VERSION = package_version("profsea")
+except PackageNotFoundError:
+    PROFSEA_VERSION = "unknown"
 
 
 def validate_component_map(
@@ -366,7 +372,7 @@ def save_components(
     ds = xr.Dataset(components)
 
     # Add ProFSea version and scenario metadata
-    ds.attrs["source"] = "ProFSea v3.0"
+    ds.attrs["source"] = f"ProFSea v{PROFSEA_VERSION}"
     ds.attrs["scenario"] = scenario_name
     ds.attrs["description"] = description
 
