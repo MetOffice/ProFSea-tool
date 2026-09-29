@@ -258,7 +258,7 @@ def test_save_components_netcdf(tmp_path):
     ds = xr.open_dataset(expected_file)
     assert "comp1" in ds
     assert ds.attrs["scenario"] == "ssp245"
-    assert ds.attrs["source"] == "ProFSea v3.0"
+    assert ds.attrs["source"] == "ProFSea v3.0.0"
 
 
 def test_save_components_zarr(tmp_path):
