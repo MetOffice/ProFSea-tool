@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.progress import track
 
 from profsea.utils import (
+    PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
     save_components,
     validate_component_map,
@@ -186,7 +187,7 @@ class Spatial:
                     attrs={
                         "units": "m",
                         "long_name": f"Regional {name} sea-level projections",
-                        "source": "ProFSea-Climate v0.1",
+                        "source": f"ProFSea v{PROFSEA_VERSION}",
                     },
                 )
 
@@ -207,7 +208,7 @@ class Spatial:
                     attrs={
                         "units": "m",
                         "long_name": f"Regional {name} sea-level projections",
-                        "source": "ProFSea-Climate v0.1",
+                        "source": f"ProFSea v{PROFSEA_VERSION}",
                     },
                 )
 
