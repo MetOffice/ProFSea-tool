@@ -32,7 +32,7 @@ Ongoing developments include:
 - [x] 🛠️ Full code documentation
 
 ## Contributors
-Several people have contributed to the development of the ProFSea tool, documentation and user guide, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks, Gregory Munday, Isabella Ascione and Hemant Khatri.
+Several people have contributed to the development of the ProFSea tool, documentation and user guide, namely: Rachel Perks, Jacob Cheung, Benjamin Harrison, Katie Hodge, Mathew Palmer, Michael Sanderson, Hamish Steptoe, Jennifer Weeks, Gregory Munday, Isabella Ascione, Hemant Khatri and Richard Anslow.
 
 ## Acknowledgements
 This work has built on the original publication of ProFSea V1, which was supported by the UK Research & Innovation (UKRI) Strategic Priorities Fund UK Climate Resilience programme. The programme was co-delivered by the Met Office and NERC on behalf of UKRI partners AHRC, EPSRC and ESRC. Further development of the tool has been supported by the Met Office Hadley Centre Climate Programme, funded by DSIT.
