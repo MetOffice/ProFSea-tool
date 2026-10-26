@@ -10,6 +10,7 @@ from scipy.stats import norm
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
+from profsea.utils import read_imbie3_AIS_obs
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
@@ -51,6 +52,7 @@ class AntarcticaISMIP6(Component):
 
         self.param_ds = xr.load_dataset(params_path)
         self.n_models = self.param_ds.coords["model"].shape[0]
+        self.region = region
 
     def _impulse_response_term(
         self,
@@ -173,7 +175,14 @@ class AntarcticaISMIP6(Component):
 
         total_ais = term_slow + term_fast
 
-        return total_ais.reshape(state.nt, state.num_members, n_time)
+        # Initialise the projection from the observed regional AIS contribution
+        # at the projection start year, relative to the specified baseline.
+        (sle, _, _) = read_imbie3_AIS_obs(
+            state,
+            region=self.region
+        )
+
+        return total_ais.reshape(state.nt, state.num_members, n_time) + sle[0]
 
 
 class AntarcticaDynAR5(Component):
@@ -186,10 +195,7 @@ class AntarcticaDynAR5(Component):
     or will default to scenario-based regression, based on rcp scenarios.
     """
 
-    def __init__(
-        self, d_ant: float = (2.37 + 0.13) * 1e-3, cum_emissions_total: float = None
-    ):
-        self.d_ant = d_ant
+    def __init__(self, cum_emissions_total: float = None):
         self.cum_emissions_total = cum_emissions_total
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
@@ -197,8 +203,10 @@ class AntarcticaDynAR5(Component):
 
         Parameters
         ----------
-        fraction: np.ndarray
-            Random numbers for the dynamic contribution.
+        state : ClimateState
+            Climate state containing scenario, ensemble, and projection settings.
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
 
         Returns
         -------
@@ -224,16 +232,29 @@ class AntarcticaDynAR5(Component):
             ascale = norm.ppf(state.fraction).astype(state.dtype)
             final = np.exp(lcoeff[2] * ascale**2 + lcoeff[1] * ascale + lcoeff[0])
 
+        # AR5 end-of-century contribution is expressed relative to the AR5 projection
+        # period. Convert to a change relative to the projection start_yr
+        start_offset, _, _ = read_imbie3_AIS_obs(
+            state,
+            ar5_baseline=True,
+            baseline_end=2005
+        )
+        final -= start_offset[2]
+
+        # Initialise Antarctic dynamic SLE and rate from IMBIE3 at the
+        # projection start year, relative to the specified baseline.
+        (sle, rate, rate_unc) = read_imbie3_AIS_obs(state, ar5_baseline=True)
+
         return (
             time_projection(
                 state,
-                0.41,
-                0.20,
+                rate[2],
+                rate_unc[2],
                 final,
                 rng,
                 fraction=state.fraction,
             )
-            + self.d_ant
+            + sle[2]
         )
 
 
@@ -258,10 +279,10 @@ class AntarcticaSMBAR5(Component):
 
         Parameters
         ----------
-        T_int_ens: np.ndarray
-            Ensemble of time-integral temperature anomaly timeseries.
-        fraction: np.ndarray
-            Random numbers for the SMB-dynamic feedback.
+        state : ClimateState
+            Climate state containing scenario, ensemble, and projection settings.
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
 
         Returns
         -------
@@ -305,4 +326,8 @@ class AntarcticaSMBAR5(Component):
             z * state.T_int_ens[:, np.newaxis, :]
         )  # (climate_mem, process_mem, time)
 
-        return antsmb  # (climate_mem, process_mem, time)
+        # Initialise Antarctic SMB SLE from IMBIE3 at the projection start year,
+        # relative to the specified baseline.
+        sle, _, _ = read_imbie3_AIS_obs(state, ar5_baseline=True)
+
+        return antsmb + sle[1]  # (climate_mem, process_mem, time)

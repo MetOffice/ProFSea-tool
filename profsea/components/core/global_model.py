@@ -13,6 +13,7 @@ from profsea.utils import (
     sample_members_2D,
     save_components,
     validate_component_map,
+    validate_projection_years,
 )
 from profsea.utils.ui import print_global_preflight
 
@@ -30,8 +31,17 @@ class Global:
     ----------
     components: Dict
         List of SLR components for projections
+    start_yr: int
+        Start year of the projections. Must be later than 1980 and
+        earlier than `end_yr'.
     end_yr: int
-        End year of the projections.
+        End year of the projections. Must be later than `start_yr`.
+    baseline_start: int
+        First year of the period used to define the sea-level baseline.
+        Must be 1980 or later and earlier than `baseline_start`.
+    baseline_end: int
+        Last year of the period used to define the sea-level baseline.
+        Must be later than `baseline_start`.
     nt: int
         Number of realisations of the input timeseries
     num_members: int
@@ -53,6 +63,13 @@ class Global:
         If True, randomly sample a single ensemble member across all
         components
 
+    Raises
+    ------
+    ValueError
+        if `start_yr` is later than `end_yr`;
+        if `baseline_start` is later than `baseline_end`;
+        if `start_yr` or `baseline_start` is earlier than 1980.
+
     Attributes
     ----------
     endofhistory: int
@@ -66,7 +83,10 @@ class Global:
     def __init__(
         self,
         components: dict[str, Component],
+        start_yr: int,
         end_yr: int,
+        baseline_start: int,
+        baseline_end: int,
         nt: int = 100,
         num_members: int = 1000,
         tcv: float = 1.0,
@@ -77,7 +97,10 @@ class Global:
         dtype: np.dtype | str = np.float32,
     ):
         self.components = components
+        self.start_yr = start_yr
         self.end_yr = end_yr
+        self.baseline_start = baseline_start
+        self.baseline_end = baseline_end
         self.nt = nt
         self.num_members = num_members
         self.tcv = tcv
@@ -89,9 +112,15 @@ class Global:
 
         self.endofhistory = 2006
         self.endofAR5 = 2100
-        self.n_years = self.end_yr - self.endofhistory
+        self.n_years = self.end_yr - self.start_yr
 
         validate_component_map(self.components, Component, "Global")
+        validate_projection_years(
+            self.start_yr,
+            self.end_yr,
+            self.baseline_start,
+            self.baseline_end
+        )
 
     # Inject method!
     save_components = save_components
@@ -118,7 +147,7 @@ class Global:
                     coords={
                         "percentile": self.output_percentiles,
                         "time": np.arange(
-                            self.endofhistory, self.endofhistory + arr.shape[1]
+                            self.start_yr, self.start_yr + arr.shape[1]
                         ),
                     },
                 )
@@ -133,7 +162,7 @@ class Global:
                         "climate_member": np.arange(arr.shape[0]),
                         "process_member": np.arange(arr.shape[1]),
                         "time": np.arange(
-                            self.endofhistory, self.endofhistory + arr.shape[2]
+                            self.start_yr, self.start_yr + arr.shape[2]
                         ),
                     },
                 )
@@ -193,7 +222,10 @@ class Global:
             palmer_method=self.palmer_method,
             endofAR5=self.endofAR5,
             endofhistory=self.endofhistory,
+            start_yr=self.start_yr,
             end_yr=self.end_yr,
+            baseline_start=self.baseline_start,
+            baseline_end=self.baseline_end,
             n_years=self.n_years,
             nt=self.nt,
             num_members=self.num_members,

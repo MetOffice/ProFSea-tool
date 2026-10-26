@@ -17,7 +17,10 @@ class ClimateState:
     palmer_method: bool  # whether to use Palmer method for time projection
     endofAR5: int
     endofhistory: int
+    start_yr: int
     end_yr: int
+    baseline_start: int
+    baseline_end: int
     n_years: int
     nt: int
     num_members: int

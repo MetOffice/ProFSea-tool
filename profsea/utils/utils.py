@@ -10,6 +10,7 @@ from pathlib import Path
 import dask
 import dask.array as da
 import numpy as np
+import pandas as pd
 import requests
 import xarray as xr
 from rich.console import Console
@@ -32,6 +33,8 @@ try:
     PROFSEA_VERSION = package_version("profsea")
 except PackageNotFoundError:
     PROFSEA_VERSION = "unknown"
+
+PROFSEA_DIR = Path(__file__).resolve().parents[1]
 
 
 def validate_component_map(
@@ -82,6 +85,55 @@ def validate_component_map(
         logger.error(msg)
         console.print(f"[red]{msg}[/red]")
         raise ValueError(msg)
+
+
+def validate_projection_years(
+    start_yr: int,
+    end_yr: int,
+    baseline_start: int,
+    baseline_end: int
+) -> None:
+    """Validate the baseline and projections years before model construction.
+
+    Parameters
+    ----------
+    start_yr : int
+        First year of the projection.
+    end_yr : int
+        End year of the projection.
+    baseline_start : int
+        First year of the baseline period.
+    baseline_end : int
+        Last year of the baseline period.
+
+    Raises
+    ------
+    ValueError
+        If the projection or baseline periods are invalid, or if the
+        requested years fall outside the period for which observational
+        constraints are available for all components.
+    """
+    if start_yr >= end_yr:
+        raise ValueError(
+            f"start_yr ({start_yr}) must be earlier than "
+            f"end_yr ({end_yr})."
+        )
+    if baseline_start >= baseline_end:
+        raise ValueError(
+            f"baseline_start ({baseline_start}) must be earlier than "
+            f"baseline_end ({baseline_end})."
+        )
+    if start_yr < 1980 or baseline_start < 1980:
+        raise ValueError(
+            f"start_yr ({start_yr}) and baseline_start ({baseline_start}) must both "
+            f"be later than 1980 (so that observational constraints are available "
+            f"for all components)."
+        )
+    if baseline_end > 2023:
+        raise ValueError(
+            f"baseline_end ({baseline_end}) cannot be later than 2023 (so that "
+            f"observational constraints are available for all components)."
+        )
 
 
 def sample_members_2D(
@@ -456,3 +508,501 @@ def reformat_global_projection(
         flat_projection = raw_projection
 
     return sample_members_2D(flat_projection, state.output_percentiles)
+
+
+def _read_imbie3_obs(
+    state: ClimateState,
+    fpath: Path,
+    ar5_baseline: bool = False,
+    baseline_start: int | None = None,
+    baseline_end: int | None = None,
+):
+    """Read IMBIE3 observations for ice-sheet component initialisation.
+
+    Reads total, surface mass balance (SMB), and dynamic mass-balance
+    contributions from the Antarctic/Greenland IMBIE3 datasets (from Otosaka+
+    2026).
+
+    Sea-level contributions are expressed relative to the requested baseline
+    period. The initial contribution is evaluated in the year immediately
+    preceding `state.start_yr`.
+
+    If `ar5_baseline` is True, the initial contribution is calculated
+    following the AR5 methodology, using the change in cumulative SLE relative
+    to the specified baseline. If False, contributions are expressed relative
+    to the mean SLE over the baseline period (following AR6 methodology).
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline period.
+    fpath : pathlib.Path
+        Path to IMBIE3 observational dataset (.csv).
+    ar5_baseline : bool, optional
+        If True, SLE contributions are given relative to `state.baseline_start` (
+        following the AR5-style baseline methodology). If False, SLE contributions are
+        given relative to its mean in the range `[baseline_start, baseline_end]`.
+    baseline_start : int, optional
+        Start year of the baseline period. Defaults to `state.baseline_start`.
+    baseline_end : int, optional
+        End year of the baseline period. Defaults to `state.baseline_end`.
+
+    Returns
+    -------
+    offsets : tuple of float
+        Initial total, SMB, and dynamic sea-level contributions, in metres.
+    rates : tuple of float
+        Mean total, SMB, and dynamic sea-level contribution rates, in mm/yr.
+    rate_unc : tuple of float
+        Uncertainty in the total, SMB, and dynamic rates, respectively, in
+        mm/yr.
+
+    References
+    ----------
+    Otosaka et al. (2026)
+        Mass balance of the Greenland and Antarctic Ice Sheets from the 1970s to 2023.
+        https://doi.org/10.5285/128c5e33-5224-4197-82f0-19dcc95b80a0
+    """
+
+    baseline_start = (
+        state.baseline_start if baseline_start is None else baseline_start
+    )
+    baseline_end = (
+        state.baseline_end if baseline_end is None else baseline_end
+    )
+
+    df = pd.read_csv(fpath)
+
+    dates = pd.to_datetime(df["Date"], errors="coerce")
+
+    time = (
+        dates.dt.year
+        + (dates.dt.dayofyear - 1) / 365.25
+    ).to_numpy()
+
+    columns = {
+        "total": {
+            "sle": "Cumulative mass balance anomaly (mm)",
+            "rate": "Mass balance (mm/yr)",
+            "rate_unc": "Mass balance uncertainty (mm/yr)",
+        },
+        "smb": {
+            "sle": "Cumulative surface mass balance anomaly (mm)",
+            "rate": "Surface mass balance anomaly (mm/yr)",
+            "rate_unc": "Surface mass balance anomaly uncertainty (mm/yr)",
+        },
+        "dyn": {
+            "sle": "Cumulative dynamics mass balance anomaly (mm)",
+            "rate": "Dynamics mass balance anomaly (mm/yr)",
+            "rate_unc": "Dynamics mass balance anomaly uncertainty (mm/yr)",
+        },
+    }
+
+    data = {}
+
+    for component, cols in columns.items():
+        data[component] = {
+            name: -pd.to_numeric(
+                df[column],
+                errors="coerce",
+            ).to_numpy()
+            for name, column in cols.items()
+        }
+
+    # Initialise from the observed contribution in the year immediately
+    # preceding the projection start year.
+    idx_start = np.where(
+        time == state.start_yr - 1
+    )[0][0]
+
+    if ar5_baseline:
+
+        # AR5-style baseline: calculate the cumulative SLE change relative to
+        # the baseline reference year
+        idx_ref = np.where(
+            time == baseline_start
+        )[0][0]
+
+        offsets = {
+            component:
+                values["sle"][idx_start]
+                - values["sle"][idx_ref]
+            for component, values in data.items()
+        }
+
+    else:
+
+        # Reference cumulative SLE to its mean over the requested baseline period
+        baseline_mask = (
+            (time >= baseline_start)
+            & (time <= baseline_end)
+        )
+
+        offsets = {}
+
+        for component, values in data.items():
+
+            sle = values["sle"]
+
+            sle = (
+                sle
+                - np.nanmean(sle[baseline_mask])
+            )
+
+            offsets[component] = sle[idx_start]
+
+    # For the original AR5 setup, these represent the observed contribution
+    # between 1996 and 2005 (AR5 Chapter 4).
+    offsets = {
+        component: value / 1e3
+        for component, value in offsets.items()
+    }
+
+    # AR5 used the average ice-sheet loss rate over 2005--2010
+    # (0.63 mm/yr and 0.41mm/yr SLE; AR5 Chapter 4, Table 4.6). Here, we apply
+    # the equivalent six-year window to support flexible start years.
+    rate_mask = (
+        (time >= state.start_yr - 1)
+        & (time <= state.start_yr + 4)
+    )
+
+    rates = {
+        component:
+            np.nanmean(values["rate"][rate_mask])
+        for component, values in data.items()
+    }
+
+    rate_unc = {
+        component:
+            np.nanmean(values["rate_unc"][rate_mask])
+        for component, values in data.items()
+    }
+
+    return (
+        (
+            offsets["total"],
+            offsets["smb"],
+            offsets["dyn"],
+        ),
+        (
+            rates["total"],
+            rates["smb"],
+            rates["dyn"],
+        ),
+        (
+            rate_unc["total"],
+            rate_unc["smb"],
+            rate_unc["dyn"],
+        ),
+    )
+
+
+def read_imbie3_GIS_obs(
+    state: ClimateState,
+    ar5_baseline: bool = False,
+    baseline_start: int | None = None,
+    baseline_end: int | None = None,
+):
+    """Read IMBIE3 Greenland Ice Sheet observations.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline
+        period.
+    ar5_baseline : bool, optional
+        If True, use the AR5-style baseline methodology for calculating
+        the initial sea-level contribution. Default is False.
+    baseline_start : int, optional
+        Start year of the baseline period. Defaults to
+        `state.baseline_start`.
+    baseline_end : int, optional
+        End year of the baseline period. Defaults to `state.baseline_end`.
+
+    Returns
+    -------
+    offsets : tuple of float
+        Initial total, SMB, and dynamic SLE contributions, respectively,
+        in metres.
+    rates : tuple of float
+        Mean total, SMB, and dynamic SLE contribution rates, respectively,
+        in mm/yr.
+    rate_unc : tuple of float
+        Uncertainty in the total, SMB, and dynamic rates, respectively, in
+        mm/yr.
+    """
+
+    fpath = (
+        PROFSEA_DIR
+        / "profsea-assets"
+        / "component-obs"
+        / "imbie3_greenland_mm_partitioned.csv"
+    )
+
+    return _read_imbie3_obs(
+        state,
+        fpath,
+        ar5_baseline,
+        baseline_start,
+        baseline_end
+    )
+
+
+def read_imbie3_AIS_obs(
+    state: ClimateState,
+    ar5_baseline: bool = False,
+    region: str | None = None,
+    baseline_start: int | None = None,
+    baseline_end: int | None = None,
+):
+    """Read IMBIE3 Antarctic Ice Sheet observations.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline
+        period.
+    ar5_baseline : bool, optional
+        If True, use the AR5-style baseline methodology for calculating
+        the initial sea-level contribution. Default is False.
+    region : {"eais", "wais", "peninsula", None}, optional
+        Antarctic region to read. If None, use the complete Antarctic
+        Ice Sheet dataset. Default is None.
+    baseline_start : int, optional
+        Start year of the baseline period. Defaults to
+        `state.baseline_start`.
+    baseline_end : int, optional
+        End year of the baseline period. Defaults to `state.baseline_end`.
+
+    Returns
+    -------
+    offsets : tuple of float
+        Initial total, SMB, and dynamic SLE contributions, respectively,
+        in metres.
+    rates : tuple of float
+        Mean total, SMB, and dynamic SLE contribution rates, respectively,
+        in mm/yr.
+    rate_unc : tuple of float
+        Uncertainty in the total, SMB, and dynamic rates, respectively, in mm/yr.
+
+    Raises
+    ------
+    ValueError
+        If `region` is not one of `"eais"`, `"wais"`,`"peninsula"`, or None.
+    """
+
+    root = (
+        PROFSEA_DIR
+        / "profsea-assets"
+        / "component-obs"
+    )
+
+    files = {
+        None: "imbie3_antarctica_mm_partitioned.csv",
+        "eais": "imbie3_east_antarctica_mm_partitioned.csv",
+        "wais": "imbie3_west_antarctica_mm_partitioned.csv",
+        "peninsula": "imbie3_antarctic_peninsula_mm_partitioned.csv",
+    }
+
+    try:
+        fpath = root / files[region]
+    except KeyError:
+        raise ValueError(
+            f"Unknown Antarctic region: {region!r}"
+        )
+
+    return _read_imbie3_obs(
+        state,
+        fpath,
+        ar5_baseline,
+        baseline_start,
+        baseline_end
+    )
+
+
+def _load_zheng_component(
+    state: ClimateState,
+    variable: str,
+    uncertainty: str | None = None,
+    baseline_start: int | None = None,
+    baseline_end: int | None = None
+):
+    """Load and rebaseline an observational sea-level component.
+
+    Loads landwater storage, thermal expansion, or glacier observational
+    data from Zheng et al. (2026 Sci. Adv.), and expresses the sea-level
+    contribution relative to the requested baseline period.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the baseline period.
+    variable : str
+        Name of the sea-level variable to load.
+    uncertainty : str, optional
+        Name of the corresponding uncertainty variable. Default is None.
+    baseline_start : int, optional
+        Start year of the baseline period. Defaults to
+        `state.baseline_start`.
+    baseline_end : int, optional
+        End year of the baseline period. Defaults to `state.baseline_end`.
+
+    Returns
+    -------
+    sle : xarray.DataArray
+        Sea-level contribution relative to the requested baseline period.
+    sle_err : xarray.DataArray or None
+        Uncertainty in the sea-level contribution, or None if not required
+        for component.
+    """
+    filepath = (
+        PROFSEA_DIR
+        / "profsea-assets"
+        / "component-obs"
+        / "Zheng2026.nc"
+    )
+
+    with xr.open_dataset(filepath) as ds:
+        sle = ds[variable].load()
+        sle_err = ds[uncertainty].load() if uncertainty else None
+
+    baseline_start = (
+        state.baseline_start if baseline_start is None else baseline_start
+    )
+    baseline_end = (
+        state.baseline_end if baseline_end is None else baseline_end
+    )
+
+    baseline_mean = sle.sel(
+        time=slice(baseline_start, baseline_end)
+    ).mean("time")
+
+    sle = sle - baseline_mean
+
+    return sle, sle_err
+
+
+def read_expansion_obs(state: ClimateState):
+    """Read observed thermal expansion for component initialisation.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline period.
+
+    Returns
+    -------
+    sle : float
+        Thermal expansion contribution in the year preceding the projection
+        start year, relative to the requested baseline period, in metres.
+    sle_err : float
+        Uncertainty in the thermal expansion contribution, in metres.
+    """
+    sle, sle_err = _load_zheng_component(
+        state,
+        variable="iapv4",
+        uncertainty="iapv4_u",
+    )
+
+    return (
+        sle.sel(time=state.start_yr - 1).item() / 1e3,
+        sle_err.sel(state.start_yr - 1).item() / 1e3,
+    )
+
+
+def read_glacier_obs(state: ClimateState):
+    """Read observed glacier sea-level contribution for initialisation.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline period.
+
+    Returns
+    -------
+    float
+        Glacier SLE contribution in the year relative to the requested baseline
+        period, in metres.
+    """
+
+    sle, _ = _load_zheng_component(
+        state,
+        variable="glacier",
+    )
+
+    return sle.sel(time=state.start_yr - 1).item() / 1e3
+
+
+def read_LWS_obs(
+    state: ClimateState,
+    baseline_start: int | None = None,
+    baseline_end: int | None = None,
+):
+    """Read observed land-water-storage contribution for initialisation.
+
+    The AR5 land-water-storage component requires both the initial SLE
+    contribution and the observed contribution rate. The rate is estimated
+    using a weighted linear regression over the observational period from
+    `state.start_yr - 13` to `state.start_yr + 4`. This follows the AR5
+    methodology, which adopts an effective contribution rate of 0.38 [0.26
+    to 0.49] mm/yr over the baseline 1993-2010 (Ar5 Ch13 Table 13.1).
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the projection start year and baseline period.
+    baseline_start : int, optional
+        Start year of the baseline period. Defaults to
+        `state.baseline_start`.
+    baseline_end : int, optional
+        End year of the baseline period. Defaults to
+        `state.baseline_end`.
+
+    Returns
+    -------
+    d_sle : float
+        Land-water-storage SLE contribution relative to the requested baseline period,
+        in metres.
+    sle_rate : float
+        Estimated land-water-storage SLE contribution rate.
+    sle_rate_err : float
+        Standard error of the estimated SLE contribution rate.
+    """
+
+    sle, sle_err = _load_zheng_component(
+        state,
+        variable="tws",
+        uncertainty="tws_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end
+    )
+
+    rate_start = state.start_yr - 13
+    rate_end = state.start_yr + 4
+
+    rate_mask = (
+        (sle.time >= rate_start)
+        & (sle.time <= rate_end)
+    )
+
+    x = sle.time.values[rate_mask]
+    y = sle.values[rate_mask]
+    sigma = sle_err.values[rate_mask]
+
+    coeffs, cov = np.polyfit(
+        x,
+        y,
+        deg=1,
+        w=1 / sigma,
+        cov=True,
+    )
+
+    sle_rate = coeffs[0]
+    sle_rate_err = np.sqrt(cov[0, 0])
+
+    d_sle = (
+        sle.sel(time=state.start_yr - 1).item()
+        / 1e3
+    )
+
+    return d_sle, sle_rate, sle_rate_err

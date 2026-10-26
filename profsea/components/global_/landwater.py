@@ -9,6 +9,7 @@ import xarray as xr
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
+from profsea.utils import read_LWS_obs
 
 
 @functools.lru_cache(maxsize=1)
@@ -52,20 +53,43 @@ class LandwaterAR6(Component):
             0, n_samples_nc, size=(state.nt, state.num_members)
         )
 
+        years = interp_ds["years"].values
+
+        # read sea level contribution and rate (relative to specified baseline) at start_yr
+        # from Zheng+ 2026 (Sci. Adv.)
+        sle, _, _ = read_LWS_obs(state)
+
         # Resulting shape: (nt, nm, n_years)
-        lw_ens = lw_base[sample_indices, 1 : state.n_years + 1]
+        lw_ens = lw_base[sample_indices]
+        idx_start = np.where(years == state.start_yr)[0][0]
+        lw_ens = lw_ens - lw_ens[:, :, idx_start, None]
+
+        lw_ens += sle
+
+        year_mask = (years >= state.start_yr) & (years < state.end_yr)
+        lw_ens = lw_ens[:, :, year_mask]
 
         return lw_ens.reshape(state.nt, state.num_members, state.n_years)
 
 
 class LandwaterAR5(Component):
     def __init__(self):
-        self.startratemean = 0.38
-        self.startratepm = 0.49 - 0.38
+        pass
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-        """Old projection function. Project land water storage
-        contribution to GMSLR.
+        """Project land water storage contribution to GMSLR.
+
+        The AR5 end-of-century very-likely range is reported for 2081-2100
+        relative to the 1986-2005 baseline (Table 13.5 AR5). The projected
+        contribution is expressed relative to the baseline specified in the
+        ClimateState.
+
+        Parameters
+        ----------
+        state : ClimateState
+            Climate state containing projection years, and baseline period,
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
 
         Returns
         -------
@@ -78,8 +102,27 @@ class LandwaterAR5(Component):
         nyr = (
             state.endofAR5 - 2081 + 1
         )  # number of years of the time-mean of the final amount
-        final = [-0.01, 0.09]  # AR5
+
+        # AR5 Table 13.5 very-likely range for 2081-2100, relative to 1986-2005
+        final_l = -0.01
+        final_u = 0.09
+        # Convert to a change relative to the projection start_yr
+        start_offset, _, _ = read_LWS_obs(
+            state,
+            baseline_start=1986,
+            baseline_end=2005
+        )
+        final = [final_l - start_offset, final_u - start_offset]
+
+        # read sea level contribution and rate (relative to specified baseline) at start_yr from
+        # Zheng+ 2026 (Sci. Adv.)
+        sle, startratemean, startratepm = read_LWS_obs(state)
 
         return time_projection(
-            state, self.startratemean, self.startratepm, final, rng, nfinal=nyr
-        )
+            state,
+            startratemean,
+            startratepm,
+            final,
+            rng,
+            nfinal=nyr
+        ) + sle

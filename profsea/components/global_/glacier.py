@@ -4,6 +4,7 @@ import numpy as np
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
+from profsea.utils import read_glacier_obs
 
 
 class Glacier(Component):
@@ -12,6 +13,16 @@ class Glacier(Component):
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
         """Project glacier contribution to GMSLR.
+
+        The projection is initialised from the observed glacier
+        contribution at the projection start year.
+
+        Parameters
+        ----------
+        state : ClimateState
+            Climate state containing the projection configuration.
+        rng : np.random.Generator
+            Random number generator.
 
         Returns
         -------
@@ -26,12 +37,15 @@ class Glacier(Component):
 
         # glaciermip -- False => AR5 parameters, 1 => fit to Hock et al. (2019),
         #   2 => fit to Marzeion et al. (2020)
-        dmzdtref = 0.95  # mm yr-1 in Marzeion's CMIP5 ensemble mean for AR5 ref period
-        dmz = (
-            dmzdtref * (state.endofhistory - 1996) * 1e-3
-        )  # m from glacier at start wrt AR5 ref period
-        glmass = 412.0 - 96.3  # initial glacier mass, used to set a limit, from Tab 4.2
-        glmass = 1e-3 * glmass  # m SLE
+
+        # read sea level contribution (relative to specified baseline) at start_yr from
+        # Zheng+ 2026 (Sci. Adv.)
+        d_gla = read_glacier_obs(state)
+
+        # Total available glacier mass expressed as m SLE, excluding
+        # Antarctic and Sub-Antarctic glaciers (AR5 Table 4.2).
+        glmass = 412.0 - 96.3
+        glmass = 1e-3 * glmass
 
         if self.glaciermip == 1:
             glparm = [
@@ -89,7 +103,7 @@ class Glacier(Component):
 
         # Apply variance and clip
         glacier = zgl + (mgl * r * cvgls)
-        glacier += dmz
+        glacier += d_gla
         np.clip(glacier, None, glmass, out=glacier)
 
         return glacier  # (climate_mem, process_mem, time)
