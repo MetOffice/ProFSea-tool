@@ -5,7 +5,7 @@ import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.state import ClimateState
-from profsea.utils import check_shapes, read_expansion_obs
+from profsea.utils import check_shapes
 
 
 class ThermalExpansion(Component):
@@ -41,8 +41,6 @@ class ThermalExpansion(Component):
         # check the shape here (climate_member, time)
         check_shapes(self.data_input, state.n_years)
 
-        sle, _ = read_expansion_obs(state)
-
         # Ensure data_input is 2D
         if self.data_input.ndim > 2:
             self.data_input = np.squeeze(self.data_input)
@@ -76,4 +74,4 @@ class ThermalExpansion(Component):
                 (state.nt, state.num_members, state.n_years),
             )
 
-        return expansion + sle
+        return expansion

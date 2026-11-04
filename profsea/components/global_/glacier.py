@@ -40,7 +40,11 @@ class Glacier(Component):
 
         # read sea level contribution (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        d_gla = read_glacier_obs(state)
+        obs = read_glacier_obs(state)
+
+        d_gla = obs["sle"].sel(
+            time=state.start_yr - 1,
+        ).item()
 
         # Total available glacier mass expressed as m SLE, excluding
         # Antarctic and Sub-Antarctic glaciers (AR5 Table 4.2).

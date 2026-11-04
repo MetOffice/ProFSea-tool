@@ -10,7 +10,7 @@ from scipy.stats import norm
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_imbie3_AIS_obs
+from profsea.utils import read_antarctic_obs
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
@@ -177,12 +177,19 @@ class AntarcticaISMIP6(Component):
 
         # Initialise the projection from the observed regional AIS contribution
         # at the projection start year, relative to the specified baseline.
-        (sle, _, _) = read_imbie3_AIS_obs(
+        obs = read_antarctic_obs(
             state,
-            region=self.region
+            region=self.region,
         )
 
-        return total_ais.reshape(state.nt, state.num_members, n_time) + sle[0]
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="total",
+        )
+
+        sle = initial["sle"].item()
+
+        return total_ais.reshape(state.nt, state.num_members, n_time) + sle
 
 
 class AntarcticaDynAR5(Component):
@@ -234,27 +241,42 @@ class AntarcticaDynAR5(Component):
 
         # AR5 end-of-century contribution is expressed relative to the AR5 projection
         # period. Convert to a change relative to the projection start_yr
-        start_offset, _, _ = read_imbie3_AIS_obs(
+        obs_ar5 = read_antarctic_obs(
             state,
-            ar5_baseline=True,
-            baseline_end=2005
+            baseline_start=1986,
+            baseline_end=2005,
         )
-        final -= start_offset[2]
+
+        start_offset = obs_ar5["sle"].sel(
+            time=state.start_yr - 1,
+            component="dyn",
+        ).item()
+
+        final -= start_offset
 
         # Initialise Antarctic dynamic SLE and rate from IMBIE3 at the
         # projection start year, relative to the specified baseline.
-        (sle, rate, rate_unc) = read_imbie3_AIS_obs(state, ar5_baseline=True)
+        obs = read_antarctic_obs(state)
+
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="dyn",
+        )
+
+        sle = initial["sle"].item()
+        rate = initial["rate"].item()
+        rate_unc = initial["rate_unc"].item()
 
         return (
             time_projection(
                 state,
-                rate[2],
-                rate_unc[2],
+                rate,
+                rate_unc,
                 final,
                 rng,
                 fraction=state.fraction,
             )
-            + sle[2]
+            + sle
         )
 
 
@@ -328,6 +350,13 @@ class AntarcticaSMBAR5(Component):
 
         # Initialise Antarctic SMB SLE from IMBIE3 at the projection start year,
         # relative to the specified baseline.
-        sle, _, _ = read_imbie3_AIS_obs(state, ar5_baseline=True)
+        obs = read_antarctic_obs(state)
 
-        return antsmb + sle[1]  # (climate_mem, process_mem, time)
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="smb",
+        )
+
+        sle = initial["sle"].item()
+
+        return antsmb + sle  # (climate_mem, process_mem, time)

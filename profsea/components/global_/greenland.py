@@ -10,7 +10,7 @@ from scipy.stats import truncnorm
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_imbie3_GIS_obs
+from profsea.utils import read_greenland_obs
 
 
 @functools.lru_cache(maxsize=1)
@@ -46,7 +46,14 @@ class GreenlandAR6(Component):
         """
 
         # read sea level contribution relative to specified baseline at start_yr from IMBIE 3
-        (sle, _, _) = read_imbie3_GIS_obs(state, ar5_baseline=False)
+        obs = read_greenland_obs(state)
+
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="total",
+        )
+
+        sle = initial["sle"].item()
 
         tas = state.T_ens
         if tas.ndim > 2:
@@ -61,6 +68,7 @@ class GreenlandAR6(Component):
 
         years = np.arange(state.start_yr, state.end_yr, dtype=state.dtype)
         time_delta = years - 2015 # relative to the calibrated AR6 fit
+        projection_time = years - state.start_yr
 
         df = self.df
         n_models = len(df)
@@ -90,7 +98,7 @@ class GreenlandAR6(Component):
             scale=trend_std,
         ).astype(state.dtype)
 
-        trend_sle = (trend[:, :, None] * time_delta[None, None, :]) * 1e-3
+        trend_sle = (trend[:, :, None] * projection_time[None, None, :]) * 1e-3
 
         tas_3d = tas[:, None, :]
 
@@ -110,7 +118,7 @@ class GreenlandAR6(Component):
         sle_ens += trend_sle
 
         # Persist 2100 rate of changeg
-        if state.end_yr >= 2100:
+        if state.end_yr > 2100:
             idx_2100 = 2100 - state.start_yr
             rate = np.diff(sle_ens, axis=2)[:, :, idx_2100 - 1]
             years_after_2100 = np.arange(
@@ -124,7 +132,7 @@ class GreenlandAR6(Component):
                 + rate[:, :, None] * years_after_2100[None, None, :]
             )
 
-        return sle_ens + sle[0]  # (climate_mem, process_mem, time)c
+        return sle_ens + sle  # (climate_mem, process_mem, time)
 
 
 class GreenlandSMBAR5(Component):
@@ -156,8 +164,15 @@ class GreenlandSMBAR5(Component):
 
         """
 
-        # read sea level contribution at start_yr from IMBIE3 following AR5 methodology
-        (sle, _, _) = read_imbie3_GIS_obs(state, ar5_baseline=True)
+        # read sea level contribution at start_yr from IMBIE3
+        obs = read_greenland_obs(state)
+
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="smb",
+        )
+
+        sle = initial["sle"].item()
 
         dtgreen = -0.146  # Delta_T of Greenland ref period wrt AR5 ref period
         fnlogsd = 0.4  # random methodological error of the log factor
@@ -184,7 +199,7 @@ class GreenlandSMBAR5(Component):
 
         greensmb = np.cumsum(greensmb, axis=-1)
 
-        greensmb += sle[1]
+        greensmb += sle
 
         return greensmb  # (climate_mem, process_mem, time)
 
@@ -240,29 +255,43 @@ class GreenlandDynAR5(Component):
             Greenland rapid ice-sheet dynamics contribution to GMSLR.
         """
         # Convert to a change relative to the projection start
-        start_offset, _, _ = read_imbie3_GIS_obs(
+        obs_ar5 = read_greenland_obs(
             state,
-            ar5_baseline=True,
-            baseline_end=2005
+            baseline_start=1986,
+            baseline_end=2005,
         )
+
+        start_offset = obs_ar5["sle"].sel(
+            time=state.start_yr - 1,
+            component="dyn",
+        ).item()
 
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.63+-0.17 mm yr-1 (5-95% range)
         # For dyn at 2100 Chapter 13 gives [20,85] mm for rcp85, [14,63] mm otherwise
         if state.scenario in ["rcp85", "ssp585"]:
-            finalrange = [0.020 - start_offset[2], 0.085 - start_offset[2]]
+            finalrange = [0.020 - start_offset, 0.085 - start_offset]
         else:
-            finalrange = [0.014 - start_offset[2], 0.063 - start_offset[2]]
+            finalrange = [0.014 - start_offset, 0.063 - start_offset]
 
-        # read sea level contribution at start_yr from IMBIE3 following AR5 methodology
-        (sle, rate, rate_unc) = read_imbie3_GIS_obs(state, ar5_baseline=True)
+        # read sea level contribution at start_yr from IMBIE3
+        obs = read_greenland_obs(state)
+
+        initial = obs.sel(
+            time=state.start_yr - 1,
+            component="dyn",
+        )
+
+        sle = initial["sle"].item()
+        rate = initial["rate"].item()
+        rate_unc = initial["rate_unc"].item()
 
         return (
             time_projection(
                 state,
-                rate[2],
-                rate_unc[2],
+                rate,
+                rate_unc,
                 finalrange,
                 rng
             )
-            + sle[2]
+            + sle
         )

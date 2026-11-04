@@ -9,7 +9,7 @@ import xarray as xr
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_LWS_obs
+from profsea.utils import read_landwater_obs
 
 
 @functools.lru_cache(maxsize=1)
@@ -28,9 +28,10 @@ class LandwaterAR6(Component):
         self.lw_ds = load_landwater_projection()
 
     def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
-        """Project land water storage contribution to GMSLR.
-        This follows the IPCC AR6 methodology as closely as possible.
-        Projections are relative to 1996-2014 baseline.
+        """Project land water storage contribution to GMSLR. This follows the IPCC
+        AR6 methodology as closely as possible. The observed contribution, from
+        Zheng et al., (2026), is added at the `start_yr` relative to the specified
+        baseline.
 
         Returns
         -------
@@ -57,7 +58,11 @@ class LandwaterAR6(Component):
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr
         # from Zheng+ 2026 (Sci. Adv.)
-        sle, _, _ = read_LWS_obs(state)
+        obs = read_landwater_obs(state)
+
+        sle = obs["sle"].sel(
+            time=state.start_yr - 1
+        ).item()
 
         # Resulting shape: (nt, nm, n_years)
         lw_ens = lw_base[sample_indices]
@@ -107,16 +112,48 @@ class LandwaterAR5(Component):
         final_l = -0.01
         final_u = 0.09
         # Convert to a change relative to the projection start_yr
-        start_offset, _, _ = read_LWS_obs(
+        obs_ar5 = read_landwater_obs(
             state,
             baseline_start=1986,
-            baseline_end=2005
+            baseline_end=2005,
         )
+
+        start_offset = obs_ar5["sle"].sel(
+            time=state.start_yr - 1
+        ).item()
         final = [final_l - start_offset, final_u - start_offset]
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        sle, startratemean, startratepm = read_LWS_obs(state)
+        obs = read_landwater_obs(state)
+
+        sle = obs["sle"].sel(
+            time=state.start_yr - 1
+        ).item()
+
+        # This follows the AR5 methodology, which adopts an effective contribution rate of 0.38 [0.26
+        # to 0.49] mm/yr over the baseline 1993-2010 (Ar5 Ch13 Table 13.1).
+
+
+        rate_obs = obs.sel(
+            time=slice(state.start_yr - 13, state.start_yr + 4)
+        )
+
+        x = rate_obs.time.values
+        y = rate_obs.sle.values
+        sigma = rate_obs.sle_unc.values
+
+        coeffs, cov = np.polyfit(
+            x,
+            y,
+            deg=1,
+            w=1 / sigma,
+            cov=True,
+        )
+
+        # returns rates and uncertainty in mm/yr
+        startratemean = coeffs[0] * 1e3
+        startratepm = np.sqrt(cov[0, 0]) * 1e3
 
         return time_projection(
             state,
