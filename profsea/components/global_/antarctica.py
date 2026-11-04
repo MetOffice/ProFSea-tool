@@ -226,7 +226,7 @@ class AntarcticaDynAR5(Component):
         if self.cum_emissions_total is not None:
             upper = (0.000110 * self.cum_emissions_total) + 0.375  # in metres
             lower = (1.363e-05 * self.cum_emissions_total) + 0.0392  # in metres
-            final = [lower, upper]
+            final = np.array([lower, upper], dtype=state.dtype)
         else:
             lcoeff = dict(
                 rcp26=[-2.881, 0.923, 0.000],
