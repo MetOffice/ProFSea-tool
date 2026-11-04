@@ -32,16 +32,21 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=2006,
         end_yr=2010,
+        baseline_start=1986,
+        baseline_end=2005,
         n_years=4,
         nt=2,
         num_members=2,
     )
 
 
-def get_dummy_ismip6() -> AntarcticaISMIP6:
+def get_dummy_ismip6(region) -> AntarcticaISMIP6:
     """Create an ISMIP6 component without reading auxiliary NetCDF files."""
     antarctica = AntarcticaISMIP6.__new__(AntarcticaISMIP6)
+
+    antarctica.region = region
 
     antarctica.param_ds = xr.Dataset(
         data_vars={
@@ -82,20 +87,23 @@ def test_ismip6_invalid_region():
 
 
 def test_ismip6_zero_temperature_zero_projection():
-    """No temperature anomaly should produce no ISMIP6 contribution."""
-    antarctica = get_dummy_ismip6()
+    """Zero temperature anomaly should give no additional ISMIP6 contribution."""
+    antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state(T_change_val=0.0)
     rng = np.random.default_rng(42)
 
     projection = antarctica.project(state, rng)
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
-    np.testing.assert_allclose(projection, 0.0, atol=1e-7)
+
+    change = projection - projection[..., [0]]
+
+    np.testing.assert_allclose(change, 0.0, atol=1e-7)
 
 
 def test_ismip6_projection_shape():
     """ISMIP6 output should contain one timeseries per ensemble member."""
-    antarctica = get_dummy_ismip6()
+    antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
@@ -110,7 +118,7 @@ def test_ismip6_projection_shape():
 
 def test_ismip6_reproducible_with_same_seed():
     """Random parameter sampling should be deterministic for a fixed RNG seed."""
-    antarctica = get_dummy_ismip6()
+    antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
 
     projection1 = antarctica.project(state, np.random.default_rng(42))
@@ -121,7 +129,7 @@ def test_ismip6_reproducible_with_same_seed():
 
 def test_ismip6_precomputation_matches_impulse_response():
     """Vectorized delayed-rate calculation should match the scalar implementation."""
-    antarctica = get_dummy_ismip6()
+    antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
 
     tas = state.T_ens
@@ -199,29 +207,13 @@ def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(monkeypatch):
     expected_lower = (1.363e-05 * 1000.0) + 0.0392
     expected_upper = (0.000110 * 1000.0) + 0.375
 
+    expected_range = expected_upper - expected_lower
+    actual_range = captured["final"][1] - captured["final"][0]
+
     np.testing.assert_allclose(
-        captured["final"],
-        [expected_lower, expected_upper],
+        actual_range,
+        expected_range,
     )
-
-
-def test_antarctica_dyn_adds_d_ant(monkeypatch):
-    """The background Antarctic contribution should be added to the projection."""
-    d_ant = 0.01
-    antarctica = AntarcticaDynAR5(d_ant=d_ant)
-    state = get_dummy_state()
-
-    def mock_time_projection(*args, **kwargs):
-        return np.zeros((state.nt, state.num_members, state.n_years))
-
-    monkeypatch.setattr(
-        "profsea.components.global_.antarctica.time_projection",
-        mock_time_projection,
-    )
-
-    projection = antarctica.project(state, np.random.default_rng(42))
-
-    np.testing.assert_allclose(projection, d_ant)
 
 
 def test_antarctica_smb_wrong_fraction_size():
@@ -249,15 +241,17 @@ def test_antarctica_smb_projection_shape():
     )
 
 
-def test_antarctica_smb_zero_temperature_zero_projection():
-    """Zero integrated temperature should give zero SMB contribution."""
+def test_antarctica_smb_zero_temperature_no_additional_projection():
+    """Zero integrated temperature should give no additional SMB contribution."""
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state(T_change_val=0.0)
     rng = np.random.default_rng(42)
 
     projection = antarctica.project(state, rng)
 
-    np.testing.assert_allclose(projection, 0.0, atol=1e-7)
+    change = projection - projection[..., [0]]
+
+    np.testing.assert_allclose(change, 0.0, atol=1e-7)
 
 
 def test_antarctica_smb_reproducible_with_same_seed():

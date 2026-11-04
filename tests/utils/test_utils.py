@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import dask.array as da
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 
@@ -10,21 +11,40 @@ from profsea.utils import (
     fetch_zenodo_fingerprints,
     interpolate,
     interpolate_to_grid,
+    read_antarctic_obs,
+    read_thermal_expansion_obs,
     reformat_global_projection,
     sample_members_2D,
     save_components,
+    validate_projection_years,
 )
+from profsea.utils.utils import _load_zheng_component, _read_imbie3_obs
 
 
 class DummyClimateState:
     """Mock state object for testing projection reformatting."""
 
-    def __init__(self, percentiles=None, nt=2, num_members=3, n_years=4):
+    def __init__(
+            self,
+            percentiles=None,
+            start_yr=2006,
+            end_yr=2101,
+            baseline_start=1996,
+            baseline_end=2014,
+            nt=2,
+            num_members=3,
+            n_years=4,
+            dtype=np.float64
+    ):
         self.output_percentiles = percentiles
+        self.start_yr = start_yr
+        self.end_yr = end_yr
+        self.baseline_start = baseline_start
+        self.baseline_end = baseline_end
         self.nt = nt
         self.num_members = num_members
         self.n_years = n_years
-
+        self.dtype = dtype
 
 # --- check_shapes ---
 
@@ -282,3 +302,338 @@ def test_save_components_zarr(tmp_path):
 
     ds = xr.open_zarr(expected_store)
     assert "comp1" in ds
+
+
+def test_validate_projection_years():
+    """Should successfully validate projection years and baseline"""
+    validate_projection_years(
+        start_yr=2006,
+        end_yr=2101,
+        baseline_start=1986,
+        baseline_end=2005,
+    )
+
+
+def test_validate_projection_years_start_after_end():
+    with pytest.raises(
+        ValueError,
+        match="start_yr .* must be earlier than end_yr",
+    ):
+        validate_projection_years(
+            start_yr=2100,
+            end_yr=2001,
+            baseline_start=1986,
+            baseline_end=2005,
+        )
+
+
+def test_validate_projection_years_invalid_baseline():
+    with pytest.raises(
+        ValueError,
+        match="baseline_start .* must be earlier than baseline_end",
+    ):
+        validate_projection_years(
+            start_yr=2001,
+            end_yr=2100,
+            baseline_start=2005,
+            baseline_end=1986,
+        )
+
+
+def test_validate_projection_years_start_before_1980():
+    with pytest.raises(
+        ValueError,
+        match="start_yr .* and baseline_start .* must both be later than 1980",
+    ):
+        validate_projection_years(
+            start_yr=1979,
+            end_yr=2100,
+            baseline_start=1986,
+            baseline_end=2005,
+        )
+
+
+def test_validate_projection_years_baseline_start_before_1980():
+    with pytest.raises(
+        ValueError,
+        match="start_yr .* and baseline_start .* must both be later than 1980",
+    ):
+        validate_projection_years(
+            start_yr=2001,
+            end_yr=2100,
+            baseline_start=1979,
+            baseline_end=2005,
+        )
+
+
+def test_validate_projection_years_baseline_end_after_2023():
+    with pytest.raises(
+        ValueError,
+        match=r"baseline_end \(2024\) cannot be later than 2023",
+    ):
+        validate_projection_years(
+            start_yr=2001,
+            end_yr=2100,
+            baseline_start=1986,
+            baseline_end=2024,
+        )
+
+# --- observational data readers ---
+
+
+def _write_mock_imbie3_csv(tmp_path):
+    """Write a small synthetic IMBIE3-style dataset."""
+
+    years = np.arange(1990, 2011)
+
+    df = pd.DataFrame(
+        {
+            "Date": [f"{year}-01-01" for year in years],
+            "Cumulative mass balance anomaly (mm)": years - 1990,
+            "Mass balance (mm/yr)": np.full(years.size, 2.0),
+            "Mass balance uncertainty (mm/yr)": np.full(
+                years.size, 0.2
+            ),
+            "Cumulative surface mass balance anomaly (mm)": (
+                2 * (years - 1990)
+            ),
+            "Surface mass balance anomaly (mm/yr)": np.full(
+                years.size, 3.0
+            ),
+            "Surface mass balance anomaly uncertainty (mm/yr)": (
+                np.full(years.size, 0.3)
+            ),
+            "Cumulative dynamics mass balance anomaly (mm)": (
+                3 * (years - 1990)
+            ),
+            "Dynamics mass balance anomaly (mm/yr)": np.full(
+                years.size, 4.0
+            ),
+            "Dynamics mass balance anomaly uncertainty (mm/yr)": (
+                np.full(years.size, 0.4)
+            ),
+        }
+    )
+
+    fpath = tmp_path / "imbie3.csv"
+    df.to_csv(fpath, index=False)
+
+    return fpath
+
+
+def test_read_imbie3_obs_uses_baseline_mean(tmp_path):
+    state = DummyClimateState(
+        start_yr=2000,
+        baseline_start=1995,
+        baseline_end=1997,
+    )
+    fpath = _write_mock_imbie3_csv(tmp_path)
+
+    ds = _read_imbie3_obs(
+        state,
+        fpath,
+        baseline_start=1995,
+        baseline_end=1997,
+    )
+
+    offsets = ds["sle"].sel(time=state.start_yr - 1).values
+    rates = ds["rate"].sel(time=state.start_yr - 1).values
+    rate_unc = ds["rate_unc"].sel(time=state.start_yr - 1).values
+
+    assert offsets == pytest.approx(
+        (-0.003, -0.006, -0.009)
+    )
+    assert rates == pytest.approx(
+        (-2.0, -3.0, -4.0)
+    )
+    assert rate_unc == pytest.approx(
+        (-0.2, -0.3, -0.4)
+    )
+
+
+def test_read_imbie3_obs_explicit_baseline_overrides_state(
+    tmp_path,
+):
+    state = DummyClimateState(
+        start_yr=2000,
+        baseline_start=1990,
+        baseline_end=1991,
+    )
+    fpath = _write_mock_imbie3_csv(tmp_path)
+
+    ds = _read_imbie3_obs(
+        state,
+        fpath,
+        baseline_start=1995,
+        baseline_end=1997,
+    )
+    offsets = ds["sle"].sel(time=state.start_yr - 1).values
+
+    assert offsets == pytest.approx(
+        (-0.003, -0.006, -0.009)
+    )
+
+
+def _write_mock_zheng_dataset(tmp_path):
+    """Write a small mock NetCDF dataset."""
+
+    component_dir = (
+        tmp_path
+        / "profsea-assets"
+        / "component-obs"
+    )
+    component_dir.mkdir(parents=True)
+
+    ds = xr.Dataset(
+        {
+            "tws": (
+                "time",
+                np.array([10.0, 20.0, 30.0, 40.0, 50.0]),
+            ),
+            "tws_u": (
+                "time",
+                np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+            ),
+            "glacier": (
+                "time",
+                np.array([5.0, 10.0, 15.0, 20.0, 25.0]),
+            ),
+        },
+        coords={
+            "time": np.arange(1990, 1995),
+        },
+    )
+
+    fpath = component_dir / "Zheng2026.nc"
+    ds.to_netcdf(fpath)
+
+    return fpath
+
+
+def test_load_zheng_component_uses_state_baseline(
+    tmp_path,
+    monkeypatch,
+):
+    _write_mock_zheng_dataset(tmp_path)
+
+    monkeypatch.setattr(
+        "profsea.utils.utils.PROFSEA_DIR",
+        tmp_path,
+    )
+
+    state = DummyClimateState(
+        baseline_start=1991,
+        baseline_end=1993,
+    )
+
+    ds = _load_zheng_component(
+        state,
+        variable="tws",
+        uncertainty="tws_u",
+    )
+
+    np.testing.assert_allclose(
+        ds["sle"].values,
+        [-0.020, -0.010, 0.0, 0.010, 0.020],
+    )
+    np.testing.assert_allclose(
+        ds["sle_unc"].values,
+        [0.001, 0.002, 0.003, 0.004, 0.005],
+    )
+
+
+@patch("profsea.utils.utils._load_zheng_component")
+def test_read_thermal_expansion_obs(
+    mock_load,
+):
+    state = DummyClimateState()
+
+    expected = xr.Dataset(
+        {
+            "sle": (
+                "time",
+                [0.010, 0.020],
+            ),
+            "sle_unc": (
+                "time",
+                [0.001, 0.002],
+            ),
+        },
+        coords={
+            "time": [1998, 1999],
+        },
+    )
+
+    mock_load.return_value = expected
+    result = read_thermal_expansion_obs(state)
+
+    xr.testing.assert_identical(result, expected)
+
+    mock_load.assert_called_once_with(
+        state,
+        variable="iapv4",
+        uncertainty="iapv4_u",
+        baseline_start=None,
+        baseline_end=None
+    )
+
+
+def test_read_imbie3_AIS_obs_invalid_region():
+    state = DummyClimateState()
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown Antarctic region",
+    ):
+        read_antarctic_obs(
+            state,
+            region="invalid",
+        )
+
+
+@pytest.mark.parametrize(
+    ("region", "expected_filename"),
+    [
+        (None, "imbie3_antarctica_mm_partitioned.csv"),
+        ("eais", "imbie3_east_antarctica_mm_partitioned.csv"),
+        ("wais", "imbie3_west_antarctica_mm_partitioned.csv"),
+        (
+            "peninsula",
+            "imbie3_antarctic_peninsula_mm_partitioned.csv",
+        ),
+    ],
+)
+@patch("profsea.utils.utils._read_imbie3_obs")
+def test_read_imbie3_AIS_obs_selects_region_file(
+    mock_read,
+    region,
+    expected_filename,
+):
+    state = DummyClimateState()
+
+    expected = xr.Dataset(
+        {
+            "sle": (
+                ("time", "component"),
+                [[0.001, 0.002, 0.003]],
+            ),
+        },
+        coords={
+            "time": [2000],
+            "component": ["total", "smb", "dyn"],
+        },
+    )
+
+    mock_read.return_value = expected
+
+    result = read_antarctic_obs(
+        state,
+        region=region,
+    )
+
+    xr.testing.assert_identical(result, expected)
+
+    args = mock_read.call_args.args
+
+    assert args[0] is state
+    assert args[1].name == expected_filename

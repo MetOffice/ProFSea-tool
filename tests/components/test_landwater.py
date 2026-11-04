@@ -10,12 +10,15 @@ from profsea.components.global_.landwater import (
 
 def get_dummy_state(
     *,
-    n_years: int = 4,
     nt: int = 2,
     num_members: int = 2,
+    start_yr: int = 2006,
     end_yr: int = 2010,
+    baseline_start: int = 1996,
+    baseline_end: int = 2005,
 ) -> ClimateState:
     """Helper to generate a small ClimateState."""
+    n_years = end_yr - start_yr
     T_ens = np.ones((nt, n_years), dtype=np.float32)
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
@@ -34,10 +37,42 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=start_yr,
         end_yr=end_yr,
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
+    )
+
+
+def get_dummy_landwater_obs(
+    state,
+    *,
+    sle=0.0,
+    sle_unc=0.0,
+):
+    """Create a minimal land-water observational dataset."""
+    return xr.Dataset(
+        {
+            "sle": (
+                "time",
+                np.array([sle], dtype=state.dtype),
+            ),
+            "sle_unc": (
+                "time",
+                np.array([sle_unc], dtype=state.dtype),
+            ),
+        },
+        coords={
+            "time": [state.start_yr - 1],
+        },
+        attrs={
+            "baseline_start": state.baseline_start,
+            "baseline_end": state.baseline_end,
+            "reference": "Synthetic test data",
+        },
     )
 
 
@@ -114,7 +149,7 @@ def test_landwater_ar6_converts_mm_to_metres():
         {
             "sea_level_change": (
                 ("samples", "years"),
-                np.ones((1, len(years)), dtype=np.float32) * 1000.0,
+                np.arange(len(years), dtype=np.float32)[None, :] * 1000.0,
             )
         },
         coords={
@@ -128,11 +163,14 @@ def test_landwater_ar6_converts_mm_to_metres():
 
     projection = landwater.project(state, rng)
 
-    np.testing.assert_allclose(projection, 1.0)
+    np.testing.assert_allclose(
+        projection[..., 1] - projection[..., 0],
+        1.0,
+    )
 
 
-def test_landwater_ar6_skips_first_interpolated_year():
-    """Projection should begin from the second year in the interpolated series."""
+def test_landwater_ar6_is_relative_to_projection_start(monkeypatch):
+    """AR6 projection should be re-referenced to the projection start year."""
     landwater = LandwaterAR6.__new__(LandwaterAR6)
 
     years = np.arange(2005, 2301)
@@ -154,27 +192,40 @@ def test_landwater_ar6_skips_first_interpolated_year():
     state = get_dummy_state(
         nt=1,
         num_members=1,
-        n_years=4,
+    )
+
+    initial_sle = 0.01
+
+    def mock_read_landwater_obs(state, **kwargs):
+        return get_dummy_landwater_obs(
+            state,
+            sle=initial_sle,
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
     )
 
     projection = landwater.project(
         state,
         np.random.default_rng(42),
     )
+    projection -= initial_sle
 
     # Added an extra bracket layer to make this a 3D array (1, 1, 4)
     expected = (
         np.array(
-            [[[1.0, 2.0, 3.0, 4.0]]],
+            [[[0.0, 1.0, 2.0, 3.0]]],
             dtype=np.float32,
         )
         * 1e-3
     )
 
-    np.testing.assert_allclose(projection, expected)
+    np.testing.assert_allclose(projection, expected, atol=1e-7)
 
 
-def test_landwater_ar6_samples_only_existing_projection_members():
+def test_landwater_ar6_samples_only_existing_projection_members(monkeypatch):
     """All sampled projections should correspond to rows from the input dataset."""
     landwater = get_dummy_ar6()
 
@@ -183,16 +234,30 @@ def test_landwater_ar6_samples_only_existing_projection_members():
         num_members=4,
     )
 
+    initial_sle = 0.01
+
+    def mock_read_landwater_obs(state, **kwargs):
+        return get_dummy_landwater_obs(
+            state,
+            sle=initial_sle,
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
+    )
+
     projection = landwater.project(
         state,
         np.random.default_rng(42),
     )
+    projection -= initial_sle
 
     # The two source projections are:
-    # sample 0 -> [1, 2, 3, 4] mm
-    # sample 1 -> [2, 4, 6, 8] mm
-    expected_sample_0 = np.array([1, 2, 3, 4]) * 1e-3
-    expected_sample_1 = np.array([2, 4, 6, 8]) * 1e-3
+    # sample 0 -> [0, 1, 2, 3] mm
+    # sample 1 -> [0, 2, 4, 6] mm
+    expected_sample_0 = np.array([0, 1, 2, 3]) * 1e-3
+    expected_sample_1 = np.array([0, 2, 4, 6]) * 1e-3
 
     # Flatten the (climate, process) dims so we iterate strictly over 1D time-series rows
     for row in projection.reshape(-1, projection.shape[-1]):
@@ -246,14 +311,60 @@ def test_landwater_ar5_uses_expected_parameters(monkeypatch):
         mock_time_projection,
     )
 
+    start_rate_mean = 0.5
+    ar5_start_offset = 0.02
+
+    years = np.arange(
+        state.start_yr - 13,
+        state.start_yr + 5,
+    )
+
+    # Construct an observational time series with a 0.5 mm/yr trend.
+    sle = (years - years[0]) * start_rate_mean * 1e-3
+    sle_unc = np.full(years.size, 0.001)
+
+    def mock_read_landwater_obs(
+        state,
+        baseline_start=None,
+        baseline_end=None,
+    ):
+        obs_sle = sle.copy()
+
+        if baseline_start == 1986 and baseline_end == 2005:
+            # Ensure the SLE at start_yr - 1 gives the required
+            # AR5 start offset.
+            idx = np.where(years == state.start_yr - 1)[0][0]
+            obs_sle += ar5_start_offset - obs_sle[idx]
+
+        return xr.Dataset(
+            {
+                "sle": ("time", obs_sle),
+                "sle_unc": ("time", sle_unc),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
+    )
+
     landwater.project(
         state,
         np.random.default_rng(42),
     )
 
-    assert captured["start_mean"] == 0.38
-    assert captured["start_uncertainty"] == 0.49 - 0.38
-    assert captured["final"] == [-0.01, 0.09]
+    np.testing.assert_allclose(
+        captured["start_mean"],
+        start_rate_mean,
+    )
+    np.testing.assert_allclose(
+        captured["final"],
+        [
+            -0.01 - ar5_start_offset,
+            0.09 - ar5_start_offset,
+        ],
+    )
 
 
 def test_landwater_ar5_uses_twenty_year_final_average(monkeypatch):
@@ -308,6 +419,32 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
     def mock_time_projection(*args, **kwargs):
         return expected
 
+    initial_sle = 0.01
+    def mock_read_landwater_obs(state, **kwargs):
+        years = np.arange(
+            state.start_yr - 13,
+            state.start_yr + 5,
+        )
+
+        # Simple linear series centred so that SLE at start_yr - 1
+        # is initial_sle.
+        sle = initial_sle + (years - (state.start_yr - 1)) * 0.0005
+
+        return xr.Dataset(
+            {
+                "sle": ("time", sle),
+                "sle_unc": (
+                    "time",
+                    np.full(years.size, 0.001),
+                ),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
+    )
     monkeypatch.setattr(
         "profsea.components.global_.landwater.time_projection",
         mock_time_projection,
@@ -318,4 +455,4 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
         np.random.default_rng(42),
     )
 
-    np.testing.assert_array_equal(projection, expected)
+    np.testing.assert_allclose(projection, expected + initial_sle, atol=1e-7)

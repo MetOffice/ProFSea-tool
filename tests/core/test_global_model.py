@@ -16,7 +16,14 @@ def test_calculate_drivers_math():
     # 2 members, 3 time steps
     T_change = np.array([[1.0, 2.0, 3.0], [3.0, 4.0, 5.0]])
 
-    global_model = Global(components={}, end_yr=2008, nt=2)
+    global_model = Global(
+        components={},
+        start_yr=2006,
+        end_yr=2008,
+        baseline_start=1986,
+        baseline_end=2005,
+        nt=2
+    )
     T_ens, T_int_ens, T_int_med = global_model._calculate_drivers(T_change)
 
     # Assert time integrals (cumulative sum over axis 1)
@@ -31,7 +38,15 @@ def test_run_orchestration():
     components = {"mock1": MockGlobalComponent(), "mock2": MockGlobalComponent()}
 
     # nt=2 (climate members), num_members=3 (process members), n_years=4 (2010-2006)
-    global_model = Global(components=components, end_yr=2010, nt=2, num_members=3)
+    global_model = Global(
+        components=components,
+        start_yr=2006,
+        end_yr=2010,
+        baseline_start=1995,
+        baseline_end=2014,
+        nt=2,
+        num_members=3
+    )
 
     # Shape: (nt=2, n_years=4)
     T_change = np.zeros((2, 4))
@@ -46,7 +61,13 @@ def test_run_orchestration():
 
 def test_save_components(tmp_path):
     # tmp_path is a built-in pytest fixture that creates a temporary directory
-    global_model = Global(components={}, end_yr=2010)
+    global_model = Global(
+        components={},
+        start_yr=2001,
+        end_yr=2010,
+        baseline_start=1986,
+        baseline_end=2014
+    )
 
     # Create dummy result matching the new 3D dimensional structure
     components = {
@@ -106,7 +127,14 @@ def test_return_types():
     }
 
     global_model_float64 = Global(
-        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float64
+        components=components,
+        start_yr=2006,
+        end_yr=2101,
+        baseline_start=1990,
+        baseline_end=2000,
+        nt=2,
+        num_members=3,
+        dtype=np.float64
     )
     results = global_model_float64.run(scenario="rcp26", T_change=tas)
 
@@ -117,7 +145,14 @@ def test_return_types():
         assert data.shape == (2, 3, 95)
 
     global_model_float32 = Global(
-        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float32
+        components=components,
+        start_yr=2006,
+        end_yr=2101,
+        baseline_start=1990,
+        baseline_end=2014,
+        nt=2,
+        num_members=3,
+        dtype=np.float32
     )
     results = global_model_float32.run(scenario="rcp26", T_change=tas)
 

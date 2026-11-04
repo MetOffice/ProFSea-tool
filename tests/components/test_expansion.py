@@ -24,7 +24,10 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=2006,
         end_yr=2010,
+        baseline_start=1996,
+        baseline_end=2005,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
@@ -59,8 +62,14 @@ def test_expansion_ohc_change_true_scales_input_with_efficiency():
     )
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
-    np.testing.assert_allclose(projection, expected)
 
+    projection_change = projection - projection[..., [0]]
+    expected_change = expected - expected[..., [0]]
+    np.testing.assert_allclose(
+        projection_change,
+        expected_change,
+        atol=1e-7,
+    )
 
 def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     """When OHC_change is False, input should be broadcast to all members unchanged."""
@@ -87,4 +96,11 @@ def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     )
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
-    np.testing.assert_allclose(projection, expected)
+
+    projection_change = projection - projection[..., [0]]
+    expected_change = expected - expected[..., [0]]
+    np.testing.assert_allclose(
+        projection_change,
+        expected_change,
+        atol=1e-7,
+    )

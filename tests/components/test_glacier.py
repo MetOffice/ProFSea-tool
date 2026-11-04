@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import xarray as xr
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.glacier import Glacier
@@ -31,7 +32,10 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=2006,
         end_yr=2010,
+        baseline_start=1996,
+        baseline_end=2005,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
@@ -207,7 +211,7 @@ def test_glacier_project_glacier1_broadcasts_parameters():
     )
 
 
-def test_glacier_adds_reference_period_offset():
+def test_glacier_adds_reference_period_offset(monkeypatch):
     """Projection should include the historical glacier offset dmz."""
     glacier = Glacier(glaciermip=2)
 
@@ -215,14 +219,28 @@ def test_glacier_adds_reference_period_offset():
     state = get_dummy_state(0.0)
     rng = np.random.default_rng(42)
 
-    projection = glacier.project(state, rng)
+    initial_sle = 0.01
+    def mock_read_glacier_obs(state, **kwargs):
+        return xr.Dataset(
+            {
+                "sle": ("time", [initial_sle]),
+            },
+            coords={
+                "time": [state.start_yr - 1],
+            },
+        )
 
-    dmzdtref = 0.95
-    expected_dmz = dmzdtref * (state.endofhistory - 1996) * 1e-3
+
+    monkeypatch.setattr(
+        "profsea.components.global_.glacier.read_glacier_obs",
+        mock_read_glacier_obs,
+    )
+
+    projection = glacier.project(state, rng)
 
     np.testing.assert_allclose(
         projection,
-        expected_dmz,
+        initial_sle,
         atol=1e-7,
     )
 
