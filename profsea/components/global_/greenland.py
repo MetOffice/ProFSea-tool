@@ -48,13 +48,10 @@ class GreenlandAR6(Component):
         # read sea level contribution relative to specified baseline at start_yr from IMBIE 3
         obs = read_greenland_obs(
             baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
+            baseline_end=state.baseline_end,
         )
 
-        initial = obs.sel(
-            time=state.start_yr - 1,
-            component="total",
-        )
+        initial = obs.sel(time=state.start_yr - 1)
 
         sle = initial["sle"].item()
 
@@ -170,13 +167,11 @@ class GreenlandSMBAR5(Component):
         # read sea level contribution at start_yr from IMBIE3
         obs = read_greenland_obs(
             baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
+            baseline_end=state.baseline_end,
+            component="smb"
         )
 
-        initial = obs.sel(
-            time=state.start_yr - 1,
-            component="smb",
-        )
+        initial = obs.sel(time=state.start_yr - 1)
 
         sle = initial["sle"].item()
 
@@ -264,11 +259,11 @@ class GreenlandDynAR5(Component):
         obs_ar5 = read_greenland_obs(
             baseline_start=1986,
             baseline_end=2005,
+            component="dyn"
         )
 
         start_offset = obs_ar5["sle"].sel(
             time=state.start_yr - 1,
-            component="dyn",
         ).item()
 
         # For SMB+dyn during 2005-2010 Table 4.6 gives 0.63+-0.17 mm yr-1 (5-95% range)
@@ -281,13 +276,11 @@ class GreenlandDynAR5(Component):
         # read sea level contribution at start_yr from IMBIE3
         obs = read_greenland_obs(
             baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
+            baseline_end=state.baseline_end,
+            component="dyn"
         )
 
-        initial = obs.sel(
-            time=state.start_yr - 1,
-            component="dyn",
-        )
+        initial = obs.sel(time=state.start_yr - 1)
 
         sle = initial["sle"].item()
         rate = initial["rate"].item()

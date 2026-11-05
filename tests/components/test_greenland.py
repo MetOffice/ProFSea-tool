@@ -113,25 +113,21 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
     state = get_dummy_state(T_change_val=0.0)
 
     initial_sle = 0.01
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "total"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[initial_sle, 0.0, 0.0]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
+                "sle": ("time", [initial_sle]),
+                "rate": ("time", [0.0]),
+                "rate_unc": ("time", [0.0]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 
@@ -265,25 +261,21 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
     rng = np.random.default_rng(42)
 
     smb_offset = 0.01
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "smb"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[0.0, smb_offset, 0.0]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
+                "sle": ("time", [smb_offset]),
+                "rate": ("time", [0.0]),
+                "rate_unc": ("time", [0.0]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 
@@ -359,25 +351,21 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
     dynamic_rate = 0.02
     dynamic_rate_unc = 0.03
 
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "dyn"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[0.0, 0.0, dynamic_offset]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, dynamic_rate]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, dynamic_rate_unc]],
-                ),
+                "sle": ("time", [dynamic_offset]),
+                "rate": ("time", [dynamic_rate]),
+                "rate_unc": ("time", [dynamic_rate_unc]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 
@@ -423,26 +411,22 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
     )
 
     dynamic_offset = 0.01
-    smb_offset = 0.02
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "dyn"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[0.0, smb_offset, dynamic_offset]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
+                "sle": ("time", [dynamic_offset]),
+                "rate": ("time", [0.0]),
+                "rate_unc": ("time", [0.0]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 
@@ -486,25 +470,21 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
     )
 
     dynamic_offset = 0.01
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "dyn"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[0.0, 0.0, dynamic_offset]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
+                "sle": ("time", [dynamic_offset]),
+                "rate": ("time", [0.0]),
+                "rate_unc": ("time", [0.0]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 
@@ -541,25 +521,21 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
     )
 
     initial_dynamic_sle = 0.01
-    def mock_read_greenland_obs(baseline_start, baseline_end):
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total"
+    ):
+        assert component == "dyn"
+
         return xr.Dataset(
             {
-                "sle": (
-                    ("time", "component"),
-                    [[0.0, 0.0, initial_dynamic_sle]],
-                ),
-                "rate": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
-                "rate_unc": (
-                    ("time", "component"),
-                    [[0.0, 0.0, 0.0]],
-                ),
+                "sle": ("time", [initial_dynamic_sle]),
+                "rate": ("time", [0.0]),
+                "rate_unc": ("time", [0.0]),
             },
             coords={
                 "time": [state.start_yr - 1],
-                "component": ["total", "smb", "dyn"],
             },
         )
 

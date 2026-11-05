@@ -514,6 +514,7 @@ def reformat_global_projection(
 
 def _read_imbie3_obs(
     fpath: Path,
+    component: str,
     baseline_start: int,
     baseline_end: int,
 ):
@@ -562,68 +563,72 @@ def _read_imbie3_obs(
     columns = {
         "total": {
             "sle": "Cumulative mass balance anomaly (mm)",
+            "sle_unc": "Cumulative mass balance anomaly uncertainty (mm)",
             "rate": "Mass balance (mm/yr)",
             "rate_unc": "Mass balance uncertainty (mm/yr)",
         },
         "smb": {
             "sle": "Cumulative surface mass balance anomaly (mm)",
+            "sle_unc": "Cumulative surface mass balance anomaly uncertainty (mm)",
             "rate": "Surface mass balance anomaly (mm/yr)",
             "rate_unc": "Surface mass balance anomaly uncertainty (mm/yr)",
         },
         "dyn": {
             "sle": "Cumulative dynamics mass balance anomaly (mm)",
+            "sle_unc": "Cumulative dynamics mass balance anomaly uncertainty (mm)",
             "rate": "Dynamics mass balance anomaly (mm/yr)",
             "rate_unc": "Dynamics mass balance anomaly uncertainty (mm/yr)",
         },
     }
 
-    components = list(columns)
+    try:
+        component_columns = columns[component]
+    except KeyError:
+        raise ValueError(
+            f"Unknown IMBIE3 component: {component!r}. "
+            f"Expected one of {list(columns)}."
+        )
 
-    sle = np.stack(
-        [
-            -pd.to_numeric(
-                df[columns[component]["sle"]],
-                errors="coerce",
-            ).to_numpy()
-            for component in components
-        ],
-        axis=1,
-    )
+    sle = -pd.to_numeric(
+        df[component_columns["sle"]],
+        errors="coerce",
+    ).to_numpy()
 
-    rate = np.stack(
-        [
-            -pd.to_numeric(
-                df[columns[component]["rate"]],
-                errors="coerce",
-            ).to_numpy()
-            for component in components
-        ],
-        axis=1,
-    )
+    sle_unc = pd.to_numeric(
+        df[component_columns["sle_unc"]],
+        errors="coerce",
+    ).to_numpy()
 
-    rate_unc = np.stack(
-        [
-            -pd.to_numeric(
-                df[columns[component]["rate_unc"]],
-                errors="coerce",
-            ).to_numpy()
-            for component in components
-        ],
-        axis=1,
-    )
+    rate = -pd.to_numeric(
+        df[component_columns["rate"]],
+        errors="coerce",
+    ).to_numpy()
+
+    rate_unc = pd.to_numeric(
+        df[component_columns["rate_unc"]],
+        errors="coerce",
+    ).to_numpy()
 
     ds = xr.Dataset(
         data_vars={
             "sle": (
-                ("time", "component"),
+                "time",
                 sle / 1e3,
                 {
                     "long_name": "Sea-level contribution",
                     "units": "m",
                 },
             ),
+            "sle_unc": (
+                "time",
+                sle_unc / 1e3,
+                {
+                    "long_name": "Sea-level contribution uncertainty",
+                    "units": "m",
+                },
+            ),
             "rate": (
-                ("time", "component"),
+                "time",
                 rate,
                 {
                     "long_name": "Sea-level contribution rate",
@@ -631,23 +636,19 @@ def _read_imbie3_obs(
                 },
             ),
             "rate_unc": (
-                ("time", "component"),
+                "time",
                 rate_unc,
                 {
-                    "long_name": (
-                        "Sea-level contribution rate uncertainty"
-                    ),
+                    "long_name": "Sea-level contribution rate uncertainty",
                     "units": "mm yr-1",
                 },
             ),
         },
-        coords={
-            "time": time,
-            "component": components,
-        },
+        coords={"time": time},
         attrs={
             "baseline_start": baseline_start,
             "baseline_end": baseline_end,
+            "component": component,
             "reference": "IMBIE3 (Otosaka et al., 2026)",
         },
     )
@@ -665,13 +666,6 @@ def _read_imbie3_obs(
 
     ds["sle"] = ds["sle"] - baseline_mean
 
-    ds["sle"].attrs.update(
-        {
-            "long_name": "Sea-level contribution",
-            "units": "m",
-        }
-    )
-
     return ds
     # # AR5 used the average ice-sheet loss rate over 2005--2010
     # # (0.63 mm/yr and 0.41mm/yr SLE; AR5 Chapter 4, Table 4.6). Here, we apply
@@ -685,6 +679,7 @@ def _read_imbie3_obs(
 def read_greenland_obs(
     baseline_start: int,
     baseline_end: int,
+    component: str = "total"
 ) -> xr.DataSet:
     """Read IMBIE3 Greenland Ice Sheet observations."""
 
@@ -697,6 +692,7 @@ def read_greenland_obs(
 
     return _read_imbie3_obs(
         fpath,
+        component,
         baseline_start,
         baseline_end
     )
@@ -705,6 +701,7 @@ def read_greenland_obs(
 def read_antarctic_obs(
     baseline_start: int,
     baseline_end: int,
+    component: str = "total",
     region: str | None = None,
 ) -> xr.DataSet:
     """Read IMBIE3 Antarctic Ice Sheet observations.
@@ -740,6 +737,7 @@ def read_antarctic_obs(
 
     return _read_imbie3_obs(
         fpath,
+        component,
         baseline_start,
         baseline_end
     )
@@ -869,6 +867,20 @@ def read_landwater_obs(
     return _load_zheng_component(
         variable="tws",
         uncertainty="tws_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
+    )
+
+
+def read_GMSL_obs(
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Read annual observed GMSL timeseries."""
+
+    return _load_zheng_component(
+        variable="gmsl_m",
+        uncertainty="gmsl_m_u",
         baseline_start=baseline_start,
         baseline_end=baseline_end,
     )

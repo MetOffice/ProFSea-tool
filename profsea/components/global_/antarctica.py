@@ -180,14 +180,11 @@ class AntarcticaISMIP6(Component):
         obs = read_antarctic_obs(
             baseline_start=state.baseline_start,
             baseline_end=state.baseline_end,
+            component="total",
             region=self.region,
         )
 
-        initial = obs.sel(
-            time=state.start_yr - 1,
-            component="total",
-        )
-
+        initial = obs.sel(time=state.start_yr - 1)
         sle = initial["sle"].item()
 
         return total_ais.reshape(state.nt, state.num_members, n_time) + sle
@@ -245,11 +242,11 @@ class AntarcticaDynAR5(Component):
         obs_ar5 = read_antarctic_obs(
             baseline_start=1986,
             baseline_end=2005,
+            component="dyn"
         )
 
         start_offset = obs_ar5["sle"].sel(
             time=state.start_yr - 1,
-            component="dyn",
         ).item()
 
         final -= start_offset
@@ -258,13 +255,11 @@ class AntarcticaDynAR5(Component):
         # projection start year, relative to the specified baseline.
         obs = read_antarctic_obs(
             baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
-        )
-
-        initial = obs.sel(
-            time=state.start_yr - 1,
+            baseline_end=state.baseline_end,
             component="dyn",
         )
+
+        initial = obs.sel(time=state.start_yr - 1)
 
         sle = initial["sle"].item()
         rate = initial["rate"].item()
@@ -355,13 +350,11 @@ class AntarcticaSMBAR5(Component):
         # relative to the specified baseline.
         obs = read_antarctic_obs(
             baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
-        )
-
-        initial = obs.sel(
-            time=state.start_yr - 1,
+            baseline_end=state.baseline_end,
             component="smb",
         )
+
+        initial = obs.sel(time=state.start_yr - 1)
 
         sle = initial["sle"].item()
 

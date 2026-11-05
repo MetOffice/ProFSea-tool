@@ -390,12 +390,18 @@ def _write_mock_imbie3_csv(tmp_path):
         {
             "Date": [f"{year}-01-01" for year in years],
             "Cumulative mass balance anomaly (mm)": years - 1990,
+            "Cumulative mass balance anomaly uncertainty (mm)": np.full(
+                years.size, 0.2
+            ),
             "Mass balance (mm/yr)": np.full(years.size, 2.0),
             "Mass balance uncertainty (mm/yr)": np.full(
                 years.size, 0.2
             ),
             "Cumulative surface mass balance anomaly (mm)": (
                 2 * (years - 1990)
+            ),
+            "Cumulative surface mass balance anomaly uncertainty (mm)": (
+                np.full(years.size, 0.3)
             ),
             "Surface mass balance anomaly (mm/yr)": np.full(
                 years.size, 3.0
@@ -405,6 +411,9 @@ def _write_mock_imbie3_csv(tmp_path):
             ),
             "Cumulative dynamics mass balance anomaly (mm)": (
                 3 * (years - 1990)
+            ),
+            "Cumulative dynamics mass balance anomaly uncertainty (mm)": (
+                np.full(years.size, 0.4)
             ),
             "Dynamics mass balance anomaly (mm/yr)": np.full(
                 years.size, 4.0
@@ -421,7 +430,19 @@ def _write_mock_imbie3_csv(tmp_path):
     return fpath
 
 
-def test_read_imbie3_obs_uses_baseline_mean(tmp_path):
+@pytest.mark.parametrize(
+    "component, expected_sle, expected_sle_unc, expected_rate, expected_rate_unc",
+    [
+        ("total", -0.003, 0.0002, -2.0, 0.2),
+        ("smb",   -0.006, 0.0003, -3.0, 0.3),
+        ("dyn",   -0.009, 0.0004, -4.0, 0.4),
+    ],
+)
+def test_read_imbie3_obs_uses_baseline_mean(
+    tmp_path, component,
+    expected_sle, expected_sle_unc,
+    expected_rate, expected_rate_unc
+):
     state = DummyClimateState(
         start_yr=2000,
         baseline_start=1995,
@@ -431,23 +452,16 @@ def test_read_imbie3_obs_uses_baseline_mean(tmp_path):
 
     ds = _read_imbie3_obs(
         fpath,
+        component=component,
         baseline_start=1995,
         baseline_end=1997,
     )
+    initial = ds.sel(time=state.start_yr - 1)
 
-    offsets = ds["sle"].sel(time=state.start_yr - 1).values
-    rates = ds["rate"].sel(time=state.start_yr - 1).values
-    rate_unc = ds["rate_unc"].sel(time=state.start_yr - 1).values
-
-    assert offsets == pytest.approx(
-        (-0.003, -0.006, -0.009)
-    )
-    assert rates == pytest.approx(
-        (-2.0, -3.0, -4.0)
-    )
-    assert rate_unc == pytest.approx(
-        (-0.2, -0.3, -0.4)
-    )
+    assert initial["sle"].item() == pytest.approx(expected_sle)
+    assert initial["sle_unc"].item() == pytest.approx(expected_sle_unc)
+    assert initial["rate"].item() == pytest.approx(expected_rate)
+    assert initial["rate_unc"].item() == pytest.approx(expected_rate_unc)
 
 
 def test_read_imbie3_obs_explicit_baseline_overrides_state(
@@ -462,14 +476,14 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
 
     ds = _read_imbie3_obs(
         fpath,
+        component="total",
         baseline_start=1995,
         baseline_end=1997,
     )
-    offsets = ds["sle"].sel(time=state.start_yr - 1).values
 
-    assert offsets == pytest.approx(
-        (-0.003, -0.006, -0.009)
-    )
+    sle = ds["sle"].sel(time=state.start_yr - 1).item()
+
+    assert sle == pytest.approx(-0.003)
 
 
 def _write_mock_zheng_dataset(tmp_path):
@@ -617,21 +631,16 @@ def test_read_imbie3_AIS_obs_selects_region_file(
 
     expected = xr.Dataset(
         {
-            "sle": (
-                ("time", "component"),
-                [[0.001, 0.002, 0.003]],
-            ),
+            "sle": ("time", [0.001]),
         },
-        coords={
-            "time": [2000],
-            "component": ["total", "smb", "dyn"],
-        },
+        coords={"time": [2000]},
     )
 
     mock_read.return_value = expected
 
     result = read_antarctic_obs(
         region=region,
+        component="total",
         baseline_start=state.baseline_start,
         baseline_end=state.baseline_end
     )
@@ -641,5 +650,6 @@ def test_read_imbie3_AIS_obs_selects_region_file(
     args = mock_read.call_args.args
 
     assert args[0].name == expected_filename
-    assert args[1] == state.baseline_start
-    assert args[2] == state.baseline_end
+    assert args[1] == "total"
+    assert args[2] == state.baseline_start
+    assert args[3] == state.baseline_end
