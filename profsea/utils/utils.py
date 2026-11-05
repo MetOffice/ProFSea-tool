@@ -513,10 +513,9 @@ def reformat_global_projection(
 
 
 def _read_imbie3_obs(
-    state: ClimateState,
     fpath: Path,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ):
     """Read IMBIE3 observations for ice-sheet components.
 
@@ -531,14 +530,12 @@ def _read_imbie3_obs(
 
     Parameters
     ----------
-    state : ClimateState
-        Climate state containing the projection start year and baseline period.
     fpath : pathlib.Path
         Path to IMBIE3 observational dataset (.csv).
-    baseline_start : int, optional
-        Start year of the baseline period. Defaults to `state.baseline_start`.
-    baseline_end : int, optional
-        End year of the baseline period. Defaults to `state.baseline_end`.
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
 
     Returns
     -------
@@ -555,13 +552,6 @@ def _read_imbie3_obs(
         Mass balance of the Greenland and Antarctic Ice Sheets from the 1970s to 2023.
         https://doi.org/10.5285/128c5e33-5224-4197-82f0-19dcc95b80a0
     """
-
-    baseline_start = (
-        state.baseline_start if baseline_start is None else baseline_start
-    )
-    baseline_end = (
-        state.baseline_end if baseline_end is None else baseline_end
-    )
 
     df = pd.read_csv(fpath)
 
@@ -594,7 +584,7 @@ def _read_imbie3_obs(
             -pd.to_numeric(
                 df[columns[component]["sle"]],
                 errors="coerce",
-            ).to_numpy(dtype=state.dtype)
+            ).to_numpy()
             for component in components
         ],
         axis=1,
@@ -605,7 +595,7 @@ def _read_imbie3_obs(
             -pd.to_numeric(
                 df[columns[component]["rate"]],
                 errors="coerce",
-            ).to_numpy(dtype=state.dtype)
+            ).to_numpy()
             for component in components
         ],
         axis=1,
@@ -616,7 +606,7 @@ def _read_imbie3_obs(
             -pd.to_numeric(
                 df[columns[component]["rate_unc"]],
                 errors="coerce",
-            ).to_numpy(dtype=state.dtype)
+            ).to_numpy()
             for component in components
         ],
         axis=1,
@@ -693,9 +683,8 @@ def _read_imbie3_obs(
 
 
 def read_greenland_obs(
-    state: ClimateState,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ) -> xr.DataSet:
     """Read IMBIE3 Greenland Ice Sheet observations."""
 
@@ -707,7 +696,6 @@ def read_greenland_obs(
     )
 
     return _read_imbie3_obs(
-        state,
         fpath,
         baseline_start,
         baseline_end
@@ -715,12 +703,20 @@ def read_greenland_obs(
 
 
 def read_antarctic_obs(
-    state: ClimateState,
+    baseline_start: int,
+    baseline_end: int,
     region: str | None = None,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
 ) -> xr.DataSet:
-    """Read IMBIE3 Antarctic Ice Sheet observations."""
+    """Read IMBIE3 Antarctic Ice Sheet observations.
+
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
+    region : str, optional
+        Antarctic region to load. One of ``"eais"``, ``"wais"``,
+        ``"peninsula"``, or ``None`` for the total Antarctic Ice Sheet.
+    """
 
     root = (
         PROFSEA_DIR
@@ -743,7 +739,6 @@ def read_antarctic_obs(
         )
 
     return _read_imbie3_obs(
-        state,
         fpath,
         baseline_start,
         baseline_end
@@ -751,11 +746,10 @@ def read_antarctic_obs(
 
 
 def _load_zheng_component(
-    state: ClimateState,
     variable: str,
     uncertainty: str,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ) -> xr.Dataset:
     """Load and rebaseline an observational sea-level component.
 
@@ -775,12 +769,10 @@ def _load_zheng_component(
         Name of the sea-level variable to load.
     uncertainty : str
         Name of the corresponding uncertainty variable.
-    baseline_start : int, optional
-        Start year of the baseline period. Defaults to
-        `state.baseline_start`.
-    baseline_end : int, optional
-        End year of the baseline period. Defaults to
-        `state.baseline_end`.
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
 
     Returns
     -------
@@ -797,19 +789,8 @@ def _load_zheng_component(
     )
 
     with xr.open_dataset(filepath) as ds:
-        sle = ds[variable].load().astype(state.dtype)
-        sle_unc = ds[uncertainty].load().astype(state.dtype)
-
-    baseline_start = (
-        state.baseline_start
-        if baseline_start is None
-        else baseline_start
-    )
-    baseline_end = (
-        state.baseline_end
-        if baseline_end is None
-        else baseline_end
-    )
+        sle = ds[variable].load()
+        sle_unc = ds[uncertainty].load()
 
     # Standardise the observational coordinate to integer years.
     years = sle["time"].values.astype(int)
@@ -852,14 +833,12 @@ def _load_zheng_component(
 
 
 def read_thermal_expansion_obs(
-    state: ClimateState,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ) -> xr.Dataset:
     """Read annual observed thermal-expansion sea-level contribution."""
 
     return _load_zheng_component(
-        state,
         variable="iapv4",
         uncertainty="iapv4_u",
         baseline_start=baseline_start,
@@ -868,14 +847,12 @@ def read_thermal_expansion_obs(
 
 
 def read_glacier_obs(
-    state: ClimateState,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ) -> xr.Dataset:
     """Read annual observed glacier sea-level contribution."""
 
     return _load_zheng_component(
-        state,
         variable="glacier",
         uncertainty="glacier_u",
         baseline_start=baseline_start,
@@ -884,14 +861,12 @@ def read_glacier_obs(
 
 
 def read_landwater_obs(
-    state: ClimateState,
-    baseline_start: int | None = None,
-    baseline_end: int | None = None,
+    baseline_start: int,
+    baseline_end: int,
 ) -> xr.Dataset:
     """Read annual observed land-water-storage sea-level contribution."""
 
     return _load_zheng_component(
-        state,
         variable="tws",
         uncertainty="tws_u",
         baseline_start=baseline_start,

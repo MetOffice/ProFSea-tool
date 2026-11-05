@@ -178,7 +178,8 @@ class AntarcticaISMIP6(Component):
         # Initialise the projection from the observed regional AIS contribution
         # at the projection start year, relative to the specified baseline.
         obs = read_antarctic_obs(
-            state,
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end,
             region=self.region,
         )
 
@@ -242,7 +243,6 @@ class AntarcticaDynAR5(Component):
         # AR5 end-of-century contribution is expressed relative to the AR5 projection
         # period. Convert to a change relative to the projection start_yr
         obs_ar5 = read_antarctic_obs(
-            state,
             baseline_start=1986,
             baseline_end=2005,
         )
@@ -256,7 +256,10 @@ class AntarcticaDynAR5(Component):
 
         # Initialise Antarctic dynamic SLE and rate from IMBIE3 at the
         # projection start year, relative to the specified baseline.
-        obs = read_antarctic_obs(state)
+        obs = read_antarctic_obs(
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end
+        )
 
         initial = obs.sel(
             time=state.start_yr - 1,
@@ -350,7 +353,10 @@ class AntarcticaSMBAR5(Component):
 
         # Initialise Antarctic SMB SLE from IMBIE3 at the projection start year,
         # relative to the specified baseline.
-        obs = read_antarctic_obs(state)
+        obs = read_antarctic_obs(
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end
+        )
 
         initial = obs.sel(
             time=state.start_yr - 1,

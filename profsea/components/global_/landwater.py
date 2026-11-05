@@ -58,7 +58,10 @@ class LandwaterAR6(Component):
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr
         # from Zheng+ 2026 (Sci. Adv.)
-        obs = read_landwater_obs(state)
+        obs = read_landwater_obs(
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end
+        )
 
         sle = obs["sle"].sel(
             time=state.start_yr - 1
@@ -113,7 +116,6 @@ class LandwaterAR5(Component):
         final_u = 0.09
         # Convert to a change relative to the projection start_yr
         obs_ar5 = read_landwater_obs(
-            state,
             baseline_start=1986,
             baseline_end=2005,
         )
@@ -125,7 +127,10 @@ class LandwaterAR5(Component):
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        obs = read_landwater_obs(state)
+        obs = read_landwater_obs(
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end
+        )
 
         sle = obs["sle"].sel(
             time=state.start_yr - 1
@@ -133,7 +138,6 @@ class LandwaterAR5(Component):
 
         # This follows the AR5 methodology, which adopts an effective contribution rate of 0.38 [0.26
         # to 0.49] mm/yr over the baseline 1993-2010 (Ar5 Ch13 Table 13.1).
-
 
         rate_obs = obs.sel(
             time=slice(state.start_yr - 13, state.start_yr + 4)

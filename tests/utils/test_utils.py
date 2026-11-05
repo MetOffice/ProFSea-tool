@@ -430,7 +430,6 @@ def test_read_imbie3_obs_uses_baseline_mean(tmp_path):
     fpath = _write_mock_imbie3_csv(tmp_path)
 
     ds = _read_imbie3_obs(
-        state,
         fpath,
         baseline_start=1995,
         baseline_end=1997,
@@ -462,7 +461,6 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
     fpath = _write_mock_imbie3_csv(tmp_path)
 
     ds = _read_imbie3_obs(
-        state,
         fpath,
         baseline_start=1995,
         baseline_end=1997,
@@ -527,9 +525,10 @@ def test_load_zheng_component_uses_state_baseline(
     )
 
     ds = _load_zheng_component(
-        state,
         variable="tws",
         uncertainty="tws_u",
+        baseline_start=state.baseline_start,
+        baseline_end=state.baseline_end
     )
 
     np.testing.assert_allclose(
@@ -565,29 +564,31 @@ def test_read_thermal_expansion_obs(
     )
 
     mock_load.return_value = expected
-    result = read_thermal_expansion_obs(state)
+    result = read_thermal_expansion_obs(
+        baseline_start=state.baseline_start,
+        baseline_end=state.baseline_end
+    )
 
     xr.testing.assert_identical(result, expected)
 
     mock_load.assert_called_once_with(
-        state,
         variable="iapv4",
         uncertainty="iapv4_u",
-        baseline_start=None,
-        baseline_end=None
+        baseline_start=state.baseline_start,
+        baseline_end=state.baseline_end
     )
 
 
 def test_read_imbie3_AIS_obs_invalid_region():
-    state = DummyClimateState()
 
     with pytest.raises(
         ValueError,
         match="Unknown Antarctic region",
     ):
         read_antarctic_obs(
-            state,
             region="invalid",
+            baseline_start=1995,
+            baseline_end=2005
         )
 
 
@@ -609,7 +610,10 @@ def test_read_imbie3_AIS_obs_selects_region_file(
     region,
     expected_filename,
 ):
-    state = DummyClimateState()
+    state = DummyClimateState(
+        baseline_start=1991,
+        baseline_end=1993,
+    )
 
     expected = xr.Dataset(
         {
@@ -627,13 +631,15 @@ def test_read_imbie3_AIS_obs_selects_region_file(
     mock_read.return_value = expected
 
     result = read_antarctic_obs(
-        state,
         region=region,
+        baseline_start=state.baseline_start,
+        baseline_end=state.baseline_end
     )
 
     xr.testing.assert_identical(result, expected)
 
     args = mock_read.call_args.args
 
-    assert args[0] is state
-    assert args[1].name == expected_filename
+    assert args[0].name == expected_filename
+    assert args[1] == state.baseline_start
+    assert args[2] == state.baseline_end

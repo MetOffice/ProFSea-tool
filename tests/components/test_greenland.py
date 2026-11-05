@@ -113,7 +113,7 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
     state = get_dummy_state(T_change_val=0.0)
 
     initial_sle = 0.01
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (
@@ -265,7 +265,7 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
     rng = np.random.default_rng(42)
 
     smb_offset = 0.01
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (
@@ -359,7 +359,7 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
     dynamic_rate = 0.02
     dynamic_rate_unc = 0.03
 
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (
@@ -424,7 +424,7 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
 
     dynamic_offset = 0.01
     smb_offset = 0.02
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (
@@ -486,7 +486,7 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
     )
 
     dynamic_offset = 0.01
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (
@@ -541,7 +541,7 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
     )
 
     initial_dynamic_sle = 0.01
-    def mock_read_greenland_obs(state, **kwargs):
+    def mock_read_greenland_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
                 "sle": (

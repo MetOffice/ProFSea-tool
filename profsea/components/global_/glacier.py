@@ -40,7 +40,10 @@ class Glacier(Component):
 
         # read sea level contribution (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        obs = read_glacier_obs(state)
+        obs = read_glacier_obs(
+            baseline_start=state.baseline_start,
+            baseline_end=state.baseline_end
+        )
 
         d_gla = obs["sle"].sel(
             time=state.start_yr - 1,

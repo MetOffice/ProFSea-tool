@@ -196,7 +196,7 @@ def test_landwater_ar6_is_relative_to_projection_start(monkeypatch):
 
     initial_sle = 0.01
 
-    def mock_read_landwater_obs(state, **kwargs):
+    def mock_read_landwater_obs(baseline_start, baseline_end):
         return get_dummy_landwater_obs(
             state,
             sle=initial_sle,
@@ -236,7 +236,7 @@ def test_landwater_ar6_samples_only_existing_projection_members(monkeypatch):
 
     initial_sle = 0.01
 
-    def mock_read_landwater_obs(state, **kwargs):
+    def mock_read_landwater_obs(baseline_start, baseline_end):
         return get_dummy_landwater_obs(
             state,
             sle=initial_sle,
@@ -324,7 +324,6 @@ def test_landwater_ar5_uses_expected_parameters(monkeypatch):
     sle_unc = np.full(years.size, 0.001)
 
     def mock_read_landwater_obs(
-        state,
         baseline_start=None,
         baseline_end=None,
     ):
@@ -420,7 +419,7 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
         return expected
 
     initial_sle = 0.01
-    def mock_read_landwater_obs(state, **kwargs):
+    def mock_read_landwater_obs(baseline_start, baseline_end):
         years = np.arange(
             state.start_yr - 13,
             state.start_yr + 5,
