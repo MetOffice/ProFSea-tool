@@ -1,6 +1,6 @@
 import numpy as np
-import xarray as xr
 import pytest
+import xarray as xr
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.landwater import (
