@@ -59,13 +59,10 @@ class LandwaterAR6(Component):
         # read sea level contribution and rate (relative to specified baseline) at start_yr
         # from Zheng+ 2026 (Sci. Adv.)
         obs = read_landwater_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
+            baseline_start=state.baseline_start, baseline_end=state.baseline_end
         )
 
-        sle = obs["sle"].sel(
-            time=state.start_yr - 1
-        ).item()
+        sle = obs["sle"].sel(time=state.start_yr - 1).item()
 
         # Resulting shape: (nt, nm, n_years)
         lw_ens = lw_base[sample_indices]
@@ -120,28 +117,21 @@ class LandwaterAR5(Component):
             baseline_end=2005,
         )
 
-        start_offset = obs_ar5["sle"].sel(
-            time=state.start_yr - 1
-        ).item()
+        start_offset = obs_ar5["sle"].sel(time=state.start_yr - 1).item()
         final = [final_l - start_offset, final_u - start_offset]
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
         obs = read_landwater_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end
+            baseline_start=state.baseline_start, baseline_end=state.baseline_end
         )
 
-        sle = obs["sle"].sel(
-            time=state.start_yr - 1
-        ).item()
+        sle = obs["sle"].sel(time=state.start_yr - 1).item()
 
         # This follows the AR5 methodology, which adopts an effective contribution rate of 0.38 [0.26
         # to 0.49] mm/yr over the baseline 1993-2010 (Ar5 Ch13 Table 13.1).
 
-        rate_obs = obs.sel(
-            time=slice(state.start_yr - 13, state.start_yr + 4)
-        )
+        rate_obs = obs.sel(time=slice(state.start_yr - 13, state.start_yr + 4))
 
         x = rate_obs.time.values
         y = rate_obs.sle.values
@@ -159,11 +149,7 @@ class LandwaterAR5(Component):
         startratemean = coeffs[0] * 1e3
         startratepm = np.sqrt(cov[0, 0]) * 1e3
 
-        return time_projection(
-            state,
-            startratemean,
-            startratepm,
-            final,
-            rng,
-            nfinal=nyr
-        ) + sle
+        return (
+            time_projection(state, startratemean, startratepm, final, rng, nfinal=nyr)
+            + sle
+        )

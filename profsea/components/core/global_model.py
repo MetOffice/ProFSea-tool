@@ -116,10 +116,7 @@ class Global:
 
         validate_component_map(self.components, Component, "Global")
         validate_projection_years(
-            self.start_yr,
-            self.end_yr,
-            self.baseline_start,
-            self.baseline_end
+            self.start_yr, self.end_yr, self.baseline_start, self.baseline_end
         )
 
     # Inject method!
@@ -146,9 +143,7 @@ class Global:
                     dims=["percentile", "time"],
                     coords={
                         "percentile": self.output_percentiles,
-                        "time": np.arange(
-                            self.start_yr, self.start_yr + arr.shape[1]
-                        ),
+                        "time": np.arange(self.start_yr, self.start_yr + arr.shape[1]),
                     },
                 )
                 xr_dict[name].attrs["units"] = "m"
@@ -161,9 +156,7 @@ class Global:
                     coords={
                         "climate_member": np.arange(arr.shape[0]),
                         "process_member": np.arange(arr.shape[1]),
-                        "time": np.arange(
-                            self.start_yr, self.start_yr + arr.shape[2]
-                        ),
+                        "time": np.arange(self.start_yr, self.start_yr + arr.shape[2]),
                     },
                 )
                 xr_dict[name].attrs["units"] = "m"

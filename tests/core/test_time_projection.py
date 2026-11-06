@@ -211,7 +211,7 @@ def test_time_projection_zero_fraction_matches_manual_formula():
     timeendofAR5 = state.endofAR5 - state.endofhistory + 1
 
     # Elapsed year corresponding to the end of AR5.
-    finalyr = (np.arange(1, dtype=state.dtype) + timeendofAR5)
+    finalyr = np.arange(1, dtype=state.dtype) + timeendofAR5
     halfacc = (afinal - start_rate * finalyr.mean()) / (finalyr**2).mean()
 
     time = (

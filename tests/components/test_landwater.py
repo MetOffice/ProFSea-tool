@@ -419,6 +419,7 @@ def test_landwater_ar5_returns_time_projection_result(monkeypatch):
         return expected
 
     initial_sle = 0.01
+
     def mock_read_landwater_obs(baseline_start, baseline_end):
         years = np.arange(
             state.start_yr - 13,

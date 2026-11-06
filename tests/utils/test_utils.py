@@ -25,16 +25,16 @@ class DummyClimateState:
     """Mock state object for testing projection reformatting."""
 
     def __init__(
-            self,
-            percentiles=None,
-            start_yr=2006,
-            end_yr=2101,
-            baseline_start=1996,
-            baseline_end=2014,
-            nt=2,
-            num_members=3,
-            n_years=4,
-            dtype=np.float64
+        self,
+        percentiles=None,
+        start_yr=2006,
+        end_yr=2101,
+        baseline_start=1996,
+        baseline_end=2014,
+        nt=2,
+        num_members=3,
+        n_years=4,
+        dtype=np.float64,
     ):
         self.output_percentiles = percentiles
         self.start_yr = start_yr
@@ -45,6 +45,7 @@ class DummyClimateState:
         self.num_members = num_members
         self.n_years = n_years
         self.dtype = dtype
+
 
 # --- check_shapes ---
 
@@ -378,6 +379,7 @@ def test_validate_projection_years_baseline_end_after_2023():
             baseline_end=2024,
         )
 
+
 # --- observational data readers ---
 
 
@@ -394,30 +396,20 @@ def _write_mock_imbie3_csv(tmp_path):
                 years.size, 0.2
             ),
             "Mass balance (mm/yr)": np.full(years.size, 2.0),
-            "Mass balance uncertainty (mm/yr)": np.full(
-                years.size, 0.2
-            ),
-            "Cumulative surface mass balance anomaly (mm)": (
-                2 * (years - 1990)
-            ),
+            "Mass balance uncertainty (mm/yr)": np.full(years.size, 0.2),
+            "Cumulative surface mass balance anomaly (mm)": (2 * (years - 1990)),
             "Cumulative surface mass balance anomaly uncertainty (mm)": (
                 np.full(years.size, 0.3)
             ),
-            "Surface mass balance anomaly (mm/yr)": np.full(
-                years.size, 3.0
-            ),
+            "Surface mass balance anomaly (mm/yr)": np.full(years.size, 3.0),
             "Surface mass balance anomaly uncertainty (mm/yr)": (
                 np.full(years.size, 0.3)
             ),
-            "Cumulative dynamics mass balance anomaly (mm)": (
-                3 * (years - 1990)
-            ),
+            "Cumulative dynamics mass balance anomaly (mm)": (3 * (years - 1990)),
             "Cumulative dynamics mass balance anomaly uncertainty (mm)": (
                 np.full(years.size, 0.4)
             ),
-            "Dynamics mass balance anomaly (mm/yr)": np.full(
-                years.size, 4.0
-            ),
+            "Dynamics mass balance anomaly (mm/yr)": np.full(years.size, 4.0),
             "Dynamics mass balance anomaly uncertainty (mm/yr)": (
                 np.full(years.size, 0.4)
             ),
@@ -434,14 +426,17 @@ def _write_mock_imbie3_csv(tmp_path):
     "component, expected_sle, expected_sle_unc, expected_rate, expected_rate_unc",
     [
         ("total", -0.003, 0.0002, -2.0, 0.2),
-        ("smb",   -0.006, 0.0003, -3.0, 0.3),
-        ("dyn",   -0.009, 0.0004, -4.0, 0.4),
+        ("smb", -0.006, 0.0003, -3.0, 0.3),
+        ("dyn", -0.009, 0.0004, -4.0, 0.4),
     ],
 )
 def test_read_imbie3_obs_uses_baseline_mean(
-    tmp_path, component,
-    expected_sle, expected_sle_unc,
-    expected_rate, expected_rate_unc
+    tmp_path,
+    component,
+    expected_sle,
+    expected_sle_unc,
+    expected_rate,
+    expected_rate_unc,
 ):
     state = DummyClimateState(
         start_yr=2000,
@@ -489,11 +484,7 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
 def _write_mock_zheng_dataset(tmp_path):
     """Write a small mock NetCDF dataset."""
 
-    component_dir = (
-        tmp_path
-        / "profsea-assets"
-        / "component-obs"
-    )
+    component_dir = tmp_path / "profsea-assets" / "component-obs"
     component_dir.mkdir(parents=True)
 
     ds = xr.Dataset(
@@ -542,7 +533,7 @@ def test_load_zheng_component_uses_state_baseline(
         variable="tws",
         uncertainty="tws_u",
         baseline_start=state.baseline_start,
-        baseline_end=state.baseline_end
+        baseline_end=state.baseline_end,
     )
 
     np.testing.assert_allclose(
@@ -579,8 +570,7 @@ def test_read_thermal_expansion_obs(
 
     mock_load.return_value = expected
     result = read_thermal_expansion_obs(
-        baseline_start=state.baseline_start,
-        baseline_end=state.baseline_end
+        baseline_start=state.baseline_start, baseline_end=state.baseline_end
     )
 
     xr.testing.assert_identical(result, expected)
@@ -589,7 +579,7 @@ def test_read_thermal_expansion_obs(
         variable="iapv4",
         uncertainty="iapv4_u",
         baseline_start=state.baseline_start,
-        baseline_end=state.baseline_end
+        baseline_end=state.baseline_end,
     )
 
 
@@ -599,11 +589,7 @@ def test_read_imbie3_AIS_obs_invalid_region():
         ValueError,
         match="Unknown Antarctic region",
     ):
-        read_antarctic_obs(
-            region="invalid",
-            baseline_start=1995,
-            baseline_end=2005
-        )
+        read_antarctic_obs(region="invalid", baseline_start=1995, baseline_end=2005)
 
 
 @pytest.mark.parametrize(
@@ -642,7 +628,7 @@ def test_read_imbie3_AIS_obs_selects_region_file(
         region=region,
         component="total",
         baseline_start=state.baseline_start,
-        baseline_end=state.baseline_end
+        baseline_end=state.baseline_end,
     )
 
     xr.testing.assert_identical(result, expected)

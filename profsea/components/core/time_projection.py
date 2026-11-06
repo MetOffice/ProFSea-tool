@@ -38,7 +38,9 @@ def time_projection(
     """
     # Create a field of elapsed time since start in years
     timeendofAR5 = state.endofAR5 - state.endofhistory + 1
-    time = np.arange(state.start_yr, state.end_yr, dtype=state.dtype) - state.start_yr + 1
+    time = (
+        np.arange(state.start_yr, state.end_yr, dtype=state.dtype) - state.start_yr + 1
+    )
 
     if fraction is None:
         fraction = rng.random((state.nt, state.num_members), dtype=state.dtype)

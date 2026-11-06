@@ -220,6 +220,7 @@ def test_glacier_adds_reference_period_offset(monkeypatch):
     rng = np.random.default_rng(42)
 
     initial_sle = 0.01
+
     def mock_read_glacier_obs(baseline_start, baseline_end):
         return xr.Dataset(
             {
@@ -229,7 +230,6 @@ def test_glacier_adds_reference_period_offset(monkeypatch):
                 "time": [state.start_yr - 1],
             },
         )
-
 
     monkeypatch.setattr(
         "profsea.components.global_.glacier.read_glacier_obs",

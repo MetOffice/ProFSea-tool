@@ -240,14 +240,16 @@ class AntarcticaDynAR5(Component):
         # AR5 end-of-century contribution is expressed relative to the AR5 projection
         # period. Convert to a change relative to the projection start_yr
         obs_ar5 = read_antarctic_obs(
-            baseline_start=1986,
-            baseline_end=2005,
-            component="dyn"
+            baseline_start=1986, baseline_end=2005, component="dyn"
         )
 
-        start_offset = obs_ar5["sle"].sel(
-            time=state.start_yr - 1,
-        ).item()
+        start_offset = (
+            obs_ar5["sle"]
+            .sel(
+                time=state.start_yr - 1,
+            )
+            .item()
+        )
 
         final -= start_offset
 

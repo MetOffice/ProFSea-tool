@@ -71,6 +71,7 @@ def test_expansion_ohc_change_true_scales_input_with_efficiency():
         atol=1e-7,
     )
 
+
 def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     """When OHC_change is False, input should be broadcast to all members unchanged."""
     state = get_dummy_state(nt=2, num_members=3, n_years=4)

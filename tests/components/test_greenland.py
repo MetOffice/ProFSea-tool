@@ -21,7 +21,7 @@ def get_dummy_state(
     palmer_method: bool = True,
 ) -> ClimateState:
     """Helper to generate a small ClimateState with constant temperature."""
-    n_years = end_yr-start_yr
+    n_years = end_yr - start_yr
     T_ens = np.ones((2, n_years), dtype=np.float32) * T_change_val
     T_int_ens = np.cumsum(T_ens, axis=1)
     T_int_med = np.cumsum(np.median(T_ens, axis=0))
@@ -113,11 +113,8 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
     state = get_dummy_state(T_change_val=0.0)
 
     initial_sle = 0.01
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "total"
 
         return xr.Dataset(
@@ -261,11 +258,8 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
     rng = np.random.default_rng(42)
 
     smb_offset = 0.01
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "smb"
 
         return xr.Dataset(
@@ -351,11 +345,7 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
     dynamic_rate = 0.02
     dynamic_rate_unc = 0.03
 
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "dyn"
 
         return xr.Dataset(
@@ -412,11 +402,7 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
 
     dynamic_offset = 0.01
 
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "dyn"
 
         return xr.Dataset(
@@ -440,10 +426,7 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
         np.random.default_rng(42),
     )
 
-    assert captured["final"] == [
-        0.020 - dynamic_offset,
-        0.085 - dynamic_offset
-    ]
+    assert captured["final"] == [0.020 - dynamic_offset, 0.085 - dynamic_offset]
 
 
 def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
@@ -470,11 +453,8 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
     )
 
     dynamic_offset = 0.01
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "dyn"
 
         return xr.Dataset(
@@ -521,11 +501,8 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
     )
 
     initial_dynamic_sle = 0.01
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total"
-    ):
+
+    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
         assert component == "dyn"
 
         return xr.Dataset(

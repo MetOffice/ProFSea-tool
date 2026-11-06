@@ -90,10 +90,7 @@ def validate_component_map(
 
 
 def validate_projection_years(
-    start_yr: int,
-    end_yr: int,
-    baseline_start: int,
-    baseline_end: int
+    start_yr: int, end_yr: int, baseline_start: int, baseline_end: int
 ) -> None:
     """Validate the baseline and projections years before model construction.
 
@@ -117,8 +114,7 @@ def validate_projection_years(
     """
     if start_yr >= end_yr:
         raise ValueError(
-            f"start_yr ({start_yr}) must be earlier than "
-            f"end_yr ({end_yr})."
+            f"start_yr ({start_yr}) must be earlier than end_yr ({end_yr})."
         )
     if baseline_start >= baseline_end:
         raise ValueError(
@@ -585,8 +581,7 @@ def _read_imbie3_obs(
         component_columns = columns[component]
     except KeyError:
         raise ValueError(
-            f"Unknown IMBIE3 component: {component!r}. "
-            f"Expected one of {list(columns)}."
+            f"Unknown IMBIE3 component: {component!r}. Expected one of {list(columns)}."
         )
 
     sle = -pd.to_numeric(
@@ -660,9 +655,7 @@ def _read_imbie3_obs(
 
     # Reference cumulative SLE to its mean over the requested baseline
     # period.
-    baseline_mean = ds["sle"].sel(
-        time=slice(baseline_start, baseline_end)
-    ).mean("time")
+    baseline_mean = ds["sle"].sel(time=slice(baseline_start, baseline_end)).mean("time")
 
     ds["sle"] = ds["sle"] - baseline_mean
 
@@ -677,9 +670,7 @@ def _read_imbie3_obs(
 
 
 def read_greenland_obs(
-    baseline_start: int,
-    baseline_end: int,
-    component: str = "total"
+    baseline_start: int, baseline_end: int, component: str = "total"
 ) -> xr.DataSet:
     """Read IMBIE3 Greenland Ice Sheet observations."""
 
@@ -690,12 +681,7 @@ def read_greenland_obs(
         / "imbie3_greenland_mm_partitioned.csv"
     )
 
-    return _read_imbie3_obs(
-        fpath,
-        component,
-        baseline_start,
-        baseline_end
-    )
+    return _read_imbie3_obs(fpath, component, baseline_start, baseline_end)
 
 
 def read_antarctic_obs(
@@ -715,11 +701,7 @@ def read_antarctic_obs(
         ``"peninsula"``, or ``None`` for the total Antarctic Ice Sheet.
     """
 
-    root = (
-        PROFSEA_DIR
-        / "profsea-assets"
-        / "component-obs"
-    )
+    root = PROFSEA_DIR / "profsea-assets" / "component-obs"
 
     files = {
         None: "imbie3_antarctica_mm_partitioned.csv",
@@ -731,16 +713,9 @@ def read_antarctic_obs(
     try:
         fpath = root / files[region]
     except KeyError:
-        raise ValueError(
-            f"Unknown Antarctic region: {region!r}"
-        )
+        raise ValueError(f"Unknown Antarctic region: {region!r}")
 
-    return _read_imbie3_obs(
-        fpath,
-        component,
-        baseline_start,
-        baseline_end
-    )
+    return _read_imbie3_obs(fpath, component, baseline_start, baseline_end)
 
 
 def _load_zheng_component(
@@ -779,12 +754,7 @@ def _load_zheng_component(
         in metres, relative to the requested baseline period.
     """
 
-    filepath = (
-        PROFSEA_DIR
-        / "profsea-assets"
-        / "component-obs"
-        / "Zheng2026.nc"
-    )
+    filepath = PROFSEA_DIR / "profsea-assets" / "component-obs" / "Zheng2026.nc"
 
     with xr.open_dataset(filepath) as ds:
         sle = ds[variable].load()
@@ -798,9 +768,7 @@ def _load_zheng_component(
 
     # Reference cumulative SLE to its mean over the requested
     # baseline period.
-    baseline_mean = sle.sel(
-        time=slice(baseline_start, baseline_end)
-    ).mean("time")
+    baseline_mean = sle.sel(time=slice(baseline_start, baseline_end)).mean("time")
 
     sle = (sle - baseline_mean) / 1e3
     sle_unc = sle_unc / 1e3

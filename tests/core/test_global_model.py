@@ -22,7 +22,7 @@ def test_calculate_drivers_math():
         end_yr=2008,
         baseline_start=1986,
         baseline_end=2005,
-        nt=2
+        nt=2,
     )
     T_ens, T_int_ens, T_int_med = global_model._calculate_drivers(T_change)
 
@@ -45,7 +45,7 @@ def test_run_orchestration():
         baseline_start=1995,
         baseline_end=2014,
         nt=2,
-        num_members=3
+        num_members=3,
     )
 
     # Shape: (nt=2, n_years=4)
@@ -66,7 +66,7 @@ def test_save_components(tmp_path):
         start_yr=2001,
         end_yr=2010,
         baseline_start=1986,
-        baseline_end=2014
+        baseline_end=2014,
     )
 
     # Create dummy result matching the new 3D dimensional structure
@@ -134,7 +134,7 @@ def test_return_types():
         baseline_end=2000,
         nt=2,
         num_members=3,
-        dtype=np.float64
+        dtype=np.float64,
     )
     results = global_model_float64.run(scenario="rcp26", T_change=tas)
 
@@ -152,7 +152,7 @@ def test_return_types():
         baseline_end=2014,
         nt=2,
         num_members=3,
-        dtype=np.float32
+        dtype=np.float32,
     )
     results = global_model_float32.run(scenario="rcp26", T_change=tas)
 
