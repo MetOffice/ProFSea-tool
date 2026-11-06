@@ -95,7 +95,7 @@ def test_save_components(tmp_path):
     assert list(ds.dims) == ["climate_member", "process_member", "time"]
 
 
-def test_return_types():
+def test_return_types(monkeypatch):
     # Import a number of real components to test their return types
     from profsea.components.global_ import (
         AntarcticaDynAR5,
@@ -108,6 +108,83 @@ def test_return_types():
         LandwaterAR5,
         LandwaterAR6,
         ThermalExpansion,
+    )
+
+    # Mock observational readers so this test does not depend on external
+    years = np.arange(1900, 2201)
+
+    def mock_read_antarctic_obs(
+        baseline_start,
+        baseline_end,
+        component="total",
+        region=None,
+    ):
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.full(years.size, 0.001)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.full(years.size, 0.001)),
+            },
+            coords={"time": years},
+        )
+
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total",
+    ):
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.full(years.size, 0.001)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.full(years.size, 0.001)),
+            },
+            coords={"time": years},
+        )
+
+    def mock_read_glacier_obs(
+        baseline_start,
+        baseline_end,
+    ):
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.full(years.size, 0.001)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.full(years.size, 0.001)),
+            },
+            coords={"time": years},
+        )
+
+    def mock_read_landwater_obs(
+        baseline_start,
+        baseline_end,
+    ):
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.full(years.size, 0.001)),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.antarctica.read_antarctic_obs",
+        mock_read_antarctic_obs,
+    )
+    monkeypatch.setattr(
+        "profsea.components.global_.greenland.read_greenland_obs",
+        mock_read_greenland_obs,
+    )
+    monkeypatch.setattr(
+        "profsea.components.global_.glacier.read_glacier_obs",
+        mock_read_glacier_obs,
+    )
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
     )
 
     tas = np.zeros((2, 95))  # 2 trajectories, 95 years

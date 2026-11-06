@@ -6,6 +6,29 @@ from profsea.components.core.state import ClimateState
 from profsea.components.global_.glacier import Glacier
 
 
+@pytest.fixture(autouse=True)
+def mock_glacier_observations(monkeypatch):
+    """Prevent component tests from reading external observational files."""
+
+    def mock_read_glacier_obs(baseline_start, baseline_end):
+        years = np.arange(1900, 2201)
+
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.zeros(years.size)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.zeros(years.size)),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.glacier.read_glacier_obs",
+        mock_read_glacier_obs,
+    )
+
+
 def get_dummy_state(
     T_change_val: float = 1.0,
     *,

@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import xarray as xr
+import pytest
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.greenland import (
@@ -8,6 +9,33 @@ from profsea.components.global_.greenland import (
     GreenlandDynAR5,
     GreenlandSMBAR5,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_greenland_observations(monkeypatch):
+    """Prevent component tests from reading external IMBIE3 files."""
+
+    def mock_read_greenland_obs(
+        baseline_start,
+        baseline_end,
+        component="total",
+    ):
+        years = np.arange(1900, 2201)
+
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.zeros(years.size)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.zeros(years.size)),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.greenland.read_greenland_obs",
+        mock_read_greenland_obs,
+    )
 
 
 def get_dummy_state(

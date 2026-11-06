@@ -10,6 +10,34 @@ from profsea.components.global_.antarctica import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_antarctic_observations(monkeypatch):
+    """Prevent component tests from reading external IMBIE3 files."""
+
+    def mock_read_antarctic_obs(
+        baseline_start,
+        baseline_end,
+        component="total",
+        region=None,
+    ):
+        years = np.arange(1900, 2201)
+
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.zeros(years.size)),
+                "rate": ("time", np.zeros(years.size)),
+                "rate_unc": ("time", np.zeros(years.size)),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.antarctica.read_antarctic_obs",
+        mock_read_antarctic_obs,
+    )
+
+
 def get_dummy_state(
     T_change_val: float = 1.0,
     scenario: str = "rcp45",

@@ -1,11 +1,33 @@
 import numpy as np
 import xarray as xr
+import pytest
 
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.landwater import (
     LandwaterAR5,
     LandwaterAR6,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_landwater_observations(monkeypatch):
+    """Prevent component tests from reading external observational files."""
+
+    def mock_read_landwater_obs(baseline_start, baseline_end):
+        years = np.arange(1900, 2201)
+
+        return xr.Dataset(
+            {
+                "sle": ("time", np.zeros(years.size)),
+                "sle_unc": ("time", np.ones(years.size) * 0.001),
+            },
+            coords={"time": years},
+        )
+
+    monkeypatch.setattr(
+        "profsea.components.global_.landwater.read_landwater_obs",
+        mock_read_landwater_obs,
+    )
 
 
 def get_dummy_state(
