@@ -53,5 +53,6 @@ The worked tutorial notebook is available below:
 	:maxdepth: 1
 
 	worked_example
+	zarr_output_files
 	development_guide
 	documentation
