@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
+import pdb
 
 from profsea.components.core.global_model import ClimateState
 
@@ -40,6 +41,10 @@ def time_projection(
     timeendofAR5 = state.endofAR5 - state.endofhistory + 1
     time = np.arange(state.end_yr - state.endofhistory, dtype=state.dtype) + 1
 
+    print(fraction)
+    print("fraction argument:", fraction)
+    print("state.fraction:", state.fraction)
+    
     if fraction is None:
         fraction = rng.random((state.num_members, state.nt), dtype=state.dtype)
     elif fraction.size != state.num_members * state.nt:

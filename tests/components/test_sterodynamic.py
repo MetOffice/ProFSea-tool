@@ -66,6 +66,7 @@ def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
         grid_lons=np.array([0, 1]),
         n_years=100,
         n_members=5,
+        n_local_members=4,    # LA added for local MC (just 4 members instead of 100,000 for testing)
         grid_interpolation="nearest",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -108,6 +109,7 @@ def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
         grid_lons=np.array([0, 1]),
         n_years=100,
         n_members=5,
+        n_local_members=4,    # LA added for local MC (just 4 members instead of 100,000 for testing)
         grid_interpolation="nearest",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),

@@ -4,6 +4,7 @@ import logging
 import os
 import zipfile
 from pathlib import Path
+import pdb
 
 import dask
 import dask.array as da

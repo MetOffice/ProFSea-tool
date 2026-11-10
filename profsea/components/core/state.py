@@ -13,7 +13,7 @@ class ClimateState:
     T_ens: np.ndarray
     T_int_ens: np.ndarray
     T_int_med: np.ndarray
-    fraction: np.ndarray  # shared correlation array
+    fraction: np.ndarray  # shared correlation array (it is an array of (num_members x nt) random numbers)
     palmer_method: bool  # whether to use Palmer method for time projection
     endofAR5: int
     endofhistory: int
@@ -32,11 +32,13 @@ class SpatialState:
     grid_lons: np.ndarray
     n_years: int
     n_members: int
+    n_local_members: int    # LA added for local MC
     grid_interpolation: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
+    global_member_indices: np.ndarray | None = None    # LA added for local MC
 
 
 @dataclass

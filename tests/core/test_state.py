@@ -18,6 +18,7 @@ def real_spatial_state():
         grid_lons=np.array([-180, 0, 180]),
         n_years=3,
         n_members=2,
+        n_local_members=4,    # LA added for local MC
         grid_interpolation="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),

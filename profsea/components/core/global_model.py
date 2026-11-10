@@ -5,8 +5,12 @@ import logging
 
 import numpy as np
 import xarray as xr
+
 from rich.console import Console
 from rich.progress import track
+
+import pdb
+
 
 from profsea.utils import check_shapes, sample_members_2D, save_components
 from profsea.utils.ui import print_global_preflight
@@ -82,7 +86,7 @@ class Global:
         self.random_sample = random_sample
         self.dtype = np.dtype(dtype)
 
-        self.endofhistory = 2006
+        self.endofhistory = 2007 #2006
         self.endofAR5 = 2100
         self.nyr = self.end_yr - self.endofhistory
 
@@ -143,6 +147,7 @@ class Global:
             Seed for numpy.random.
         """
 
+        # Set up a reproducible random number generator for one member (with capability for child seeds)
         seed_seq = np.random.SeedSequence(member_seed)
         run_rng = np.random.default_rng(seed_seq)
 
@@ -160,10 +165,18 @@ class Global:
 
         T_change = T_change.astype(self.dtype)
         T_ens, T_int_ens, T_int_med = self._calculate_drivers(T_change)
-
+        
         # Shared physical correlation state
+        # (Creates a 1D array of random numbers between 0 and 1,
+        #  with one number for every ensemble member and time step,
+        #  and convert to the required numerical type)
         fraction = run_rng.random(self.num_members * self.nt).astype(self.dtype)
 
+        # Create ClimateState object - a container holding the info that the components need (they all have access to this)
+        # what are the following, and where are they set?
+        #    nyr
+        #    nt --> number of realisations of the input time series
+        #    num_members --> number of realisations of each component (Must be a multiple of the number of glacier methods)
         state = ClimateState(
             scenario=scenario,
             T_ens=T_ens,
@@ -180,14 +193,19 @@ class Global:
             dtype=self.dtype,
         )
 
-        # Child RNGs for each component
+        # Generate child RNGs for each component, which are derived reproducibly from the original seed_seq.
+        # Each component gets its own random number generator to prevent changes in how one component is generated
+        # from interfering with other components' random sampling (eg, if later changes to one component mean that
+        # it consumes more or fewer random numbers from the sequence).
         child_seeds = seed_seq.spawn(len(self.components))
         comp_rngs = {
             name: np.random.default_rng(s)
             for name, s in zip(self.components.keys(), child_seeds)
         }
 
-        results = {}
+        # Calculate the projections for each component (option to run in parallel or not)
+        results = {}  # dictionary for projections of each component
+        # Parallel
         if self.parallel:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = {
@@ -200,6 +218,7 @@ class Global:
                         results[comp_name] = future.result()
                     except Exception as e:
                         raise RuntimeError(f"Component '{comp_name}' failed.") from e
+        # Not parallel
         else:
             for name, comp in track(
                 self.components.items(), description="Projecting components..."
@@ -244,6 +263,9 @@ class Global:
 
         iterator = iter(components.values())
         gmslr = next(iterator).copy()
+
+        for name, comp in components.items():
+            print(name, comp.sizes,comp.coords["member"].shape if "member" in comp.coords else "no-member")
 
         for comp in iterator:
             gmslr += comp

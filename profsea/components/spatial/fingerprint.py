@@ -24,7 +24,7 @@ FP_PATH_MAP = {
         FP_DIR / "greensmb_slangen.nc",
         FP_DIR / "greensmb_spada.nc",
     ],
-    "greenland": [FP_DIR / "greenland_ar6.nc"],
+    "greenland": [FP_DIR / "greenland_ar6.nc"],   # LA: consider renaming the fingerprint option as "greenland_AR6"?
     "landwater": [FP_DIR / "landwater_slangen.nc"],
     "wais": [FP_DIR / "wais.nc"],
     "eais": [FP_DIR / "eais.nc"],

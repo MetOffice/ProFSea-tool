@@ -1,8 +1,9 @@
 from __future__ import annotations
-
+ 
 import logging
 import warnings
 from pathlib import Path
+import pdb
 
 import dask.array as da
 import numpy as np
@@ -34,9 +35,11 @@ class Spatial:
         components: dict[str, Component],
         grid_config: dict = None,
         grid_interpolation: str = "linear",
-        end_year: int = 2301,
+#        end_year: int = 2301,
+        end_year: int = 2100,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
+        num_local_members: int = 100000,    # LA added for local MC
         dtype: np.dtype = np.float32,
     ) -> None:
         """
@@ -55,6 +58,9 @@ class Spatial:
             Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
+        num_local_members: int, optional   # (LA added for local MC)
+            Number of members to use for the local Monte Carlo ensemble .
+            Default is 100000.
         dtype: np.dtype, optional
             Data type for the output arrays. Default is np.float32.
         """
@@ -70,10 +76,11 @@ class Spatial:
         self.end_year = end_year
         self.baseline_yrs = baseline_yrs
         self.output_percentiles = output_percentiles
+        self.num_local_members = num_local_members    # LA added for local MC
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
         self.dtype = dtype
-
+        
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_members = len(self.output_percentiles)
         else:
@@ -173,7 +180,7 @@ class Spatial:
 
     def run(self, member_seed: int = 42) -> None:
         """
-        Run the spatial model to generate regional sea level projections for each component.
+        Run the spatial model to generate regional sea level projections for each component.  [LA: might want to change the "-> None" to "-> xr.DataArray" or similar, as it does return something? But _arr_to_xr() may return an xr.Dataset rather than a DataArray, especially since it is receiving a dictionary containing multiple components, so think about the most appropriate type later.]
 
         Parameters
         ----------
@@ -192,9 +199,55 @@ class Spatial:
             f"Simulating {len(self.components)} sea-level components: {', '.join(self.components.keys())}"
         )
 
+
+
+        # SET UP THE RANDOM NUMBER GENERATOR SEEDS FOR THE LOCAL MONTE CARLO:
+        # 1) First RNG: which member to select from the global Monte Carlo (available to all spatial component functions).
+        # 2) Remaining RNGs:  For each of the spatial component functions.
+        # Each RNG gets its own statistically independent stream of random numbers while still being reproducible from the original seed (default 42).
+        # LA: added an extra seed (independent of random draws inside any components) for the random stream for selecting global members in the local MC.
+        child_seeds = seed_seq.spawn(len(self.components) + 1)    # LA added the +1
+        global_member_rng = np.random.default_rng(child_seeds[0])    # LA added this line for the local MC
+        comp_rngs = {
+            name: np.random.default_rng(s)
+            for name, s in zip(self.components.keys(), child_seeds[1:])  # LA added the [1:]
+        }
+
+        #--------------------------------------------------------------------------
+        # LA added for local MC:
+        #--------------------------------------------------------------------------
+        # Establish how many global members are available and verify that the components with global_projection agree on that number:
+        global_member_counts = {
+            name: comp.global_projection.shape[0]
+            for name, comp in self.components.items()
+            if name !="gia"     # exclude GIA beacuse it does not have a global projection to select from
+        }
+        if not global_member_counts:
+            raise ValueError(
+                "No components with a global_projection were found."
+            )
+
+        if len(set(global_member_counts.values())) != 1:
+            raise ValueError(
+                "Global component ensembles do not have a common member count: "
+                f"{global_member_counts}"
+            )
+        n_global_members = next(iter(global_member_counts.values()))
+
+        # RANDOMLY SELECT n_global_members INDICES FOR THE LOCAL MONTE CARLO
+        # Doing this once, to be used by all spatial components.
+        global_member_indices = global_member_rng.choice(
+            n_global_members,
+            size=self.num_local_members,
+            replace=True,
+        )
+        #--------------------------------------------------------------------------
+
         state = SpatialState(
             n_years=self.n_years,
             n_members=self.num_members,
+            n_local_members=self.num_local_members,    # LA added for local MC
+            global_member_indices=global_member_indices,    # LA added for local MC
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
             grid_interpolation="linear",
@@ -204,21 +257,28 @@ class Spatial:
             endofhistory=self.start_year,
         )
 
-        child_seeds = seed_seq.spawn(len(self.components))
-        comp_rngs = {
-            name: np.random.default_rng(s)
-            for name, s in zip(self.components.keys(), child_seeds)
-        }
 
+          
         spatial_projections = {}
         console.print()  # Add a blank line for better readability in the console output
-        for name, comp in track(
-            self.components.items(), description="Spatialising components..."
-        ):
-            lazy_projection = comp.project(state, comp_rngs[name])
-
+        #for name, comp in track(
+        #    self.components.items(), description="Spatialising components..."
+        #):
+        for name, comp in self.components.items():   # LA removed progress tracker for easier use of pdb
+            # lazy_projection does not calculate the projection yet - it returns an object describing the calculation which will be executed later
+            lazy_projection = comp.project(state, comp_rngs[name])  
             # Rechunk before saving to optimize memory during writing
-            lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})
+            #lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})   # keep dims 0 and 1 together, but split the spatial dims into 10x10 tiles
+
+            lazy_projection = lazy_projection.rechunk(
+                {
+                    0: 2000,  # local MC members per chunk
+                    1: 10,     # years per chunk
+                    2: 5,      # latitudes per chunk
+                    3: 5,      # longitudes per chunk
+                }
+            )
+            pdb.set_trace()
             spatial_projections[name] = lazy_projection
         console.print()
 

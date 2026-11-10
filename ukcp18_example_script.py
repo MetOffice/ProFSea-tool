@@ -15,6 +15,8 @@ from profsea.components.global_ import (
 )
 from profsea.components.spatial import GIA, Fingerprint, SterodynamicCMIP6
 
+
+
 ### Global projections first ###
 global_components = {
     "expansion": ThermalExpansion(
@@ -32,7 +34,7 @@ global_components = {
 global_model = Global(components=global_components, end_yr=2301)
 projections = global_model.run(
     scenario="rcp85",
-    T_change=np.linspace(1, 5, 295).reshape(1, -1),
+    T_change=np.linspace(1, 5, 295).reshape(1, -1),  # reshape is making a row vector
     member_seed=42,
 )
 global_model.sum_components(projections)

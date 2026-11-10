@@ -7,6 +7,7 @@ data/
 .ruff_cache/
 .vscode/
 profsea/profsea-assets/
+**/*.zarr/
 
 # Ignore the documentation build directory
 docs/build

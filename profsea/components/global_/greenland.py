@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 from pathlib import Path
+import pdb
 
 import numpy as np
 import pandas as pd
@@ -218,6 +219,7 @@ class GreenlandDynAR5(Component):
             finalrange = [0.020, 0.085]
         else:
             finalrange = [0.014, 0.063]
+
         return (
             time_projection(
                 state, 0.63 * self.fgreendyn, 0.17 * self.fgreendyn, finalrange, rng

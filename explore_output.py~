@@ -1,0 +1,21 @@
+
+import xarray as xr
+import pdb
+
+rcp85_proj = xr.open_zarr("rcp85_projection.zarr")
+print(rcp85_proj)
+print(rcp85_proj.data_vars)
+
+print(rcp85_proj["total_rsl"])
+
+print(rcp85_proj["total_rsl"][2,:,50,50].values)
+
+rcp85_proj["total_rsl"].sel(percentile=50)
+
+print(rcp85_proj["total_rsl"].sel(percentile=50, lon=300, lat=50, method='nearest'))
+
+rcp85_proj["total_rsl"].sel(percentile=50, lon=300, lat=50, method='nearest').values
+
+rcp85_proj["total_rsl"].sel(percentile=50, lon=300, lat=50, method='nearest').dims
+
+pdb.set_trace()
