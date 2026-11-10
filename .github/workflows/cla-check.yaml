@@ -1,0 +1,11 @@
+name: CLA Check
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  cla-check:
+    uses: MetOffice/growss/.github/workflows/cla-check.yaml@main
+    with:
+      cla-url: "https://github.com/MetOffice/ProFSea-tool/blob/main/CLA.md"
