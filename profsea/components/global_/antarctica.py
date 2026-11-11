@@ -9,8 +9,8 @@ from scipy.stats import norm
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
+from profsea.components.core.observations import Observations
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_antarctic_obs
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
@@ -124,7 +124,12 @@ class AntarcticaISMIP6(Component):
 
         return cum_rate1, cum_rate2
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations,
+        ) -> np.ndarray:
         """
         Projects AIS response using empirical additive bootstrapping aligned
         to the ClimateState ensemble size.
@@ -177,9 +182,7 @@ class AntarcticaISMIP6(Component):
 
         # Initialise the projection from the observed regional AIS contribution
         # at the projection start year, relative to the specified baseline.
-        obs = read_antarctic_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
+        obs = observations.antarctica(
             component="total",
             region=self.region,
         )
@@ -203,7 +206,12 @@ class AntarcticaDynAR5(Component):
     def __init__(self, cum_emissions_total: float = None):
         self.cum_emissions_total = cum_emissions_total
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations
+        ) -> np.ndarray:
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters
@@ -239,15 +247,15 @@ class AntarcticaDynAR5(Component):
 
         # AR5 end-of-century contribution is expressed relative to the AR5 projection
         # period. Convert to a change relative to the projection start_yr
-        obs_ar5 = read_antarctic_obs(
-            baseline_start=1986, baseline_end=2005, component="dyn"
+        obs_ar5 = observations.antarctica(
+            component="dyn",
+            baseline_start=1986,
+            baseline_end=2005,
         )
 
         start_offset = (
             obs_ar5["sle"]
-            .sel(
-                time=state.start_yr - 1,
-            )
+            .sel(time=state.start_yr - 1)
             .item()
         )
 
@@ -255,9 +263,7 @@ class AntarcticaDynAR5(Component):
 
         # Initialise Antarctic dynamic SLE and rate from IMBIE3 at the
         # projection start year, relative to the specified baseline.
-        obs = read_antarctic_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
+        obs = observations.antarctica(
             component="dyn",
         )
 
@@ -296,6 +302,7 @@ class AntarcticaSMBAR5(Component):
         self,
         state: ClimateState,
         rng: np.random.Generator,
+        observations: Observations
     ) -> np.ndarray:
         """Project Antarctic SMB contribution to GMSLR.
 
@@ -305,6 +312,8 @@ class AntarcticaSMBAR5(Component):
             Climate state containing scenario, ensemble, and projection settings.
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -350,9 +359,7 @@ class AntarcticaSMBAR5(Component):
 
         # Initialise Antarctic SMB SLE from IMBIE3 at the projection start year,
         # relative to the specified baseline.
-        obs = read_antarctic_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
+        obs = observations.antarctica(
             component="smb",
         )
 

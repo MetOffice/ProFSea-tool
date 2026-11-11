@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.greenland import (
     GreenlandAR6,
@@ -11,31 +12,33 @@ from profsea.components.global_.greenland import (
 )
 
 
-@pytest.fixture(autouse=True)
-def mock_greenland_observations(monkeypatch):
-    """Prevent component tests from reading external IMBIE3 files."""
+@pytest.fixture
+def observations(monkeypatch):
+    """Provide observations without reading external observational files."""
+    obs = Observations(
+        baseline_start=1995,
+        baseline_end=2005,
+    )
 
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total",
-    ):
-        years = np.arange(1900, 2201)
+    years = np.arange(1900, 2201)
 
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.zeros(years.size)),
-                "rate": ("time", np.zeros(years.size)),
-                "rate_unc": ("time", np.zeros(years.size)),
-            },
-            coords={"time": years},
-        )
+    dataset = xr.Dataset(
+        {
+            "sle": ("time", np.zeros(years.size)),
+            "sle_unc": ("time", np.zeros(years.size)),
+            "rate": ("time", np.zeros(years.size)),
+            "rate_unc": ("time", np.zeros(years.size)),
+        },
+        coords={"time": years},
+    )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        obs,
+        "greenland",
+        lambda **kwargs: dataset,
     )
+
+    return obs
 
 
 def get_dummy_state(
@@ -91,13 +94,13 @@ def get_dummy_ar6() -> GreenlandAR6:
     return greenland
 
 
-def test_greenland_ar6_projection_shape():
+def test_greenland_ar6_projection_shape(observations):
     """AR6 output should contain one timeseries per ensemble member."""
     greenland = get_dummy_ar6()
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = greenland.project(state, rng)
+    projection = greenland.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -106,7 +109,7 @@ def test_greenland_ar6_projection_shape():
     )
 
 
-def test_greenland_ar6_reproducible_with_same_seed():
+def test_greenland_ar6_reproducible_with_same_seed(observations):
     """Model and trend sampling should be deterministic for a fixed RNG seed."""
     greenland = get_dummy_ar6()
     state = get_dummy_state()
@@ -114,16 +117,21 @@ def test_greenland_ar6_reproducible_with_same_seed():
     projection1 = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
     projection2 = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     np.testing.assert_allclose(projection1, projection2)
 
 
-def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
+def test_greenland_ar6_zero_coefficients_only_leave_trend(
+        monkeypatch,
+        observations
+    ):
     """With zero emulator coefficients, the AR6 result should only contain trend."""
     greenland = GreenlandAR6.__new__(GreenlandAR6)
 
@@ -142,7 +150,7 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
 
     initial_sle = 0.01
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(component="total", **kwargs):
         assert component == "total"
 
         return xr.Dataset(
@@ -157,13 +165,15 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
     projection = greenland.project(
         state,
         np.random.default_rng(42),
+        observations,
     )
 
     # Trend is multiplied by time_delta, so the first timestep must be zero.
@@ -174,7 +184,7 @@ def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch):
     assert np.all(np.diff(projection, axis=2) >= 0.0)
 
 
-def test_greenland_ar6_accepts_one_dimensional_temperature():
+def test_greenland_ar6_accepts_one_dimensional_temperature(observations):
     """A 1D temperature trajectory should be promoted to a 2D ensemble."""
     greenland = get_dummy_ar6()
     state = get_dummy_state()
@@ -185,6 +195,7 @@ def test_greenland_ar6_accepts_one_dimensional_temperature():
     projection = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     assert projection.shape == (
@@ -194,7 +205,7 @@ def test_greenland_ar6_accepts_one_dimensional_temperature():
     )
 
 
-def test_greenland_ar6_persists_2100_rate():
+def test_greenland_ar6_persists_2100_rate(observations):
     """After 2100, AR6 should continue using the 2100 rate of change."""
     greenland = get_dummy_ar6()
     state = get_dummy_state(
@@ -205,6 +216,7 @@ def test_greenland_ar6_persists_2100_rate():
     projection = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     idx_2100 = 2100 - state.start_yr
@@ -244,13 +256,17 @@ def test_greenland_smb_fettweis_matches_formula():
     np.testing.assert_allclose(actual, expected)
 
 
-def test_greenland_smb_projection_shape():
+def test_greenland_smb_projection_shape(observations):
     """SMB output should contain one timeseries per ensemble member."""
     greenland = GreenlandSMBAR5()
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = greenland.project(state, rng)
+    projection = greenland.project(
+        state,
+        rng,
+        observations
+    )
 
     assert projection.shape == (
         state.nt,
@@ -259,7 +275,7 @@ def test_greenland_smb_projection_shape():
     )
 
 
-def test_greenland_smb_reproducible_with_same_seed():
+def test_greenland_smb_reproducible_with_same_seed(observations):
     """SMB stochastic factors should be deterministic for a fixed seed."""
     greenland = GreenlandSMBAR5()
     state = get_dummy_state()
@@ -267,16 +283,21 @@ def test_greenland_smb_reproducible_with_same_seed():
     projection1 = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
     projection2 = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     np.testing.assert_allclose(projection1, projection2)
 
 
-def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
+def test_greenland_smb_includes_dynamic_baseline(
+        monkeypatch,
+        observations
+    ):
     """SMB projection should include the non-dynamic share of dgreen."""
     greenland = GreenlandSMBAR5()
 
@@ -287,7 +308,7 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
 
     smb_offset = 0.01
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(component="total", **kwargs):
         assert component == "smb"
 
         return xr.Dataset(
@@ -302,11 +323,16 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
-    projection = greenland.project(state, rng)
+    projection = greenland.project(
+        state,
+        rng,
+        observations,
+    )
 
     np.testing.assert_allclose(
         projection,
@@ -315,7 +341,7 @@ def test_greenland_smb_includes_dynamic_baseline(monkeypatch):
     )
 
 
-def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
+def test_greenland_smb_palmer_method_freezes_post_ar5_rate(observations):
     """Palmer mode should hold the annual SMB contribution constant after 2100."""
     greenland = GreenlandSMBAR5()
 
@@ -328,6 +354,7 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
     projection = greenland.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     # project() freezes the annual contribution from index 95 onward
@@ -344,7 +371,10 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate():
     )
 
 
-def test_greenland_dyn_uses_rcp85_range(monkeypatch):
+def test_greenland_dyn_uses_rcp85_range(
+    monkeypatch,
+    observations,
+):
     """RCP8.5 should use the high Greenland dynamics final range."""
     greenland = GreenlandDynAR5()
     state = get_dummy_state(scenario="rcp85")
@@ -362,7 +392,10 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
         captured["median"] = median
         captured["uncertainty"] = uncertainty
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+
+        return np.zeros(
+            (state.nt, state.num_members, state.n_years)
+        )
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -373,12 +406,22 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
     dynamic_rate = 0.02
     dynamic_rate_unc = 0.03
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(
+        component="total",
+        baseline_start=None,
+        baseline_end=None,
+    ):
         assert component == "dyn"
+
+        sle = (
+            dynamic_offset
+            if baseline_start == 1986 and baseline_end == 2005
+            else 0.0
+        )
 
         return xr.Dataset(
             {
-                "sle": ("time", [dynamic_offset]),
+                "sle": ("time", [sle]),
                 "rate": ("time", [dynamic_rate]),
                 "rate_unc": ("time", [dynamic_rate_unc]),
             },
@@ -388,13 +431,15 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
     greenland.project(
         state,
         np.random.default_rng(42),
+        observations,
     )
 
     assert captured["final"] == [
@@ -405,7 +450,10 @@ def test_greenland_dyn_uses_rcp85_range(monkeypatch):
     assert captured["uncertainty"] == dynamic_rate_unc
 
 
-def test_greenland_dyn_uses_ssp585_range(monkeypatch):
+def test_greenland_dyn_uses_ssp585_range(
+    monkeypatch,
+    observations,
+):
     """SSP5-8.5 should use the same high dynamics range as RCP8.5."""
     greenland = GreenlandDynAR5()
     state = get_dummy_state(scenario="ssp585")
@@ -421,7 +469,10 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+
+        return np.zeros(
+            (state.nt, state.num_members, state.n_years)
+        )
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -430,12 +481,22 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
 
     dynamic_offset = 0.01
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(
+        component="total",
+        baseline_start=None,
+        baseline_end=None,
+    ):
         assert component == "dyn"
+
+        sle = (
+            dynamic_offset
+            if baseline_start == 1986 and baseline_end == 2005
+            else 0.0
+        )
 
         return xr.Dataset(
             {
-                "sle": ("time", [dynamic_offset]),
+                "sle": ("time", [sle]),
                 "rate": ("time", [0.0]),
                 "rate_unc": ("time", [0.0]),
             },
@@ -445,19 +506,27 @@ def test_greenland_dyn_uses_ssp585_range(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
     greenland.project(
         state,
         np.random.default_rng(42),
+        observations,
     )
 
-    assert captured["final"] == [0.020 - dynamic_offset, 0.085 - dynamic_offset]
+    assert captured["final"] == [
+        0.020 - dynamic_offset,
+        0.085 - dynamic_offset,
+    ]
 
 
-def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
+def test_greenland_dyn_uses_default_range_for_other_scenarios(
+    monkeypatch,
+    observations,
+):
     """Non-RCP8.5 scenarios should use the standard dynamics range."""
     greenland = GreenlandDynAR5()
     state = get_dummy_state(scenario="rcp45")
@@ -473,7 +542,10 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
         fraction=None,
     ):
         captured["final"] = final
-        return np.zeros((state.nt, state.num_members, state.n_years))
+
+        return np.zeros(
+            (state.nt, state.num_members, state.n_years)
+        )
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -482,12 +554,22 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
 
     dynamic_offset = 0.01
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(
+        component="total",
+        baseline_start=None,
+        baseline_end=None,
+    ):
         assert component == "dyn"
+
+        sle = (
+            dynamic_offset
+            if baseline_start == 1986 and baseline_end == 2005
+            else 0.0
+        )
 
         return xr.Dataset(
             {
-                "sle": ("time", [dynamic_offset]),
+                "sle": ("time", [sle]),
                 "rate": ("time", [0.0]),
                 "rate_unc": ("time", [0.0]),
             },
@@ -497,13 +579,15 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
     greenland.project(
         state,
         np.random.default_rng(42),
+        observations,
     )
 
     np.testing.assert_allclose(
@@ -515,13 +599,18 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(monkeypatch):
     )
 
 
-def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
-    """Greenland dynamics should add its fraction of the historical baseline."""
+def test_greenland_dyn_adds_dynamic_baseline(
+    monkeypatch,
+    observations,
+):
+    """Greenland dynamics should add its historical initial condition."""
     greenland = GreenlandDynAR5()
     state = get_dummy_state()
 
     def mock_time_projection(*args, **kwargs):
-        return np.zeros((state.nt, state.num_members, state.n_years))
+        return np.zeros(
+            (state.nt, state.num_members, state.n_years)
+        )
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -530,12 +619,25 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
 
     initial_dynamic_sle = 0.01
 
-    def mock_read_greenland_obs(baseline_start, baseline_end, component="total"):
+    def mock_greenland_observations(
+        component="total",
+        baseline_start=None,
+        baseline_end=None,
+    ):
         assert component == "dyn"
+
+        # The explicit 1986-2005 request is the AR5 re-referencing
+        # dataset. Give it zero offset for this test.
+        if baseline_start == 1986 and baseline_end == 2005:
+            sle = 0.0
+        else:
+            # This is the normal observation request using the
+            # Observations object's configured baseline.
+            sle = initial_dynamic_sle
 
         return xr.Dataset(
             {
-                "sle": ("time", [initial_dynamic_sle]),
+                "sle": ("time", [sle]),
                 "rate": ("time", [0.0]),
                 "rate_unc": ("time", [0.0]),
             },
@@ -545,13 +647,18 @@ def test_greenland_dyn_adds_dynamic_baseline(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
+        observations,
+        "greenland",
+        mock_greenland_observations,
     )
 
     projection = greenland.project(
         state,
         np.random.default_rng(42),
+        observations,
     )
 
-    np.testing.assert_allclose(projection, initial_dynamic_sle)
+    np.testing.assert_allclose(
+        projection,
+        initial_dynamic_sle,
+    )

@@ -9,8 +9,8 @@ from scipy.stats import truncnorm
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
+from profsea.components.core.observations import Observations
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_greenland_obs
 
 
 @functools.lru_cache(maxsize=1)
@@ -24,7 +24,12 @@ class GreenlandAR6(Component):
     def __init__(self):
         self.df = load_greenland_calibration()
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project Greenland ice-sheet contribution to GMSLR.
 
         This follows the IPCC AR6 methodology as closely as possible, relative to the
@@ -38,6 +43,8 @@ class GreenlandAR6(Component):
         rng : np.random.Generator
             Random number generator used to sample calibrated model parameters and the
             Greenland trend contribution.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -46,10 +53,7 @@ class GreenlandAR6(Component):
         """
 
         # read sea level contribution relative to specified baseline at start_yr from IMBIE 3
-        obs = read_greenland_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
-        )
+        obs = observations.greenland()
 
         initial = obs.sel(time=state.start_yr - 1)
 
@@ -143,7 +147,12 @@ class GreenlandSMBAR5(Component):
     def __init__(self):
         self.mSLEoGt = 1e12 / 3.61e14 * 1e-3
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project Greenland SMB contribution to GMSLR.
 
         The projection is initialised from the observed IMBIE3 Greenland
@@ -156,6 +165,8 @@ class GreenlandSMBAR5(Component):
             Climate state containing the projection start year and baseline period.
         rng: np.random.Generator
             Random number generator.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -165,11 +176,7 @@ class GreenlandSMBAR5(Component):
         """
 
         # read sea level contribution at start_yr from IMBIE3
-        obs = read_greenland_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
-            component="smb",
-        )
+        obs = observations.greenland(component="smb")
 
         initial = obs.sel(time=state.start_yr - 1)
 
@@ -240,7 +247,12 @@ class GreenlandDynAR5(Component):
     ):
         pass
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project Greenland rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters
@@ -249,6 +261,8 @@ class GreenlandDynAR5(Component):
             State object containing relevant information for the projection.
         rng: np.random.Generator
             Random number generator.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -256,8 +270,10 @@ class GreenlandDynAR5(Component):
             Greenland rapid ice-sheet dynamics contribution to GMSLR.
         """
         # Convert to a change relative to the projection start
-        obs_ar5 = read_greenland_obs(
-            baseline_start=1986, baseline_end=2005, component="dyn"
+        obs_ar5 = observations.greenland(
+            baseline_start=1986,
+            baseline_end=2005,
+            component="dyn",
         )
 
         start_offset = (
@@ -276,11 +292,7 @@ class GreenlandDynAR5(Component):
             finalrange = [0.014 - start_offset, 0.063 - start_offset]
 
         # read sea level contribution at start_yr from IMBIE3
-        obs = read_greenland_obs(
-            baseline_start=state.baseline_start,
-            baseline_end=state.baseline_end,
-            component="dyn",
-        )
+        obs = observations.greenland(component="dyn")
 
         initial = obs.sel(time=state.start_yr - 1)
 

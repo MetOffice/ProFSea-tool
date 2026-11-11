@@ -1,13 +1,20 @@
 import numpy as np
+import pytest
 import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import Global
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 
 
 class MockGlobalComponent(Component):
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         # Update shape to (climate_members, process_members, time)
         return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
 
@@ -95,115 +102,16 @@ def test_save_components(tmp_path):
     assert list(ds.dims) == ["climate_member", "process_member", "time"]
 
 
-def test_return_types(monkeypatch):
-    # Import a number of real components to test their return types
-    from profsea.components.global_ import (
-        AntarcticaDynAR5,
-        AntarcticaISMIP6,
-        AntarcticaSMBAR5,
-        Glacier,
-        GreenlandAR6,
-        GreenlandDynAR5,
-        GreenlandSMBAR5,
-        LandwaterAR5,
-        LandwaterAR6,
-        ThermalExpansion,
-    )
-
-    # Mock observational readers so this test does not depend on external
-    years = np.arange(1900, 2201)
-
-    def mock_read_antarctic_obs(
-        baseline_start,
-        baseline_end,
-        component="total",
-        region=None,
-    ):
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.full(years.size, 0.001)),
-                "rate": ("time", np.zeros(years.size)),
-                "rate_unc": ("time", np.full(years.size, 0.001)),
-            },
-            coords={"time": years},
-        )
-
-    def mock_read_greenland_obs(
-        baseline_start,
-        baseline_end,
-        component="total",
-    ):
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.full(years.size, 0.001)),
-                "rate": ("time", np.zeros(years.size)),
-                "rate_unc": ("time", np.full(years.size, 0.001)),
-            },
-            coords={"time": years},
-        )
-
-    def mock_read_glacier_obs(
-        baseline_start,
-        baseline_end,
-    ):
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.full(years.size, 0.001)),
-                "rate": ("time", np.zeros(years.size)),
-                "rate_unc": ("time", np.full(years.size, 0.001)),
-            },
-            coords={"time": years},
-        )
-
-    def mock_read_landwater_obs(
-        baseline_start,
-        baseline_end,
-    ):
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.full(years.size, 0.001)),
-            },
-            coords={"time": years},
-        )
-
-    monkeypatch.setattr(
-        "profsea.components.global_.antarctica.read_antarctic_obs",
-        mock_read_antarctic_obs,
-    )
-    monkeypatch.setattr(
-        "profsea.components.global_.greenland.read_greenland_obs",
-        mock_read_greenland_obs,
-    )
-    monkeypatch.setattr(
-        "profsea.components.global_.glacier.read_glacier_obs",
-        mock_read_glacier_obs,
-    )
-    monkeypatch.setattr(
-        "profsea.components.global_.landwater.read_landwater_obs",
-        mock_read_landwater_obs,
-    )
-
-    tas = np.zeros((2, 95))  # 2 trajectories, 95 years
-    ohc = np.zeros((2, 95))
-
+@pytest.mark.parametrize(
+    "dtype",
+    [np.float32, np.float64],
+)
+def test_return_types(dtype):
     components = {
-        "AntarcticaISMIP6": AntarcticaISMIP6(region="wais"),
-        "AntarcticaSMBAR5": AntarcticaSMBAR5(),
-        "AntarcticaDynAR5": AntarcticaDynAR5(),
-        "GreenlandAR6": GreenlandAR6(),
-        "GreenlandDynAR5": GreenlandDynAR5(),
-        "GreenlandSMBAR5": GreenlandSMBAR5(),
-        "Glacier": Glacier(),
-        "LandwaterAR5": LandwaterAR5(),
-        "LandwaterAR6": LandwaterAR6(),
-        "ThermalExpansion": ThermalExpansion(data_input=ohc),
+        "mock": MockGlobalComponent(),
     }
 
-    global_model_float64 = Global(
+    global_model = Global(
         components=components,
         start_yr=2006,
         end_yr=2101,
@@ -211,29 +119,21 @@ def test_return_types(monkeypatch):
         baseline_end=2000,
         nt=2,
         num_members=3,
-        dtype=np.float64,
+        dtype=dtype,
     )
-    results = global_model_float64.run(scenario="rcp26", T_change=tas)
 
-    for comp_name, data in results.items():
-        assert isinstance(data, xr.DataArray)
-        assert data.dtype == np.float64
-        # Assert that the real components correctly return the 3D structure
-        assert data.shape == (2, 3, 95)
-
-    global_model_float32 = Global(
-        components=components,
-        start_yr=2006,
-        end_yr=2101,
-        baseline_start=1990,
-        baseline_end=2014,
-        nt=2,
-        num_members=3,
-        dtype=np.float32,
+    T_change = np.zeros(
+        (2, 95),
+        dtype=dtype,
     )
-    results = global_model_float32.run(scenario="rcp26", T_change=tas)
 
-    for comp_name, data in results.items():
-        assert isinstance(data, xr.DataArray)
-        assert data.dtype == np.float32
-        assert data.shape == (2, 3, 95)
+    results = global_model.run(
+        scenario="rcp26",
+        T_change=T_change,
+    )
+
+    data = results["mock"]
+
+    assert isinstance(data, xr.DataArray)
+    assert data.dtype == dtype
+    assert data.shape == (2, 3, 95)

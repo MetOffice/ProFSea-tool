@@ -4,14 +4,19 @@ import numpy as np
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
-from profsea.utils import read_glacier_obs
+from profsea.components.core.observations import Observations
 
 
 class Glacier(Component):
     def __init__(self, glaciermip: int = 2):
         self.glaciermip = glaciermip
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project glacier contribution to GMSLR.
 
         The projection is initialised from the observed glacier
@@ -23,6 +28,8 @@ class Glacier(Component):
             Climate state containing the projection configuration.
         rng : np.random.Generator
             Random number generator.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -40,9 +47,7 @@ class Glacier(Component):
 
         # read sea level contribution (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        obs = read_glacier_obs(
-            baseline_start=state.baseline_start, baseline_end=state.baseline_end
-        )
+        obs = observations.glacier()
 
         d_gla = (
             obs["sle"]

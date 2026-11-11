@@ -8,8 +8,8 @@ import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
+from profsea.components.core.observations import Observations
 from profsea.components.core.time_projection import time_projection
-from profsea.utils import read_landwater_obs
 
 
 @functools.lru_cache(maxsize=1)
@@ -27,11 +27,25 @@ class LandwaterAR6(Component):
     def __init__(self):
         self.lw_ds = load_landwater_projection()
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project land water storage contribution to GMSLR. This follows the IPCC
         AR6 methodology as closely as possible. The observed contribution, from
         Zheng et al., (2026), is added at the `start_yr` relative to the specified
         baseline.
+
+        Parameters
+        ----------
+        state : ClimateState
+            Climate state containing projection years and baseline period.
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -58,9 +72,7 @@ class LandwaterAR6(Component):
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr
         # from Zheng+ 2026 (Sci. Adv.)
-        obs = read_landwater_obs(
-            baseline_start=state.baseline_start, baseline_end=state.baseline_end
-        )
+        obs = observations.landwater()
 
         sle = obs["sle"].sel(time=state.start_yr - 1).item()
 
@@ -81,7 +93,12 @@ class LandwaterAR5(Component):
     def __init__(self):
         pass
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng: np.random.Generator,
+            observations: Observations
+        ) -> np.ndarray:
         """Project land water storage contribution to GMSLR.
 
         The AR5 end-of-century very-likely range is reported for 2081-2100
@@ -95,6 +112,8 @@ class LandwaterAR5(Component):
             Climate state containing projection years, and baseline period,
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
+        observations : Observations
+            Observational data used to initialise the projection.
 
         Returns
         -------
@@ -112,7 +131,7 @@ class LandwaterAR5(Component):
         final_l = -0.01
         final_u = 0.09
         # Convert to a change relative to the projection start_yr
-        obs_ar5 = read_landwater_obs(
+        obs_ar5 = observations.landwater(
             baseline_start=1986,
             baseline_end=2005,
         )
@@ -122,9 +141,7 @@ class LandwaterAR5(Component):
 
         # read sea level contribution and rate (relative to specified baseline) at start_yr from
         # Zheng+ 2026 (Sci. Adv.)
-        obs = read_landwater_obs(
-            baseline_start=state.baseline_start, baseline_end=state.baseline_end
-        )
+        obs = observations.landwater()
 
         sle = obs["sle"].sel(time=state.start_yr - 1).item()
 

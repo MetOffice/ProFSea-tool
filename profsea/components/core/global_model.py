@@ -18,6 +18,7 @@ from profsea.utils import (
 from profsea.utils.ui import print_global_preflight
 
 from .base import Component
+from .observations import Observations
 from .state import ClimateState
 
 console = Console()
@@ -78,6 +79,10 @@ class Global:
         Last year of AR5 projections.
     n_years: int
         Length of projections.
+    observations : Observations
+        Manages observational data used to initialise the sea-level
+        components. Uses `baseline_start` and `baseline_end` as its
+        default baseline
     """
 
     def __init__(
@@ -113,6 +118,11 @@ class Global:
         self.endofhistory = 2006
         self.endofAR5 = 2100
         self.n_years = self.end_yr - self.start_yr
+
+        self.observations = Observations(
+            baseline_start=self.baseline_start,
+            baseline_end=self.baseline_end,
+        )
 
         validate_component_map(self.components, Component, "Global")
         validate_projection_years(
@@ -236,7 +246,12 @@ class Global:
         if self.parallel:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = {
-                    executor.submit(comp.project, state, comp_rngs[name]): name
+                    executor.submit(
+                        comp.project,
+                        state,
+                        comp_rngs[name],
+                        self.observations,
+                    ): name
                     for name, comp in self.components.items()
                 }
                 for future in concurrent.futures.as_completed(futures):
@@ -249,7 +264,11 @@ class Global:
             for name, comp in track(
                 self.components.items(), description="Projecting components..."
             ):
-                results[name] = comp.project(state, comp_rngs[name])
+                results[name] = comp.project(
+                    state,
+                    comp_rngs[name],
+                    self.observations,
+                )
 
         # Random Sampling
         if self.random_sample:

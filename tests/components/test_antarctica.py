@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.antarctica import (
     AntarcticaDynAR5,
@@ -10,32 +11,33 @@ from profsea.components.global_.antarctica import (
 )
 
 
-@pytest.fixture(autouse=True)
-def mock_antarctic_observations(monkeypatch):
-    """Prevent component tests from reading external IMBIE3 files."""
+@pytest.fixture
+def observations(monkeypatch):
+    """Provide observations without reading external observational files."""
+    obs = Observations(
+        baseline_start=1986,
+        baseline_end=2005,
+    )
 
-    def mock_read_antarctic_obs(
-        baseline_start,
-        baseline_end,
-        component="total",
-        region=None,
-    ):
-        years = np.arange(1900, 2201)
+    years = np.arange(1900, 2201)
 
-        return xr.Dataset(
-            {
-                "sle": ("time", np.zeros(years.size)),
-                "sle_unc": ("time", np.zeros(years.size)),
-                "rate": ("time", np.zeros(years.size)),
-                "rate_unc": ("time", np.zeros(years.size)),
-            },
-            coords={"time": years},
-        )
+    dataset = xr.Dataset(
+        {
+            "sle": ("time", np.zeros(years.size)),
+            "sle_unc": ("time", np.zeros(years.size)),
+            "rate": ("time", np.zeros(years.size)),
+            "rate_unc": ("time", np.zeros(years.size)),
+        },
+        coords={"time": years},
+    )
 
     monkeypatch.setattr(
-        "profsea.components.global_.antarctica.read_antarctic_obs",
-        mock_read_antarctic_obs,
+        obs,
+        "antarctica",
+        lambda **kwargs: dataset,
     )
+
+    return obs
 
 
 def get_dummy_state(
@@ -114,13 +116,13 @@ def test_ismip6_invalid_region():
         AntarcticaISMIP6("invalid")
 
 
-def test_ismip6_zero_temperature_zero_projection():
+def test_ismip6_zero_temperature_zero_projection(observations):
     """Zero temperature anomaly should give no additional ISMIP6 contribution."""
     antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state(T_change_val=0.0)
     rng = np.random.default_rng(42)
 
-    projection = antarctica.project(state, rng)
+    projection = antarctica.project(state, rng, observations)
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
 
@@ -129,13 +131,13 @@ def test_ismip6_zero_temperature_zero_projection():
     np.testing.assert_allclose(change, 0.0, atol=1e-7)
 
 
-def test_ismip6_projection_shape():
+def test_ismip6_projection_shape(observations):
     """ISMIP6 output should contain one timeseries per ensemble member."""
     antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = antarctica.project(state, rng)
+    projection = antarctica.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -144,13 +146,21 @@ def test_ismip6_projection_shape():
     )
 
 
-def test_ismip6_reproducible_with_same_seed():
+def test_ismip6_reproducible_with_same_seed(observations):
     """Random parameter sampling should be deterministic for a fixed RNG seed."""
     antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
 
-    projection1 = antarctica.project(state, np.random.default_rng(42))
-    projection2 = antarctica.project(state, np.random.default_rng(42))
+    projection1 = antarctica.project(
+        state,
+        np.random.default_rng(42),
+        observations
+    )
+    projection2 = antarctica.project(
+        state,
+        np.random.default_rng(42),
+        observations
+    )
 
     np.testing.assert_allclose(projection1, projection2)
 
@@ -197,17 +207,20 @@ def test_ismip6_precomputation_matches_impulse_response():
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-7)
 
 
-def test_antarctica_dyn_invalid_scenario():
+def test_antarctica_dyn_invalid_scenario(observations):
     """Unknown scenarios should fail when cumulative emissions are not supplied."""
     antarctica = AntarcticaDynAR5()
     state = get_dummy_state(scenario="invalid")
     rng = np.random.default_rng(42)
 
     with pytest.raises(KeyError):
-        antarctica.project(state, rng)
+        antarctica.project(state, rng, observations)
 
 
-def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(monkeypatch):
+def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(
+        monkeypatch,
+        observations
+    ):
     """Explicit cumulative emissions should avoid the RCP scenario lookup."""
     antarctica = AntarcticaDynAR5(cum_emissions_total=1000.0)
     state = get_dummy_state(scenario="invalid")
@@ -230,7 +243,7 @@ def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(monkeypatch):
         mock_time_projection,
     )
 
-    antarctica.project(state, np.random.default_rng(42))
+    antarctica.project(state, np.random.default_rng(42), observations)
 
     expected_lower = (1.363e-05 * 1000.0) + 0.0392
     expected_upper = (0.000110 * 1000.0) + 0.375
@@ -244,23 +257,23 @@ def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(monkeypatch):
     )
 
 
-def test_antarctica_smb_wrong_fraction_size():
+def test_antarctica_smb_wrong_fraction_size(observations):
     """SMB projection should reject a fraction array of the wrong size."""
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state(fraction=np.array([0.2, 0.4, 0.6], dtype=np.float32))
     rng = np.random.default_rng(42)
 
     with pytest.raises(ValueError, match="fraction is the wrong size"):
-        antarctica.project(state, rng)
+        antarctica.project(state, rng, observations)
 
 
-def test_antarctica_smb_projection_shape():
+def test_antarctica_smb_projection_shape(observations):
     """SMB output should contain one timeseries per ensemble member."""
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = antarctica.project(state, rng)
+    projection = antarctica.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -269,20 +282,20 @@ def test_antarctica_smb_projection_shape():
     )
 
 
-def test_antarctica_smb_zero_temperature_no_additional_projection():
+def test_antarctica_smb_zero_temperature_no_additional_projection(observations):
     """Zero integrated temperature should give no additional SMB contribution."""
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state(T_change_val=0.0)
     rng = np.random.default_rng(42)
 
-    projection = antarctica.project(state, rng)
+    projection = antarctica.project(state, rng, observations)
 
     change = projection - projection[..., [0]]
 
     np.testing.assert_allclose(change, 0.0, atol=1e-7)
 
 
-def test_antarctica_smb_reproducible_with_same_seed():
+def test_antarctica_smb_reproducible_with_same_seed(observations):
     """SMB stochastic sampling should be deterministic for a fixed seed."""
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state()
@@ -290,10 +303,12 @@ def test_antarctica_smb_reproducible_with_same_seed():
     projection1 = antarctica.project(
         state,
         np.random.default_rng(42),
+        observations
     )
     projection2 = antarctica.project(
         state,
         np.random.default_rng(42),
+        observations
     )
 
     np.testing.assert_allclose(projection1, projection2)
