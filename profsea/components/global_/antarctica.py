@@ -129,7 +129,7 @@ class AntarcticaISMIP6(Component):
         state: ClimateState,
         rng: np.random.Generator,
         observations: Observations,
-        ) -> np.ndarray:
+    ) -> np.ndarray:
         """
         Projects AIS response using empirical additive bootstrapping aligned
         to the ClimateState ensemble size.
@@ -207,11 +207,8 @@ class AntarcticaDynAR5(Component):
         self.cum_emissions_total = cum_emissions_total
 
     def project(
-        self,
-        state: ClimateState,
-        rng: np.random.Generator,
-        observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters
@@ -253,11 +250,7 @@ class AntarcticaDynAR5(Component):
             baseline_end=2005,
         )
 
-        start_offset = (
-            obs_ar5["sle"]
-            .sel(time=state.start_yr - 1)
-            .item()
-        )
+        start_offset = obs_ar5["sle"].sel(time=state.start_yr - 1).item()
 
         final -= start_offset
 
@@ -299,10 +292,7 @@ class AntarcticaSMBAR5(Component):
         pass
 
     def project(
-        self,
-        state: ClimateState,
-        rng: np.random.Generator,
-        observations: Observations
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
     ) -> np.ndarray:
         """Project Antarctic SMB contribution to GMSLR.
 

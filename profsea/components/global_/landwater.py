@@ -28,11 +28,8 @@ class LandwaterAR6(Component):
         self.lw_ds = load_landwater_projection()
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project land water storage contribution to GMSLR. This follows the IPCC
         AR6 methodology as closely as possible. The observed contribution, from
         Zheng et al., (2026), is added at the `start_yr` relative to the specified
@@ -94,11 +91,8 @@ class LandwaterAR5(Component):
         pass
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project land water storage contribution to GMSLR.
 
         The AR5 end-of-century very-likely range is reported for 2081-2100

@@ -10,11 +10,8 @@ from profsea.components.core.state import ClimateState
 
 class MockGlobalComponent(Component):
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         # Update shape to (climate_members, process_members, time)
         return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
 

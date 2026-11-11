@@ -156,16 +156,8 @@ def test_landwater_ar6_reproducible_with_same_seed(observations):
     landwater2 = get_dummy_ar6()
     state = get_dummy_state()
 
-    projection1 = landwater1.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = landwater2.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = landwater1.project(state, np.random.default_rng(42), observations)
+    projection2 = landwater2.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
@@ -301,9 +293,8 @@ def test_landwater_ar6_samples_only_existing_projection_members(
 
     # Flatten the climate and process dimensions so each row is a time series.
     for row in projection.reshape(-1, projection.shape[-1]):
-        assert (
-            np.allclose(row, expected_sample_0)
-            or np.allclose(row, expected_sample_1)
+        assert np.allclose(row, expected_sample_0) or np.allclose(
+            row, expected_sample_1
         )
 
 
@@ -314,11 +305,7 @@ def test_landwater_ar6_preserves_state_dtype(observations):
 
     state.dtype = np.float32
 
-    projection = landwater.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = landwater.project(state, np.random.default_rng(42), observations)
 
     assert projection.dtype == np.float32
 
@@ -481,9 +468,7 @@ def test_landwater_ar5_returns_time_projection_result(
         )
 
         # Linear series centred so that SLE at start_yr - 1 is initial_sle.
-        sle = initial_sle + (
-            years - (state.start_yr - 1)
-        ) * 0.0005
+        sle = initial_sle + (years - (state.start_yr - 1)) * 0.0005
 
         return xr.Dataset(
             {

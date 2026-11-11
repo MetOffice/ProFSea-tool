@@ -12,11 +12,8 @@ class Glacier(Component):
         self.glaciermip = glaciermip
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project glacier contribution to GMSLR.
 
         The projection is initialised from the observed glacier

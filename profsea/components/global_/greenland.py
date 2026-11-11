@@ -25,11 +25,8 @@ class GreenlandAR6(Component):
         self.df = load_greenland_calibration()
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project Greenland ice-sheet contribution to GMSLR.
 
         This follows the IPCC AR6 methodology as closely as possible, relative to the
@@ -148,11 +145,8 @@ class GreenlandSMBAR5(Component):
         self.mSLEoGt = 1e12 / 3.61e14 * 1e-3
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project Greenland SMB contribution to GMSLR.
 
         The projection is initialised from the observed IMBIE3 Greenland
@@ -248,11 +242,8 @@ class GreenlandDynAR5(Component):
         pass
 
     def project(
-            self,
-            state: ClimateState,
-            rng: np.random.Generator,
-            observations: Observations
-        ) -> np.ndarray:
+        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+    ) -> np.ndarray:
         """Project Greenland rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters

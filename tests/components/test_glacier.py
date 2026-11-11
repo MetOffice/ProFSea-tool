@@ -124,16 +124,8 @@ def test_glacier_reproducible_with_same_seed(observations):
     glacier = Glacier(glaciermip=2)
     state = get_dummy_state()
 
-    projection1 = glacier.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = glacier.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = glacier.project(state, np.random.default_rng(42), observations)
+    projection2 = glacier.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
@@ -299,11 +291,7 @@ def test_glacier_accepts_one_dimensional_temperature(observations):
     )[None, :]
     state.T_int_med = np.cumsum(state.T_ens)
 
-    projection = glacier.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = glacier.project(state, np.random.default_rng(42), observations)
 
     assert projection.shape == (
         state.nt,
@@ -318,10 +306,6 @@ def test_glacier_output_uses_state_dtype(observations):
     state = get_dummy_state()
     state.dtype = np.float32
 
-    projection = glacier.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = glacier.project(state, np.random.default_rng(42), observations)
 
     assert projection.dtype == np.float32

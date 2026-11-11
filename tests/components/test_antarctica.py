@@ -151,16 +151,8 @@ def test_ismip6_reproducible_with_same_seed(observations):
     antarctica = get_dummy_ismip6(region="eais")
     state = get_dummy_state()
 
-    projection1 = antarctica.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = antarctica.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = antarctica.project(state, np.random.default_rng(42), observations)
+    projection2 = antarctica.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
@@ -218,9 +210,8 @@ def test_antarctica_dyn_invalid_scenario(observations):
 
 
 def test_antarctica_dyn_cumulative_emissions_bypasses_scenario(
-        monkeypatch,
-        observations
-    ):
+    monkeypatch, observations
+):
     """Explicit cumulative emissions should avoid the RCP scenario lookup."""
     antarctica = AntarcticaDynAR5(cum_emissions_total=1000.0)
     state = get_dummy_state(scenario="invalid")
@@ -300,15 +291,7 @@ def test_antarctica_smb_reproducible_with_same_seed(observations):
     antarctica = AntarcticaSMBAR5()
     state = get_dummy_state()
 
-    projection1 = antarctica.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = antarctica.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = antarctica.project(state, np.random.default_rng(42), observations)
+    projection2 = antarctica.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)

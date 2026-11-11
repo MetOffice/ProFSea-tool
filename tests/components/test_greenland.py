@@ -114,24 +114,13 @@ def test_greenland_ar6_reproducible_with_same_seed(observations):
     greenland = get_dummy_ar6()
     state = get_dummy_state()
 
-    projection1 = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = greenland.project(state, np.random.default_rng(42), observations)
+    projection2 = greenland.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
 
-def test_greenland_ar6_zero_coefficients_only_leave_trend(
-        monkeypatch,
-        observations
-    ):
+def test_greenland_ar6_zero_coefficients_only_leave_trend(monkeypatch, observations):
     """With zero emulator coefficients, the AR6 result should only contain trend."""
     greenland = GreenlandAR6.__new__(GreenlandAR6)
 
@@ -192,11 +181,7 @@ def test_greenland_ar6_accepts_one_dimensional_temperature(observations):
     state.T_ens = np.ones(state.n_years, dtype=np.float32)
     state.nt = 1
 
-    projection = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = greenland.project(state, np.random.default_rng(42), observations)
 
     assert projection.shape == (
         state.nt,
@@ -213,11 +198,7 @@ def test_greenland_ar6_persists_2100_rate(observations):
         end_yr=2105,
     )
 
-    projection = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = greenland.project(state, np.random.default_rng(42), observations)
 
     idx_2100 = 2100 - state.start_yr
 
@@ -262,11 +243,7 @@ def test_greenland_smb_projection_shape(observations):
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = greenland.project(
-        state,
-        rng,
-        observations
-    )
+    projection = greenland.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -280,24 +257,13 @@ def test_greenland_smb_reproducible_with_same_seed(observations):
     greenland = GreenlandSMBAR5()
     state = get_dummy_state()
 
-    projection1 = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
-    projection2 = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection1 = greenland.project(state, np.random.default_rng(42), observations)
+    projection2 = greenland.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
 
-def test_greenland_smb_includes_dynamic_baseline(
-        monkeypatch,
-        observations
-    ):
+def test_greenland_smb_includes_dynamic_baseline(monkeypatch, observations):
     """SMB projection should include the non-dynamic share of dgreen."""
     greenland = GreenlandSMBAR5()
 
@@ -351,11 +317,7 @@ def test_greenland_smb_palmer_method_freezes_post_ar5_rate(observations):
         palmer_method=True,
     )
 
-    projection = greenland.project(
-        state,
-        np.random.default_rng(42),
-        observations
-    )
+    projection = greenland.project(state, np.random.default_rng(42), observations)
 
     # project() freezes the annual contribution from index 95 onward
     # before applying cumulative sum. Therefore subsequent increments
@@ -393,9 +355,7 @@ def test_greenland_dyn_uses_rcp85_range(
         captured["uncertainty"] = uncertainty
         captured["final"] = final
 
-        return np.zeros(
-            (state.nt, state.num_members, state.n_years)
-        )
+        return np.zeros((state.nt, state.num_members, state.n_years))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -413,11 +373,7 @@ def test_greenland_dyn_uses_rcp85_range(
     ):
         assert component == "dyn"
 
-        sle = (
-            dynamic_offset
-            if baseline_start == 1986 and baseline_end == 2005
-            else 0.0
-        )
+        sle = dynamic_offset if baseline_start == 1986 and baseline_end == 2005 else 0.0
 
         return xr.Dataset(
             {
@@ -470,9 +426,7 @@ def test_greenland_dyn_uses_ssp585_range(
     ):
         captured["final"] = final
 
-        return np.zeros(
-            (state.nt, state.num_members, state.n_years)
-        )
+        return np.zeros((state.nt, state.num_members, state.n_years))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -488,11 +442,7 @@ def test_greenland_dyn_uses_ssp585_range(
     ):
         assert component == "dyn"
 
-        sle = (
-            dynamic_offset
-            if baseline_start == 1986 and baseline_end == 2005
-            else 0.0
-        )
+        sle = dynamic_offset if baseline_start == 1986 and baseline_end == 2005 else 0.0
 
         return xr.Dataset(
             {
@@ -543,9 +493,7 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(
     ):
         captured["final"] = final
 
-        return np.zeros(
-            (state.nt, state.num_members, state.n_years)
-        )
+        return np.zeros((state.nt, state.num_members, state.n_years))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
@@ -561,11 +509,7 @@ def test_greenland_dyn_uses_default_range_for_other_scenarios(
     ):
         assert component == "dyn"
 
-        sle = (
-            dynamic_offset
-            if baseline_start == 1986 and baseline_end == 2005
-            else 0.0
-        )
+        sle = dynamic_offset if baseline_start == 1986 and baseline_end == 2005 else 0.0
 
         return xr.Dataset(
             {
@@ -608,9 +552,7 @@ def test_greenland_dyn_adds_dynamic_baseline(
     state = get_dummy_state()
 
     def mock_time_projection(*args, **kwargs):
-        return np.zeros(
-            (state.nt, state.num_members, state.n_years)
-        )
+        return np.zeros((state.nt, state.num_members, state.n_years))
 
     monkeypatch.setattr(
         "profsea.components.global_.greenland.time_projection",
