@@ -201,21 +201,27 @@ class Spatial:
 
 
 
-        # SET UP THE RANDOM NUMBER GENERATOR SEEDS FOR THE LOCAL MONTE CARLO:
-        # 1) First RNG: which member to select from the global Monte Carlo (available to all spatial component functions).
-        # 2) Remaining RNGs:  For each of the spatial component functions.
+        #-------------------------------------------------------------------------
+        # SET UP THE RANDOM NUMBER GENERATORS & SEEDS FOR THE LOCAL MONTE CARLO:
+        #-------------------------------------------------------------------------
+        # 1) First (shared) RNG: which member to select from the global Monte Carlo (available to all spatial component functions).
+        # 2) Second (shared) RNG: which GRD method to use for that member for consistency across barystatic components (available to all spatial component functions).
+        # 3) Remaining RNGs:  For each of the spatial component functions (component-specific).
         # Each RNG gets its own statistically independent stream of random numbers while still being reproducible from the original seed (default 42).
-        # LA: added an extra seed (independent of random draws inside any components) for the random stream for selecting global members in the local MC.
-        child_seeds = seed_seq.spawn(len(self.components) + 1)    # LA added the +1
+        
+        child_seeds = seed_seq.spawn(len(self.components) + 2)    # LA added the +2
+        
         global_member_rng = np.random.default_rng(child_seeds[0])    # LA added this line for the local MC
+        grd_method_rng = np.random.default_rng(child_seeds[1])       # LA added this line for the local MC
+        
         comp_rngs = {
             name: np.random.default_rng(s)
-            for name, s in zip(self.components.keys(), child_seeds[1:])  # LA added the [1:]
+            for name, s in zip(self.components.keys(), child_seeds[2:])  # LA added the [2:]
         }
-
-        #--------------------------------------------------------------------------
-        # LA added for local MC:
-        #--------------------------------------------------------------------------
+        pdb.set_trace()
+        #-------------------------------------------------------------------------
+        # MAKE THE RANDOM DRAW OF GLOBAL MEMBER INDICES (LA added for local MC)
+        #-------------------------------------------------------------------------
         # Establish how many global members are available and verify that the components with global_projection agree on that number:
         global_member_counts = {
             name: comp.global_projection.shape[0]
@@ -241,13 +247,52 @@ class Spatial:
             size=self.num_local_members,
             replace=True,
         )
+        #-------------------------------------------------------------------------
+        # MAKE THE RANDOM DRAW OF GRD METHODS (LA added for local MC)
+        #-------------------------------------------------------------------------
+
+        # Components that share GRD methods
+        shared_grd_components = [
+            "greenland_dyn",
+            "greenland_smb",
+            "antarctica_dyn",
+            "antarctica_smb",
+            "glacier",
+        ]
+
+
+        shared_grd_methods = sorted(
+            set.intersection(
+                *[
+                    set(self.components[name].available_grd_methods)
+                    for name in shared_grd_components
+                ]
+            )
+        )
+
+        if not shared_grd_methods:
+            raise ValueError(
+                "No common GRD methods are available across the "
+                "components that require shared GRD sampling."
+            )
+
+
+        grd_method_choices = grd_method_rng.choice(
+            shared_grd_methods,
+            size=self.num_local_members,
+            replace=True,
+        )
+    
         #--------------------------------------------------------------------------
+
+
 
         state = SpatialState(
             n_years=self.n_years,
             n_members=self.num_members,
             n_local_members=self.num_local_members,    # LA added for local MC
             global_member_indices=global_member_indices,    # LA added for local MC
+            grd_method_choices=grd_method_choices,     # LA added for local MC
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
             grid_interpolation="linear",
@@ -257,8 +302,42 @@ class Spatial:
             endofhistory=self.start_year,
         )
 
+        
+        # LA added for local MC (indices to be created once, before spatial tiles are processed)
+        if "sterodynamic" in self.components:
+            state.sterodynamic_pattern_indices = (
+                self.components["sterodynamic"].sample_pattern_indices(
+                    comp_rngs["sterodynamic"],
+                    state.n_local_members,
+                )
+            )
 
-          
+        # LA: sample one GIA spatial pattern for each local MC member.
+        # Use the reproducible GIA RNG spawned from member_seed.
+        if "gia" in self.components:
+            gia_component = self.components["gia"]
+
+            if gia_component.sample_spatial:
+                state.gia_pattern_indices = (
+                    gia_component.sample_pattern_indices(
+                        comp_rngs["gia"],
+                        state.n_local_members,
+                    )
+                )
+
+        pdb.set_trace()
+        
+        tile_components = {
+            "sterodynamic",
+            "greenland_dyn",
+            "greenland_smb",
+            "landwater",
+            "antarctica_dyn",
+            "antarctica_smb",
+            "glacier",
+            "gia",
+        }
+        
         spatial_projections = {}
         console.print()  # Add a blank line for better readability in the console output
         #for name, comp in track(
@@ -266,10 +345,25 @@ class Spatial:
         #):
         for name, comp in self.components.items():   # LA removed progress tracker for easier use of pdb
             # lazy_projection does not calculate the projection yet - it returns an object describing the calculation which will be executed later
-            lazy_projection = comp.project(state, comp_rngs[name])  
+            #lazy_projection = comp.project(state, comp_rngs[name])  
             # Rechunk before saving to optimize memory during writing
             #lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})   # keep dims 0 and 1 together, but split the spatial dims into 10x10 tiles
 
+
+            if name in tile_components:
+                # LA: temporary test - spatial.run() controls the first 5x5 tile
+                lazy_projection = comp.project(
+                    state,
+                    comp_rngs[name],
+                    lat_slice=slice(0, 5),
+                    lon_slice=slice(0, 5),
+                )
+            else:
+                lazy_projection = comp.project(state, comp_rngs[name])  # original before temporary test (GIA remains here because not decided how GIA should participate in local MC)
+
+            if name == "greenland_dyn":
+                pdb.set_trace()
+            
             lazy_projection = lazy_projection.rechunk(
                 {
                     0: 2000,  # local MC members per chunk
@@ -278,7 +372,6 @@ class Spatial:
                     3: 5,      # longitudes per chunk
                 }
             )
-            pdb.set_trace()
             spatial_projections[name] = lazy_projection
         console.print()
 

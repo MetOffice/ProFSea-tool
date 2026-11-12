@@ -57,6 +57,31 @@ class SterodynamicCMIP6(SpatialComponent):
     def global_projection(self):
         return self._global_projection
 
+
+    def sample_pattern_indices(
+        self,
+        rng: np.random.Generator,
+        n_local_members: int,
+    ) -> np.ndarray:
+        """
+        Sample one CMIP6 sterodynamic pattern for each local MC member.
+
+        The returned indices should be generated once per Spatial.run()
+        and reused for every spatial tile.
+
+        This method will discover how many models are available.
+        """
+        coeffs_da, _ = self._load_CMIP6_slopes()
+
+        n_patterns = coeffs_da.sizes["model"]
+
+        return rng.choice(
+            n_patterns,
+            size=n_local_members,
+            replace=True,
+        )
+
+    
     def _load_CMIP6_slopes(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Load in the CMIP6 slope coefficients.
@@ -122,9 +147,18 @@ class SterodynamicCMIP6(SpatialComponent):
             
         return slopes_stack, mask_stack
 
+#    def _calc_expansion_contribution(
+#        self, rng: np.random.Generator, state: ClimateState
+#    ) -> da.Array:
     def _calc_expansion_contribution(
-        self, rng: np.random.Generator, state: ClimateState
+            self,
+            rng: np.random.Generator,
+            state: ClimateState,
+            lat_slice: slice | None = None,
+            lon_slice: slice | None = None,
     ) -> da.Array:
+    # LA for localMC - allow _calc_expansion_contribution() to receice optional tile slice arguments
+        
         """
         Calculate the thermal expansion contribution to the regional component of
         sea level rise.  --> LA: make this description more accurate.
@@ -152,7 +186,22 @@ class SterodynamicCMIP6(SpatialComponent):
             coeffs_da = coeffs_da.where(mask_da == 0.0)
 
         # Get the data either at sites or on a grid
-        interp_da = self.extract_spatial(coeffs_da, state)
+        #interp_da = self.extract_spatial(coeffs_da, state)
+        # Temporary test of first 5 x 5 spatial tile for local MC (temporary because Spatial.run() will suuply these slices eventually)
+#        interp_da = self.extract_spatial(
+#            coeffs_da,
+#            state,
+#            lat_slice=slice(0, 5),
+#            lon_slice=slice(0, 5),
+#        )
+        interp_da = self.extract_spatial(
+            coeffs_da,
+            state,
+            lat_slice=lat_slice,
+            lon_slice=lon_slice,
+        )   # LA for local MC -> pass spatial tile slice to extract_spatial
+
+
         coeffs = interp_da.data
         spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
 
@@ -239,12 +288,17 @@ class SterodynamicCMIP6(SpatialComponent):
             
             # Randomly sample CMIP6 model coefficient fields, with replacement.
             # LA: update for local MC. Use n_local_members for the size of the local Monte Carlo.
-            rand_samples = rng.choice(
-                coeffs.shape[0],
-                size=state.n_local_members,
-                replace=True,
-            )
-            return coeffs[rand_samples, :, :]
+            #rand_samples = rng.choice(
+            #    coeffs.shape[0],
+            #    size=state.n_local_members,
+            #    replace=True,
+            #)
+            #return coeffs[rand_samples, :, :]
+            if state.sterodynamic_pattern_indices is None:
+                raise RuntimeError(
+                    "Sterodynamic pattern indices have not been sampled."
+                )
+            return coeffs[state.sterodynamic_pattern_indices,:,:,]  # each Monte Carlo member has a spatially coherent CMIP6 pattern
         else:
             # Calc pattern ensemble mean
             mean_coeff = da.nanmean(coeffs, axis=0)
@@ -259,7 +313,15 @@ class SterodynamicCMIP6(SpatialComponent):
 
 
         
-    def project(self, state: ClimateState, rng) -> np.ndarray:
+#    def project(self, state: ClimateState, rng) -> np.ndarray:
+    def project(
+            self,
+            state: ClimateState,
+            rng,
+            lat_slice: slice | None = None,
+            lon_slice: slice | None = None,
+    ) -> np.ndarray:
+        # LA for localMC, added optional tile arguments 
         """
         Project the sterodynamic component by applying the CMIP6 patterns to the global expansion projection.
 
@@ -300,8 +362,14 @@ class SterodynamicCMIP6(SpatialComponent):
             current_projection = self.global_projection
 
             
-        expansion_contribution = self._calc_expansion_contribution(rng, state)
-
+        #expansion_contribution = self._calc_expansion_contribution(rng, state)
+        expansion_contribution = self._calc_expansion_contribution(
+            rng,
+            state,
+            lat_slice=lat_slice,
+            lon_slice=lon_slice,
+        )   # LA for localMC --> pass tile slices to _calc_expansion_contribution
+        
         #-----------------------------------------------------------------------------
         # Compute and plot the (currently 5) members of expansion_contribution...
 

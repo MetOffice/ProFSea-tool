@@ -17,18 +17,46 @@ class Component(ABC):
 
 
 class SpatialComponent(Component):
-    def extract_spatial(self, da_input: xr.DataArray, state) -> xr.DataArray:
+#    def extract_spatial(self, da_input: xr.DataArray, state) -> xr.DataArray:
+    def extract_spatial(
+        self,
+        da_input: xr.DataArray,
+        state,
+        lat_slice: slice | None = None,
+        lon_slice: slice | None = None,
+    ) -> xr.DataArray:    # LA changed for localMC --> added optional lon/lat slices
+        
         if hasattr(state, "target_lats"):
             return self._extract_points(da_input, state.target_lats, state.target_lons)
 
         elif hasattr(state, "grid_lats"):
             from profsea.utils.utils import interpolate_to_grid
 
-            return interpolate_to_grid(da_input, state.grid_lats, state.grid_lons)
+            #--------------------------------------
+            # LA added for localMC --> lon/lat slices
+            grid_lats = state.grid_lats
+            grid_lons = state.grid_lons
 
+            if lat_slice is not None:
+                grid_lats = grid_lats[lat_slice]
+
+            if lon_slice is not None:
+                grid_lons = grid_lons[lon_slice]
+            #--------------------------------------
+
+
+            #return interpolate_to_grid(da_input, state.grid_lats, state.grid_lons)
+            return interpolate_to_grid(
+                da_input,
+                grid_lats,
+                grid_lons,
+            )  # LA changed for localMC
+        
         else:
             raise ValueError("State object is missing required spatial attributes.")
 
+
+        
     def _extract_points(
         self, da_input: xr.DataArray, target_lats: np.ndarray, target_lons: np.ndarray
     ) -> xr.DataArray:

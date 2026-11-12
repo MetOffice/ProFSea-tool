@@ -39,6 +39,9 @@ class SpatialState:
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
     global_member_indices: np.ndarray | None = None    # LA added for local MC
+    sterodynamic_pattern_indices: np.ndarray | None = None    # LA added for local MC (indices to be created once, before spatial tiles are processed)
+    grd_method_choices: np.ndarray | None = None    # LA added for local MC
+    gia_pattern_indices: np.ndarray | None = None    # LA added for local MC
 
 
 @dataclass

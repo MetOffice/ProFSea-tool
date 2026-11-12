@@ -532,7 +532,7 @@ def main():
             fingerprint_component="glacier",
         ),
         "gia": GIA(
-            sample_spatial=False,
+            sample_spatial=True,
         ),
     }
 
