@@ -1,8 +1,8 @@
 import numpy as np
 
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.expansion import ThermalExpansion
-from profsea.components.core.observations import Observations
 
 
 def get_dummy_state(

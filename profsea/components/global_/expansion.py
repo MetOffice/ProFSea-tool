@@ -4,8 +4,8 @@ import numpy as np
 import xarray as xr
 
 from profsea.components.core.base import Component
-from profsea.components.core.state import ClimateState
 from profsea.components.core.observations import Observations
+from profsea.components.core.state import ClimateState
 from profsea.utils import check_shapes
 
 
