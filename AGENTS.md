@@ -63,16 +63,16 @@ ProFSea-tool/
 │   │   ├── global_/           # GMSLR components (numpy)
 │   │   └── spatial/           # Regional components (dask)
 │   ├── utils/                 # utils.py (sampling, regridding, I/O), ui.py (rich panels)
-│   ├── aux_data/              # Small calibration files, tracked in git
+│   ├── auxiliary_data/        # Calibration files; component-obs/ holds observations
 │   ├── profsea-assets/        # Zenodo download (gitignored, fetched on demand)
-│   ├── tutorial_notebooks/    # Copies of the notebooks in docs/source
 │   ├── development/           # Exploratory notebooks, not part of the package API
 │   └── scm_profsea_experiments.py  # Research script; needs `fair`, `rich_argparse`
 ├── tests/                     # pytest; mirrors the package (core/, components/, utils/)
-├── docs/source/               # Sphinx (rst + nbsphinx notebooks)
+├── docs/source/               # Sphinx (rst); notebooks in docs/source/tutorial_notebooks/
 ├── ukcp18_example_script.py   # End-to-end global → spatial example
 ├── pyproject.toml             # Packaging, ruff config, version
 ├── CHANGELOG.md               # User-facing change history (update in every PR)
+├── AGENTS.md / CLAUDE.md      # Agent guide; CLAUDE.md only imports AGENTS.md
 ├── profsea-env.yml            # Development conda environment
 └── docs-environment.yml       # Documentation conda environment
 ```
@@ -85,6 +85,7 @@ ProFSea-tool/
 | `SpatialComponent` | `core/base.py` | Adds `global_projection` (abstract property), `fetch_assets`, `extract_spatial`, `broadcast_spatiotemporal` |
 | `ClimateState` | `core/state.py` | Drivers and ensemble layout for the global stage |
 | `SpatialState` / `LocalState` | `core/state.py` | Target grid or target sites, output sizes, baseline |
+| `Observations` | `core/observations.py` | Cached, re-baselined observational records used to initialise global components |
 | `Global` | `core/global_model.py` | Runs `Component`s on GMST forcing → GMSLR per component |
 | `Spatial` | `core/spatial_model.py` | Runs `SpatialComponent`s on a regular lat/lon grid |
 | `Local` | `core/local_model.py` | Runs `SpatialComponent`s at named `(lat, lon)` sites |
@@ -113,9 +114,10 @@ imported from `profsea.components.core.local_model`.
 
 ```
 GMST anomaly (nt, n_years)   +   OHC anomaly (given to ThermalExpansion)
-    ↓  Global.run(scenario, T_change, member_seed)
-ClimateState  (T_ens, T_int_ens, T_int_med, shared `fraction`, sizes, dtype)
-    ↓  component.project(state, rng)        # threaded, one RNG stream per component
+    ↓  Global(start_yr, end_yr, baseline_start, baseline_end, ...).run(scenario, T_change, member_seed)
+ClimateState  (T_ens, T_int_ens, T_int_med, shared `fraction`, years, baseline, sizes, dtype)
+    ↓  component.project(state, rng, observations)   # threaded, one RNG stream per component
+    ↓  if initialise_from_observations=False: rebaseline_projection(...) per component
 {name: DataArray (climate_member, process_member, time)}      # metres
     ↓  each DataArray handed to a SpatialComponent as `global_projection`
 SpatialState (grid)  or  LocalState (sites)
@@ -135,9 +137,18 @@ SpatialState (grid)  or  LocalState (sites)
   requested and `(nt, num_members, time, *spatial)` otherwise, where `*spatial` is
   `(lat, lon)` for `SpatialState` and `(site,)` for `LocalState`. Build it with
   `broadcast_spatiotemporal`, which handles all four cases.
-- **Time axis.** Annual, starting 2006. `n_years = end_yr - 2006`, so `end_yr=2301`
-  gives 295 steps labelled 2006–2300. Forcing arrays must have exactly `n_years` columns
-  (`check_shapes`).
+- **Time axis.** Annual. `Global` takes `start_yr` and `end_yr`, with
+  `n_years = end_yr - start_yr`, so `start_yr=2006, end_yr=2301` gives 295 steps
+  labelled 2006–2300. Forcing arrays must have exactly `n_years` columns
+  (`check_shapes`). Use `state.start_yr`, never a literal year, to locate a year in the
+  time axis (e.g. `2100 - state.start_yr`). `Spatial` and `Local` still start at 2006.
+- **Baselines and observations.** `Global` also takes `baseline_start` and
+  `baseline_end` (validated by `validate_projection_years`). With
+  `initialise_from_observations=True` (the default) each component with an
+  observational record (all except `ThermalExpansion`) starts from the observed value in
+  `start_yr - 1`, read through the `Observations` object passed to
+  `project`; with `False` the model passes `observations=None` and re-baselines every
+  component over the baseline period afterwards. Components must handle both cases.
 - **Units.** Sea level in metres throughout; GMST in K; OHC in joules (the expansion
   efficiency is applied as m per YJ). Convert literature values (mm, Gt) on entry and
   say so in a comment.
@@ -183,7 +194,10 @@ global_model = Global(
         "glacier": Glacier(),
         "landwater": LandwaterAR6(),
     },
+    start_yr=2006,
     end_yr=2301,
+    baseline_start=1995,
+    baseline_end=2014,
     num_members=1000,
 )
 projections = global_model.run(
@@ -215,10 +229,15 @@ components.
 **New global component**
 
 1. Subclass `Component` in `profsea/components/global_/<process>.py`.
-2. Put configuration in `__init__`; load calibration files from `aux_data/` once (see the
-   `functools.lru_cache` loaders in `greenland.py` and `landwater.py`).
-3. Implement `project(self, state: ClimateState, rng)` and return
-   `(state.nt, state.num_members, state.n_years)` in `state.dtype`, in metres.
+2. Put configuration in `__init__`; load calibration files from `auxiliary_data/` once
+   (see the `functools.lru_cache` loaders in `greenland.py` and `landwater.py`).
+3. Implement `project(self, state: ClimateState, rng, observations)` and return
+   `(state.nt, state.num_members, state.n_years)` in `state.dtype`, in metres. When
+   `observations` is not `None`, initialise from the observed value in
+   `state.start_yr - 1` (see `Glacier.project`); when it is `None`, project without it.
+   If the component needs a new observational record, add a reader to
+   `profsea/utils/utils.py`, an accessor to `Observations`, and the data under
+   `auxiliary_data/component-obs/`.
 4. Do not mutate `state` or its arrays: components run concurrently in a thread pool and
    share them. Avoid mutating `self` in `project` for the same reason.
 5. Export it from `profsea/components/global_/__init__.py` (`__all__`), add it to
@@ -243,9 +262,10 @@ or add a new state/model pair rather than branching inside components.
 
 ## Data Assets
 
-- `profsea/aux_data/` is tracked in git and holds small calibration inputs (ISMIP6
-  Antarctic parameters, Greenland calibration CSV, AR6 land-water projections). Keep
-  additions small.
+- `profsea/auxiliary_data/` is tracked in git and holds small calibration inputs (ISMIP6
+  Antarctic parameters, Greenland calibration CSV, AR6 land-water projections) and, in
+  `component-obs/`, the observational records read by `Observations` (IMBIE3 ice
+  sheets, Zheng 2026). Keep additions small.
 - `profsea/profsea-assets/` (GRD fingerprints, GIA rates, CMIP6 sterodynamic patterns) is
   downloaded from Zenodo record 20427061 by `fetch_zenodo_fingerprints` the first time a
   `Spatial`, `Local` or spatial component is constructed. It is gitignored; never commit
@@ -309,8 +329,8 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
   finish without warnings.
 - `api_reference.rst` lists classes explicitly with `automodule :members:`. Add every
   new public class there.
-- The tutorial notebooks exist twice (`docs/source/` and `profsea/tutorial_notebooks/`).
-  Change both together.
+- Tutorial notebooks live in `docs/source/tutorial_notebooks/`. Files they write there
+  are gitignored; add any new output file to `.gitignore` too.
 - Docs deploy to GitHub Pages on every push to `profsea-v3`.
 
 ## Git and Pull Requests
@@ -348,8 +368,17 @@ part of an agreed change.
 - **Interpolation options are not wired up.** `Spatial(grid_interpolation=...)` and
   `Local(interpolation_method=...)` are accepted but ignored: gridded output is always
   linear and site output is always bilinear.
-- **Hard-coded time axis.** The 2006 start year and the 2100 offsets (`94`, `95`) are
-  literals in `time_projection.py`, `greenland.py` and the models.
+- **Start year only flexible in `Global`.** `Spatial` and `Local` still hard-code
+  `start_year = 2006`, so the spatial stage assumes global projections that start in
+  2006. `Global` also still sets `endofhistory = 2006` and `endofAR5 = 2100` for the
+  AR5 components.
+- **`Component.project` signature.** The abstract method in `core/base.py` still
+  declares `project(state, rng)`, but `Global` calls `project(state, rng, observations)`
+  and every global component accepts the third argument. Spatial components keep the
+  two-argument form.
+- **Callers not updated for the new `Global` signature.** `ukcp18_example_script.py`,
+  `docs/source/user_guide.rst` and `profsea/scm_profsea_experiments.py` construct
+  `Global` without the now-required `start_yr`, `baseline_start` and `baseline_end`.
 - **Scenario-dependent legacy components.** `AntarcticaDynAR5` raises `KeyError` for
   scenarios other than `rcp26/45/60/85` unless `cum_emissions_total` is given;
   `GreenlandDynAR5` switches range on `rcp85`/`ssp585`.

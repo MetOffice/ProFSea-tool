@@ -10,7 +10,10 @@ def get_dummy_state(
     n_years: int = 4,
     nt: int = 2,
     num_members: int = 2,
+    start_yr: int = 2006,
     end_yr: int = 2010,
+    baseline_start: int = 1996,
+    baseline_end: int = 2005,
     palmer_method: bool = False,
 ) -> ClimateState:
     """Helper to generate a small ClimateState."""
@@ -32,7 +35,10 @@ def get_dummy_state(
         palmer_method=palmer_method,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=start_yr,
         end_yr=end_yr,
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
@@ -184,7 +190,7 @@ def test_time_projection_zero_fraction_matches_manual_formula():
         num_members=1,
     )
 
-    fraction = np.array([[0.0]], dtype=np.float32)
+    fraction = np.array([[0.0]], dtype=state.dtype)
 
     startratemean = 1.0
     startratepm = 0.5
@@ -202,14 +208,19 @@ def test_time_projection_zero_fraction_matches_manual_formula():
     start_rate = (startratemean - startratepm) * 1e-3
     afinal = final[0]
 
-    finalyr = np.array([94.0], dtype=np.float32)
+    timeendofAR5 = state.endofAR5 - state.endofhistory + 1
+
+    # Elapsed year corresponding to the end of AR5.
+    finalyr = np.arange(1, dtype=state.dtype) + timeendofAR5
     halfacc = (afinal - start_rate * finalyr.mean()) / (finalyr**2).mean()
 
     time = (
         np.arange(
-            state.end_yr - state.endofhistory,
-            dtype=np.float32,
+            state.start_yr,
+            state.end_yr,
+            dtype=state.dtype,
         )
+        - state.start_yr
         + 1
     )
 

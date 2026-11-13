@@ -38,7 +38,9 @@ def time_projection(
     """
     # Create a field of elapsed time since start in years
     timeendofAR5 = state.endofAR5 - state.endofhistory + 1
-    time = np.arange(state.end_yr - state.endofhistory, dtype=state.dtype) + 1
+    time = (
+        np.arange(state.start_yr, state.end_yr, dtype=state.dtype) - state.start_yr + 1
+    )
 
     if fraction is None:
         fraction = rng.random((state.nt, state.num_members), dtype=state.dtype)
@@ -71,7 +73,7 @@ def time_projection(
     # If nfinal=1, the following two lines are equivalent to
     # halfacc=(final-startyr*nyr)/nyr**2
     finalyr = (
-        np.arange(nfinal, dtype=state.dtype) - nfinal + 94 + 1
+        np.arange(nfinal, dtype=state.dtype) + timeendofAR5 - nfinal + 1
     )  # last element ==nyr
     halfacc = (afinal - startrate * finalyr.mean()) / (finalyr**2).mean()
     quadratic = halfacc[:, :, np.newaxis] * (time**2)
@@ -84,8 +86,13 @@ def time_projection(
     # The quadratic also = a*t**2-a*(t-t0)**2
 
     if state.palmer_method:
-        y = halfacc[:, :, np.newaxis] * timeendofAR5 * ((2 * time) - timeendofAR5)
-        quadratic[:, :, 95:] = y[:, :, 95:]
+        post_ar5 = time > timeendofAR5
+
+        quadratic[:, :, post_ar5] = (
+            halfacc[:, :, np.newaxis]
+            * timeendofAR5
+            * (2 * time[post_ar5] - timeendofAR5)
+        )
 
     quadratic += linear
 

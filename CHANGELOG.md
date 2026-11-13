@@ -18,6 +18,7 @@ History before this file was started is available from the
 - `AGENTS.md`, a guide to the code base, design philosophy and conventions for coding
   agents and new contributors.
 - `CHANGELOG.md` (this file).
+- `CLAUDE.md`, which imports `AGENTS.md` so that Claude Code loads it automatically.
 
 ### Changed
 

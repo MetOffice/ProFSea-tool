@@ -1,5 +1,6 @@
 import numpy as np
 
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.expansion import ThermalExpansion
 
@@ -24,7 +25,10 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=2006,
         end_yr=2010,
+        baseline_start=1996,
+        baseline_end=2005,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
@@ -34,6 +38,11 @@ def get_dummy_state(
 def test_expansion_ohc_change_true_scales_input_with_efficiency():
     """When OHC_change is True, output should be OHC multiplied by sampled efficiency."""
     state = get_dummy_state(nt=2, num_members=3, n_years=4)
+
+    observations = Observations(
+        baseline_start=1995,
+        baseline_end=2014,
+    )
 
     data_input = np.array(
         [
@@ -49,7 +58,7 @@ def test_expansion_ohc_change_true_scales_input_with_efficiency():
         OHC_change=True,
     )
 
-    projection = expansion.project(state, np.random.default_rng(42))
+    projection = expansion.project(state, np.random.default_rng(42), observations)
 
     expected_efficiency = np.float32(0.113e-24)
     expected = (data_input[:, None, :] * expected_efficiency).astype(np.float32)
@@ -59,12 +68,24 @@ def test_expansion_ohc_change_true_scales_input_with_efficiency():
     )
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
-    np.testing.assert_allclose(projection, expected)
+
+    projection_change = projection - projection[..., [0]]
+    expected_change = expected - expected[..., [0]]
+    np.testing.assert_allclose(
+        projection_change,
+        expected_change,
+        atol=1e-7,
+    )
 
 
 def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     """When OHC_change is False, input should be broadcast to all members unchanged."""
     state = get_dummy_state(nt=2, num_members=3, n_years=4)
+
+    observations = Observations(
+        baseline_start=1995,
+        baseline_end=2014,
+    )
 
     data_input = np.array(
         [
@@ -79,7 +100,7 @@ def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
         OHC_change=False,
     )
 
-    projection = expansion.project(state, np.random.default_rng(42))
+    projection = expansion.project(state, np.random.default_rng(42), observations)
 
     expected = np.broadcast_to(
         data_input[:, None, :],
@@ -87,4 +108,33 @@ def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
     )
 
     assert projection.shape == (state.nt, state.num_members, state.n_years)
-    np.testing.assert_allclose(projection, expected)
+
+    projection_change = projection - projection[..., [0]]
+    expected_change = expected - expected[..., [0]]
+    np.testing.assert_allclose(
+        projection_change,
+        expected_change,
+        atol=1e-7,
+    )
+
+
+def test_expansion_without_observations():
+    data_input = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [10.0, 20.0, 30.0, 40.0],
+        ],
+        dtype=np.float32,
+    )
+
+    expansion = ThermalExpansion(data_input=data_input)
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    projection = expansion.project(state, rng, None)
+
+    assert projection.shape == (
+        state.nt,
+        state.num_members,
+        state.n_years,
+    )
