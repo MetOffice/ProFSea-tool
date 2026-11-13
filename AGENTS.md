@@ -358,7 +358,13 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
   ```
 
   On release, rename `## Unreleased` to the version (e.g. `## 3.0.0`) and start a new
-  empty `## Unreleased` above it.
+  empty `## Unreleased` above it. The `Enforce changelog` workflow fails any PR that does
+  not touch `CHANGELOG.md` unless it is labelled `skip-changelog` or `skip-ci`.
+- GitHub Actions: the MetOffice organisation only allows actions created by GitHub
+  (`actions/*`), owned by the enterprise, from verified Marketplace publishers, or
+  matching `cylc/setup-cylc@*`, `mamba-org/setup-micromamba@*` or
+  `wechuli/allcheckspassed@*`. Any other `uses:` fails with `startup_failure`; write the
+  step as a shell script (the `gh` CLI is preinstalled) instead.
 - First-time contributors must add a row to `CONTRIBUTORS.md` to sign `CLA.md`; a CI
   check enforces it. This is a human's decision — never add a contributor row on
   someone's behalf.

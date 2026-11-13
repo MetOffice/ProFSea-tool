@@ -1,22 +1,37 @@
 name: "Enforce changelog"
 on:
   pull_request:
-      types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   changelog:
     name: "CHANGELOG.md changed?"
-    # don't run if any of these labels are present, changelog-enforcer also has skipLabels
-    # but for consistency do as with other workflows
+    # Skip if the PR has either of these labels, as with other workflows
     if: >
-      !(  
+      !(
       contains(github.event.pull_request.labels.*.name, 'skip-ci') ||
       contains(github.event.pull_request.labels.*.name, 'skip-changelog')
       )
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
-    - uses: dangoslen/changelog-enforcer@v3
-      with:
-        changeLogPath: 'CHANGELOG.md'
-        # skipLabels: 'skip-changelog','skip-ci'
+      # Plain shell with the preinstalled gh CLI: the organisation only allows
+      # actions from GitHub, the enterprise or verified Marketplace publishers.
+      - name: Check CHANGELOG.md is part of the PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          changed_files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
+
+          if grep -qx 'CHANGELOG.md' <<< "$changed_files"; then
+            echo "CHANGELOG.md is updated in this PR."
+          else
+            echo "::error file=CHANGELOG.md::Add a line under '## Unreleased' in CHANGELOG.md ending with [#$PR_NUMBER](https://github.com/$REPO/pull/$PR_NUMBER), or label the PR 'skip-changelog'."
+            exit 1
+          fi
