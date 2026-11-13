@@ -349,10 +349,16 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
   `js/fix-greenland-dynamics`.
 - Before pushing: `pytest tests/`, `ruff check . --fix`, `ruff format .`,
   `make --directory=docs html`.
-- Every PR adds a line to `CHANGELOG.md` under `## [Unreleased]`, in the matching
-  `Added` / `Changed` / `Fixed` / `Removed` group, written for users and ending with the
-  PR link: `- Brief description [#NNN](https://github.com/MetOffice/ProFSea-tool/pull/NNN)`.
-  On release, rename `Unreleased` to the version and date and start a new empty one.
+- Every PR adds to `CHANGELOG.md` as the first bullet(s) under `## Unreleased` (format
+  as in SpeedyWeather.jl): one line per change, succinct, related changes grouped into a
+  single bullet, no sub-headings, and always ending with the PR link:
+
+  ```
+  - Brief description [#NNN](https://github.com/MetOffice/ProFSea-tool/pull/NNN)
+  ```
+
+  On release, rename `## Unreleased` to the version (e.g. `## 3.0.0`) and start a new
+  empty `## Unreleased` above it.
 - First-time contributors must add a row to `CONTRIBUTORS.md` to sign `CLA.md`; a CI
   check enforces it. This is a human's decision — never add a contributor row on
   someone's behalf.
@@ -392,5 +398,6 @@ part of an agreed change.
 - **Global side effects on import.** `spatial_model.py` and `local_model.py` call
   `warnings.filterwarnings("ignore")`; `sterodynamic.py` calls `logging.basicConfig` and
   logs through the root logger.
-- **Development-guide drift.** `docs/source/development_guide.rst` says to branch from
-  `main`, and `documentation.rst` links to sections that do not exist.
+- **Development-guide drift.** `docs/source/development_guide.rst` and
+  `documentation.rst` say to branch from, and deploy from, `main`, while CI runs on
+  `profsea-v3`.
