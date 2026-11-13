@@ -1,16 +1,5 @@
 # Changelog
 
-All notable changes to ProFSea are recorded in this file.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
-project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every pull
-request adds a line under `Unreleased`, ending with a link to the pull request.
-
-History before this file was started is available from the
-[commit log](https://github.com/MetOffice/ProFSea-tool/commits/profsea-v3) and the
-[v1.0.0](https://github.com/MetOffice/ProFSea-tool/releases/tag/v1.0.0) and
-[v2.0.0](https://github.com/MetOffice/ProFSea-tool/releases/tag/v2.0.0) releases.
-
 ## [Unreleased]
 
 ### Added
@@ -34,6 +23,21 @@ History before this file was started is available from the
   through `data_input`, matching the current constructor.
 - `ukcp18_example_script.py`, `profsea/scm_profsea_experiments.py` and the user guide
   pass the now-required `start_yr`, `baseline_start` and `baseline_end` to `Global`.
+- The documentation build no longer fails importing `profsea.components.core.local_model`
+  for the API reference.
+- The worked-example notebook uses the same 1986–2005 baseline for `Spatial` and `Local`
+  as for `Global`.
 - The test suite no longer downloads the Zenodo assets or leaves
   `profsea/temp_fingerprints.zip` behind (`test_custom_paths_missing` now patches
   `fetch_assets`).
+
+All notable changes to ProFSea are recorded in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
+project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Every pull
+request adds a line under `Unreleased`, ending with a link to the pull request.
+
+History before this file was started is available from the
+[commit log](https://github.com/MetOffice/ProFSea-tool/commits/profsea-v3) and the
+[v1.0.0](https://github.com/MetOffice/ProFSea-tool/releases/tag/v1.0.0) and
+[v2.0.0](https://github.com/MetOffice/ProFSea-tool/releases/tag/v2.0.0) releases.

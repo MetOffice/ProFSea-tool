@@ -308,7 +308,10 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
 - Ruff settings live in `pyproject.toml`: line length 88, target `py312`, rule sets
   `E, F, W, I, UP`, double quotes. Notebooks are excluded.
 - Start modules with `from __future__ import annotations` and type-hint public
-  signatures.
+  signatures. This is required, not stylistic: the docs build mocks numpy, xarray,
+  dask, scipy and others (`autodoc_mock_imports` in `docs/source/conf.py`), so an
+  annotation such as `list | np.ndarray` evaluated at import time breaks the API
+  reference.
 - NumPy-style docstrings with `Parameters` / `Returns` sections, written as
   `name: type`. State array shapes in docstrings and in trailing comments, e.g.
   `# (climate_mem, process_mem, time)`.
@@ -324,6 +327,10 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
 ## Documentation
 
 - Sphinx sources are in `docs/source/` (`.rst` plus notebooks through `nbsphinx`).
+  Notebooks are committed without outputs, so the docs build executes them; they must
+  run top to bottom with the `profsea` kernel, and the build needs `pandoc` on `PATH`.
+  Executing them writes files into `docs/source/tutorial_notebooks/`, some of them
+  tracked, so build from a copy if you need to keep those untouched.
 - Build with `conda env create -f docs-environment.yml`, then
   `make --directory=docs html`; output lands in `docs/build/html`. The build should
   finish without warnings.
