@@ -604,3 +604,22 @@ def test_greenland_dyn_adds_dynamic_baseline(
         projection,
         initial_dynamic_sle,
     )
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        GreenlandAR6(),
+        GreenlandSMBAR5(),
+        GreenlandDynAR5(),
+    ],
+)
+def test_greenland_requires_observations(component):
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    with pytest.raises(
+        ValueError,
+        match="requires observational initialisation",
+    ):
+        component.project(state, rng, None)

@@ -90,7 +90,11 @@ def validate_component_map(
 
 
 def validate_projection_years(
-    start_yr: int, end_yr: int, baseline_start: int, baseline_end: int
+    start_yr: int,
+    end_yr: int,
+    baseline_start: int,
+    baseline_end: int,
+    initialise_from_observations: bool = True,
 ) -> None:
     """Validate the baseline and projections years before model construction.
 
@@ -104,6 +108,9 @@ def validate_projection_years(
         First year of the baseline period.
     baseline_end : int
         Last year of the baseline period.
+    initialise_from_observations : bool, default=True
+        If True, the projection and baseline periods must fall within the
+        period covered by observational constraints.
 
     Raises
     ------
@@ -121,16 +128,22 @@ def validate_projection_years(
             f"baseline_start ({baseline_start}) must be earlier than "
             f"baseline_end ({baseline_end})."
         )
-    if start_yr < 1980 or baseline_start < 1980:
+    if initialise_from_observations:
+        if start_yr < 1980 or baseline_start < 1980:
+            raise ValueError(
+                f"start_yr ({start_yr}) and baseline_start ({baseline_start}) must both "
+                "be 1980 or later when initialising components from observations."
+            )
+        if start_yr > 2023 or baseline_end > 2023:
+            raise ValueError(
+                f"start_yr ({start_yr}) and baseline_end ({baseline_end}) "
+                "cannot be later than 2023 when initialising from observations."
+            )
+
+    elif not (start_yr <= baseline_start < baseline_end <= end_yr):
         raise ValueError(
-            f"start_yr ({start_yr}) and baseline_start ({baseline_start}) must both "
-            f"be later than 1980 (so that observational constraints are available "
-            f"for all components)."
-        )
-    if baseline_end > 2023:
-        raise ValueError(
-            f"baseline_end ({baseline_end}) cannot be later than 2023 (so that "
-            f"observational constraints are available for all components)."
+            "The baseline period must fall within the projection period "
+            "when observational initialisation is disabled."
         )
 
 
@@ -506,6 +519,26 @@ def reformat_global_projection(
         flat_projection = raw_projection
 
     return sample_members_2D(flat_projection, state.output_percentiles)
+
+
+def rebaseline_projection(
+    projection: np.ndarray,
+    start_yr: int,
+    baseline_start: int,
+    baseline_end: int,
+) -> np.ndarray:
+    """Rebaseline component projections to the specified baseline period."""
+
+    start_idx = baseline_start - start_yr
+    end_idx = baseline_end - start_yr + 1
+
+    baseline = np.mean(
+        projection[..., start_idx:end_idx],
+        axis=-1,
+        keepdims=True,
+    )
+
+    return projection - baseline
 
 
 def _read_imbie3_obs(

@@ -128,7 +128,7 @@ class AntarcticaISMIP6(Component):
         self,
         state: ClimateState,
         rng: np.random.Generator,
-        observations: Observations,
+        observations: Observations | None,
     ) -> np.ndarray:
         """
         Projects AIS response using empirical additive bootstrapping aligned
@@ -179,18 +179,22 @@ class AntarcticaISMIP6(Component):
         term_fast = beta * tas_int[t_indices]
 
         total_ais = term_slow + term_fast
+        total_ais = total_ais.reshape(state.nt, state.num_members, n_time)
 
-        # Initialise the projection from the observed regional AIS contribution
-        # at the projection start year, relative to the specified baseline.
-        obs = observations.antarctica(
-            component="total",
-            region=self.region,
-        )
+        if observations is not None:
+            # Initialise the projection from the observed regional AIS contribution
+            # at the projection start year, relative to the specified baseline.
+            obs = observations.antarctica(
+                component="total",
+                region=self.region,
+            )
 
-        initial = obs.sel(time=state.start_yr - 1)
-        sle = initial["sle"].item()
+            initial = obs.sel(time=state.start_yr - 1)
+            sle = initial["sle"].item()
 
-        return total_ais.reshape(state.nt, state.num_members, n_time) + sle
+            total_ais += sle
+
+        return total_ais
 
 
 class AntarcticaDynAR5(Component):
@@ -207,7 +211,10 @@ class AntarcticaDynAR5(Component):
         self.cum_emissions_total = cum_emissions_total
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
 
@@ -217,12 +224,20 @@ class AntarcticaDynAR5(Component):
             Climate state containing scenario, ensemble, and projection settings.
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Antarctic rapid ice-sheet dynamics contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError(
+                "AntarcticaDynAR5() requires observational initialisation."
+            )
+
         # This is a naive solution to calculating the AntDyn contribution
         # for any given scenario. Basically linear regressions through existing data
         # to find rough relationship between cumulative emissions and AntDyn contribution.
@@ -292,7 +307,10 @@ class AntarcticaSMBAR5(Component):
         pass
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project Antarctic SMB contribution to GMSLR.
 
@@ -302,14 +320,20 @@ class AntarcticaSMBAR5(Component):
             Climate state containing scenario, ensemble, and projection settings.
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         antsmb: np.ndarray
             Antarctic SMB contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError(
+                "AntarcticaSMBAR5() requires observational initialisation."
+            )
+
         # Conversion factor for Gt to m SLE
         mSLEoGt = 1e12 / 3.61e14 * 1e-3
         # The following are [mean,SD]

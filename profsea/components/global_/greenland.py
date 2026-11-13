@@ -25,7 +25,10 @@ class GreenlandAR6(Component):
         self.df = load_greenland_calibration()
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project Greenland ice-sheet contribution to GMSLR.
 
@@ -40,14 +43,17 @@ class GreenlandAR6(Component):
         rng : np.random.Generator
             Random number generator used to sample calibrated model parameters and the
             Greenland trend contribution.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Total GIS contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError("GreenlandAR6() requires observational initialisation.")
 
         # read sea level contribution relative to specified baseline at start_yr from IMBIE 3
         obs = observations.greenland()
@@ -145,7 +151,10 @@ class GreenlandSMBAR5(Component):
         self.mSLEoGt = 1e12 / 3.61e14 * 1e-3
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project Greenland SMB contribution to GMSLR.
 
@@ -159,8 +168,9 @@ class GreenlandSMBAR5(Component):
             Climate state containing the projection start year and baseline period.
         rng: np.random.Generator
             Random number generator.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None..
 
         Returns
         -------
@@ -168,6 +178,8 @@ class GreenlandSMBAR5(Component):
             Greenland SMB contribution to GMSLR.
 
         """
+        if observations is None:
+            raise ValueError("GreenlandSMBAR5() requires observational initialisation.")
 
         # read sea level contribution at start_yr from IMBIE3
         obs = observations.greenland(component="smb")
@@ -252,14 +264,18 @@ class GreenlandDynAR5(Component):
             State object containing relevant information for the projection.
         rng: np.random.Generator
             Random number generator.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Greenland rapid ice-sheet dynamics contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError("GreenlandDynAR5() requires observational initialisation.")
+
         # Convert to a change relative to the projection start
         obs_ar5 = observations.greenland(
             baseline_start=1986,

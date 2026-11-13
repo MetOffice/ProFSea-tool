@@ -295,3 +295,41 @@ def test_antarctica_smb_reproducible_with_same_seed(observations):
     projection2 = antarctica.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
+
+
+def test_antarctica_dyn_requires_observations():
+    antarctica = AntarcticaDynAR5()
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    with pytest.raises(
+        ValueError,
+        match="requires observational initialisation",
+    ):
+        antarctica.project(state, rng, None)
+
+
+def test_antarctica_smb_requires_observations():
+    antarctica = AntarcticaSMBAR5()
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    with pytest.raises(
+        ValueError,
+        match="requires observational initialisation",
+    ):
+        antarctica.project(state, rng, None)
+
+
+def test_ismip6_without_observations():
+    antarctica = get_dummy_ismip6(region="eais")
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    projection = antarctica.project(state, rng, None)
+
+    assert projection.shape == (
+        state.nt,
+        state.num_members,
+        state.n_years,
+    )

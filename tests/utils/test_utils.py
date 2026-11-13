@@ -13,6 +13,7 @@ from profsea.utils import (
     interpolate_to_grid,
     read_antarctic_obs,
     read_thermal_expansion_obs,
+    rebaseline_projection,
     reformat_global_projection,
     sample_members_2D,
     save_components,
@@ -306,77 +307,106 @@ def test_save_components_zarr(tmp_path):
 
 
 def test_validate_projection_years():
-    """Should successfully validate projection years and baseline"""
+    """Valid years should pass with and without observational initialisation."""
     validate_projection_years(
         start_yr=2006,
         end_yr=2101,
         baseline_start=1986,
         baseline_end=2005,
+        initialise_from_observations=True,
+    )
+
+    validate_projection_years(
+        start_yr=1850,
+        end_yr=2101,
+        baseline_start=1850,
+        baseline_end=1900,
+        initialise_from_observations=False,
     )
 
 
-def test_validate_projection_years_start_after_end():
-    with pytest.raises(
-        ValueError,
-        match="start_yr .* must be earlier than end_yr",
-    ):
+@pytest.mark.parametrize(
+    "start_yr,end_yr",
+    [
+        (2100, 2000),
+        (2100, 2100),
+    ],
+)
+def test_validate_projection_years_invalid_projection_period(start_yr, end_yr):
+    with pytest.raises(ValueError, match="must be earlier than end_yr"):
         validate_projection_years(
-            start_yr=2100,
-            end_yr=2001,
+            start_yr=start_yr,
+            end_yr=end_yr,
             baseline_start=1986,
             baseline_end=2005,
         )
 
 
-def test_validate_projection_years_invalid_baseline():
-    with pytest.raises(
-        ValueError,
-        match="baseline_start .* must be earlier than baseline_end",
-    ):
+@pytest.mark.parametrize(
+    "baseline_start,baseline_end",
+    [
+        (2005, 1986),
+        (2005, 2005),
+    ],
+)
+def test_validate_projection_years_invalid_baseline_period(
+    baseline_start,
+    baseline_end,
+):
+    with pytest.raises(ValueError, match="must be earlier than baseline_end"):
         validate_projection_years(
             start_yr=2001,
             end_yr=2100,
-            baseline_start=2005,
-            baseline_end=1986,
+            baseline_start=baseline_start,
+            baseline_end=baseline_end,
         )
 
 
-def test_validate_projection_years_start_before_1980():
-    with pytest.raises(
-        ValueError,
-        match="start_yr .* and baseline_start .* must both be later than 1980",
-    ):
+@pytest.mark.parametrize(
+    "start_yr,baseline_start,baseline_end",
+    [
+        (1979, 1986, 2005),
+        (2001, 1979, 2005),
+        (2024, 1986, 2005),
+        (2001, 1986, 2024),
+    ],
+)
+def test_validate_projection_years_observational_limits(
+    start_yr,
+    baseline_start,
+    baseline_end,
+):
+    with pytest.raises(ValueError):
         validate_projection_years(
-            start_yr=1979,
+            start_yr=start_yr,
             end_yr=2100,
-            baseline_start=1986,
-            baseline_end=2005,
+            baseline_start=baseline_start,
+            baseline_end=baseline_end,
+            initialise_from_observations=True,
         )
 
 
-def test_validate_projection_years_baseline_start_before_1980():
+@pytest.mark.parametrize(
+    "baseline_start,baseline_end",
+    [
+        (1849, 1900),
+        (1850, 2101),
+    ],
+)
+def test_validate_projection_years_baseline_outside_projection(
+    baseline_start,
+    baseline_end,
+):
     with pytest.raises(
         ValueError,
-        match="start_yr .* and baseline_start .* must both be later than 1980",
+        match="baseline period must fall within the projection period",
     ):
         validate_projection_years(
-            start_yr=2001,
+            start_yr=1850,
             end_yr=2100,
-            baseline_start=1979,
-            baseline_end=2005,
-        )
-
-
-def test_validate_projection_years_baseline_end_after_2023():
-    with pytest.raises(
-        ValueError,
-        match=r"baseline_end \(2024\) cannot be later than 2023",
-    ):
-        validate_projection_years(
-            start_yr=2001,
-            end_yr=2100,
-            baseline_start=1986,
-            baseline_end=2024,
+            baseline_start=baseline_start,
+            baseline_end=baseline_end,
+            initialise_from_observations=False,
         )
 
 
@@ -639,3 +669,28 @@ def test_read_imbie3_AIS_obs_selects_region_file(
     assert args[1] == "total"
     assert args[2] == state.baseline_start
     assert args[3] == state.baseline_end
+
+
+def test_rebaseline_projection():
+    projection = np.array(
+        [
+            [[1.0, 2.0, 3.0, 4.0, 5.0]],
+            [[2.0, 4.0, 6.0, 8.0, 10.0]],
+        ]
+    )
+
+    result = rebaseline_projection(
+        projection,
+        start_yr=2000,
+        baseline_start=2001,
+        baseline_end=2003,
+    )
+
+    expected = np.array(
+        [
+            [[-2.0, -1.0, 0.0, 1.0, 2.0]],
+            [[-4.0, -2.0, 0.0, 2.0, 4.0]],
+        ]
+    )
+
+    np.testing.assert_allclose(result, expected)

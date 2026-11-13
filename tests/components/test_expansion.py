@@ -116,3 +116,25 @@ def test_expansion_ohc_change_false_broadcasts_input_without_scaling():
         expected_change,
         atol=1e-7,
     )
+
+
+def test_expansion_without_observations():
+    data_input = np.array(
+        [
+            [1.0, 2.0, 3.0, 4.0],
+            [10.0, 20.0, 30.0, 40.0],
+        ],
+        dtype=np.float32,
+    )
+
+    expansion = ThermalExpansion(data_input=data_input)
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    projection = expansion.project(state, rng, None)
+
+    assert projection.shape == (
+        state.nt,
+        state.num_members,
+        state.n_years,
+    )

@@ -34,7 +34,10 @@ class ThermalExpansion(Component):
         self.OHC_change = OHC_change
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         if isinstance(self.data_input, xr.DataArray):
             self.data_input = self.data_input.to_numpy()

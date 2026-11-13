@@ -42,18 +42,6 @@ class Glacier(Component):
         # glaciermip -- False => AR5 parameters, 1 => fit to Hock et al. (2019),
         #   2 => fit to Marzeion et al. (2020)
 
-        # read sea level contribution (relative to specified baseline) at start_yr from
-        # Zheng+ 2026 (Sci. Adv.)
-        obs = observations.glacier()
-
-        d_gla = (
-            obs["sle"]
-            .sel(
-                time=state.start_yr - 1,
-            )
-            .item()
-        )
-
         # Total available glacier mass expressed as m SLE, excluding
         # Antarctic and Sub-Antarctic glaciers (AR5 Table 4.2).
         glmass = 412.0 - 96.3
@@ -115,7 +103,14 @@ class Glacier(Component):
 
         # Apply variance and clip
         glacier = zgl + (mgl * r * cvgls)
-        glacier += d_gla
+
+        if observations is not None:
+            # read sea level contribution (relative to specified baseline) at start_yr
+            # from Zheng+ 2026 (Sci. Adv.)
+            obs = observations.glacier()
+            d_gla = obs["sle"].sel(time=state.start_yr - 1).item()
+            glacier += d_gla
+
         np.clip(glacier, None, glmass, out=glacier)
 
         return glacier  # (climate_mem, process_mem, time)

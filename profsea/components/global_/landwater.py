@@ -28,7 +28,10 @@ class LandwaterAR6(Component):
         self.lw_ds = load_landwater_projection()
 
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project land water storage contribution to GMSLR. This follows the IPCC
         AR6 methodology as closely as possible. The observed contribution, from
@@ -41,14 +44,18 @@ class LandwaterAR6(Component):
             Climate state containing projection years and baseline period.
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Land water storage contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError("LandwaterAR6() requires observational initialisation.")
+
         lw_ds = self.lw_ds.astype(state.dtype)
 
         # Interpolate to annual projections
@@ -106,14 +113,17 @@ class LandwaterAR5(Component):
             Climate state containing projection years, and baseline period,
         rng : np.random.Generator
             Random number generator used for uncertainty sampling.
-        observations : Observations
-            Observational data used to initialise the projection.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Land water storage contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError("LandwaterAR5() requires observational initialisation.")
 
         # The rate at start is the one for 1993-2010 from the budget table.
         # The final amount is the mean for 2081-2100.

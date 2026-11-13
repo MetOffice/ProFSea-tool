@@ -10,6 +10,7 @@ from rich.progress import track
 
 from profsea.utils import (
     check_shapes,
+    rebaseline_projection,
     sample_members_2D,
     save_components,
     validate_component_map,
@@ -43,6 +44,10 @@ class Global:
     baseline_end: int
         Last year of the period used to define the sea-level baseline.
         Must be later than `baseline_start`.
+    initialise_from_observations : bool, default=True
+        If True, observations to initialise component projections. If
+        False, components are projected without observational
+        initialisation and are re-baselined after projection.
     nt: int
         Number of realisations of the input timeseries
     num_members: int
@@ -92,6 +97,7 @@ class Global:
         end_yr: int,
         baseline_start: int,
         baseline_end: int,
+        initialise_from_observations: bool = True,
         nt: int = 100,
         num_members: int = 1000,
         tcv: float = 1.0,
@@ -106,6 +112,7 @@ class Global:
         self.end_yr = end_yr
         self.baseline_start = baseline_start
         self.baseline_end = baseline_end
+        self.initialise_from_observations = initialise_from_observations
         self.nt = nt
         self.num_members = num_members
         self.tcv = tcv
@@ -119,14 +126,21 @@ class Global:
         self.endofAR5 = 2100
         self.n_years = self.end_yr - self.start_yr
 
-        self.observations = Observations(
-            baseline_start=self.baseline_start,
-            baseline_end=self.baseline_end,
-        )
+        if self.initialise_from_observations:
+            self.observations = Observations(
+                baseline_start=self.baseline_start,
+                baseline_end=self.baseline_end,
+            )
+        else:
+            self.observations = None
 
         validate_component_map(self.components, Component, "Global")
         validate_projection_years(
-            self.start_yr, self.end_yr, self.baseline_start, self.baseline_end
+            self.start_yr,
+            self.end_yr,
+            self.baseline_start,
+            self.baseline_end,
+            self.initialise_from_observations,
         )
 
     # Inject method!
@@ -268,6 +282,16 @@ class Global:
                     state,
                     comp_rngs[name],
                     self.observations,
+                )
+
+        # Re-basline each component projection if initialise_from_observations is False
+        if not self.initialise_from_observations:
+            for name, data in results.items():
+                results[name] = rebaseline_projection(
+                    data,
+                    start_yr=self.start_yr,
+                    baseline_start=self.baseline_start,
+                    baseline_end=self.baseline_end,
                 )
 
         # Random Sampling

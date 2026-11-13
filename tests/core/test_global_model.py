@@ -10,10 +10,28 @@ from profsea.components.core.state import ClimateState
 
 class MockGlobalComponent(Component):
     def project(
-        self, state: ClimateState, rng: np.random.Generator, observations: Observations
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         # Update shape to (climate_members, process_members, time)
         return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
+
+
+class MockChangingComponent(Component):
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
+        data = np.arange(state.n_years, dtype=state.dtype)
+
+        return np.broadcast_to(
+            data,
+            (state.nt, state.num_members, state.n_years),
+        ).copy()
 
 
 def test_calculate_drivers_math():
@@ -134,3 +152,60 @@ def test_return_types(dtype):
     assert isinstance(data, xr.DataArray)
     assert data.dtype == dtype
     assert data.shape == (2, 3, 95)
+
+
+def test_global_creates_observations_when_initialising():
+    global_model = Global(
+        components={},
+        start_yr=2006,
+        end_yr=2100,
+        baseline_start=1986,
+        baseline_end=2005,
+        initialise_from_observations=True,
+    )
+
+    assert isinstance(global_model.observations, Observations)
+
+
+def test_global_has_no_observations_when_not_initialising():
+    global_model = Global(
+        components={},
+        start_yr=1850,
+        end_yr=2100,
+        baseline_start=1850,
+        baseline_end=1900,
+        initialise_from_observations=False,
+    )
+
+    assert global_model.observations is None
+
+
+def test_run_rebaselines_when_not_initialising():
+    global_model = Global(
+        components={"mock": MockChangingComponent()},
+        start_yr=2000,
+        end_yr=2010,
+        baseline_start=2002,
+        baseline_end=2004,
+        initialise_from_observations=False,
+        nt=2,
+        num_members=3,
+        parallel=False,
+    )
+
+    T_change = np.zeros((2, 10))
+
+    results = global_model.run(
+        scenario="test",
+        T_change=T_change,
+    )
+
+    result = results["mock"]
+
+    baseline_mean = result.sel(time=slice(2002, 2004)).mean("time")
+
+    np.testing.assert_allclose(
+        baseline_mean,
+        0.0,
+        atol=1e-7,
+    )

@@ -309,3 +309,17 @@ def test_glacier_output_uses_state_dtype(observations):
     projection = glacier.project(state, np.random.default_rng(42), observations)
 
     assert projection.dtype == np.float32
+
+
+def test_glacier_without_observations():
+    glacier = Glacier()
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    projection = glacier.project(state, rng, None)
+
+    assert projection.shape == (
+        state.nt,
+        state.num_members,
+        state.n_years,
+    )

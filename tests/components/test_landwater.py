@@ -503,3 +503,21 @@ def test_landwater_ar5_returns_time_projection_result(
         expected + initial_sle,
         atol=1e-7,
     )
+
+
+@pytest.mark.parametrize(
+    "component",
+    [
+        LandwaterAR5(),
+        LandwaterAR6(),
+    ],
+)
+def test_landwater_requires_observations(component):
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    with pytest.raises(
+        ValueError,
+        match="requires observational initialisation",
+    ):
+        component.project(state, rng, None)
