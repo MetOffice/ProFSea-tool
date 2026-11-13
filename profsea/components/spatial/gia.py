@@ -217,7 +217,6 @@ class GIA(SpatialComponent):
             unit_series,
             (n_output_members, state.n_years),
         )
-        pdb.set_trace()
         
 #        # Handle sampling if required
 #        if n_patterns == 1:

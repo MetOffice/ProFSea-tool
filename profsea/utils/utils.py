@@ -161,9 +161,11 @@ def interpolate_to_grid(
     # Account for land mask (using regionmask library)
     land = regionmask.defined_regions.natural_earth_v5_0_0.land_110
     land_mask = land.mask_3D(data_interp)
-    is_land = land_mask.squeeze("region", drop=True)
-    data_interp = data_interp.where(~is_land)
+    #is_land = land_mask.squeeze("region", drop=True)
+    is_land = land_mask.any(dim="region")
 
+    data_interp = data_interp.where(~is_land)
+    
     return data_interp
 
 

@@ -218,7 +218,7 @@ class Spatial:
             name: np.random.default_rng(s)
             for name, s in zip(self.components.keys(), child_seeds[2:])  # LA added the [2:]
         }
-        pdb.set_trace()
+
         #-------------------------------------------------------------------------
         # MAKE THE RANDOM DRAW OF GLOBAL MEMBER INDICES (LA added for local MC)
         #-------------------------------------------------------------------------
@@ -325,24 +325,30 @@ class Spatial:
                     )
                 )
 
-        pdb.set_trace()
         
-        tile_components = {
-            "sterodynamic",
-            "greenland_dyn",
-            "greenland_smb",
-            "landwater",
-            "antarctica_dyn",
-            "antarctica_smb",
-            "glacier",
-            "gia",
-        }
+#        tile_components = {
+#            "sterodynamic",
+#            "greenland_dyn",
+#            "greenland_smb",
+#            "landwater",
+#            "antarctica_dyn",
+#            "antarctica_smb",
+#            "glacier",
+#            "gia",
+#        }
+
+        lat_slice=slice(50, 55)
+        lon_slice=slice(20, 25)
+
+        n_block_lats = len(self.grid_lats[lat_slice])
+        n_block_lons = len(self.grid_lons[lon_slice])
         
         spatial_projections = {}
         console.print()  # Add a blank line for better readability in the console output
         #for name, comp in track(
         #    self.components.items(), description="Spatialising components..."
         #):
+
         for name, comp in self.components.items():   # LA removed progress tracker for easier use of pdb
             # lazy_projection does not calculate the projection yet - it returns an object describing the calculation which will be executed later
             #lazy_projection = comp.project(state, comp_rngs[name])  
@@ -350,19 +356,26 @@ class Spatial:
             #lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})   # keep dims 0 and 1 together, but split the spatial dims into 10x10 tiles
 
 
-            if name in tile_components:
-                # LA: temporary test - spatial.run() controls the first 5x5 tile
-                lazy_projection = comp.project(
-                    state,
-                    comp_rngs[name],
-                    lat_slice=slice(0, 5),
-                    lon_slice=slice(0, 5),
-                )
-            else:
-                lazy_projection = comp.project(state, comp_rngs[name])  # original before temporary test (GIA remains here because not decided how GIA should participate in local MC)
+            lazy_projection = comp.project(
+                state,
+                comp_rngs[name],
+                lat_slice=lat_slice,
+                lon_slice=lon_slice,
+            )
 
-            if name == "greenland_dyn":
-                pdb.set_trace()
+            
+            expected_shape = (
+                state.n_local_members,
+                state.n_years,
+                n_block_lats,
+                n_block_lons,
+            )
+
+            if lazy_projection.shape != expected_shape:
+                raise ValueError(
+                    f"{name} returned shape {lazy_projection.shape}; "
+                    f"expected {expected_shape}"
+                )
             
             lazy_projection = lazy_projection.rechunk(
                 {
@@ -373,8 +386,37 @@ class Spatial:
                 }
             )
             spatial_projections[name] = lazy_projection
+            
         console.print()
 
+        # Sum all components member by member before percentile reduction.
+        total_members = self._sum_component_members(spatial_projections)
+
+        # Calculate percentiles from each component's local Monte Carlo
+        component_percentiles = {
+            name: self._calculate_member_percentiles(member_array)
+            for name, member_array in spatial_projections.items()
+        }
+
+        # Calculate percentiles from the component-total local Monte Carlo
+        # (independent from the member-wise total)
+        total_percentiles = self._calculate_member_percentiles(
+            total_members
+        )
+
+        # Collect the percentiles together
+        percentile_projections = {**component_percentiles, "total_rsl": total_percentiles,}
+
+
+        pdb.set_trace()
+        
+        logger.info(
+            "Local MC member-wise total shape: %s",
+            total_members.shape,
+        )
+
+        pdb.set_trace()
+        
         # Put into xarray datasets for easier saving and metadata handling
         spatial_projections_xr = self._arr_to_xr(spatial_projections)
         self.results = spatial_projections_xr
@@ -402,3 +444,104 @@ class Spatial:
         total_rsl.attrs["units"] = "m"
         components["total_rsl"] = total_rsl
         return total_rsl
+
+    
+    def _sum_component_members(
+        self,
+        component_members: dict[str, da.Array],
+    ) -> da.Array:
+        """
+        Sum local Monte Carlo spatial components member by member.
+
+        Parameters
+        ----------
+        component_members : dict[str, da.Array]
+            Component arrays with common shape
+            (n_local_members, n_years, n_lats, n_lons).
+
+        Returns
+        -------
+        da.Array
+            Member-wise total with the same shape as each component.
+        """
+        if not component_members:
+            raise ValueError(
+                "No local Monte Carlo component arrays were supplied."
+            )
+
+        shapes = {
+            name: arr.shape
+            for name, arr in component_members.items()
+        }
+
+        expected_shape = next(iter(shapes.values()))
+
+        if any(shape != expected_shape for shape in shapes.values()):
+            raise ValueError(
+                "All local Monte Carlo component arrays must have the "
+                f"same shape. Received: {shapes}"
+            )
+
+        if expected_shape[0] != self.num_local_members:
+            raise ValueError(
+                "Local Monte Carlo member dimension does not match "
+                f"num_local_members={self.num_local_members}. "
+                f"Received shape {expected_shape}."
+            )
+
+        total_members = da.stack(
+            list(component_members.values()),
+            axis=0,
+        ).sum(axis=0)
+
+        return total_members
+
+
+    def _calculate_member_percentiles(
+        self,
+        member_array: da.Array,
+    ) -> da.Array:
+        """
+        Calculate requested percentiles across the local Monte Carlo
+        member dimension.
+
+        Parameters
+        ----------
+        member_array : da.Array
+            Local Monte Carlo array with shape
+            (n_local_members, n_years, n_lats, n_lons).
+
+        Returns
+        -------
+        da.Array
+            Percentile-reduced array with shape
+            (n_percentiles, n_years, n_lats, n_lons).
+        """
+        if self.output_percentiles is None:
+            raise ValueError(
+                "output_percentiles must be set for percentile reduction."
+            )
+
+        if member_array.ndim != 4:
+            raise ValueError(
+                "Expected a 4-D local Monte Carlo array "
+                "(member, time, lat, lon), "
+                f"but received shape {member_array.shape}."
+            )
+
+        if member_array.shape[0] != self.num_local_members:
+            raise ValueError(
+                "Local member dimension does not match "
+                f"num_local_members={self.num_local_members}. "
+                f"Received shape {member_array.shape}."
+            )
+
+        # Exact percentile reduction requires all members for each
+        # time/lat/lon cell to be available in one member chunk.
+        member_array = member_array.rechunk({0: -1})
+
+        return da.nanpercentile(
+            member_array,
+            q=self.output_percentiles,
+            axis=0,
+        )
