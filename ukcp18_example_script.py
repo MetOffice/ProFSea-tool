@@ -18,7 +18,7 @@ from profsea.components.spatial import GIA, Fingerprint, SterodynamicCMIP6
 ### Global projections first ###
 global_components = {
     "expansion": ThermalExpansion(
-        OHC_change=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
+        data_input=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
     ),
     "greenland_dyn": GreenlandDynAR5(),
     "greenland_smb": GreenlandSMBAR5(),

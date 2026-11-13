@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import dask.array as da
@@ -282,3 +284,13 @@ def test_save_components_zarr(tmp_path):
 
     ds = xr.open_zarr(expected_store)
     assert "comp1" in ds
+
+
+def test_utils_importable_first():
+    """profsea.utils must import in a fresh interpreter (no circular import)."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import profsea.utils"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

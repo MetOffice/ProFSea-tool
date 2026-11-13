@@ -6,6 +6,7 @@ import zipfile
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import dask
 import dask.array as da
@@ -23,7 +24,8 @@ from rich.progress import (
 )
 from scipy.spatial.distance import cdist
 
-from profsea.components.core.state import ClimateState
+if TYPE_CHECKING:
+    from profsea.components.core.state import ClimateState
 
 console = Console()
 logger = logging.getLogger(__name__)
