@@ -32,6 +32,8 @@ History before this file was started is available from the
   first ProFSea import.
 - `ukcp18_example_script.py` passes the ocean heat content array to `ThermalExpansion`
   through `data_input`, matching the current constructor.
+- `ukcp18_example_script.py`, `profsea/scm_profsea_experiments.py` and the user guide
+  pass the now-required `start_yr`, `baseline_start` and `baseline_end` to `Global`.
 - The test suite no longer downloads the Zenodo assets or leaves
   `profsea/temp_fingerprints.zip` behind (`test_custom_paths_missing` now patches
   `fetch_assets`).

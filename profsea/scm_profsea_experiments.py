@@ -423,7 +423,10 @@ def main(args):
 
         global_model = Global(
             components=slr_components,
+            start_yr=2006,
             end_yr=2301,
+            baseline_start=baseline_start,
+            baseline_end=baseline_end,
             num_members=1000,
             dtype="float32",
             parallel=False,

@@ -31,8 +31,17 @@ Detailed examples on how to use ProFSea can be found in the tutorial notebooks, 
 		"glacier": Glacier(),
 	}
 
-	# Initialise the Global model with the constituent components
-	global_model = Global(components=global_components, end_yr=2301, num_members=1000)  # number of members you want per climate trajectory
+	# Initialise the Global model with the constituent components.
+	# t_change and ohc_change must be anomalies relative to the same
+	# baseline period passed here.
+	global_model = Global(
+		components=global_components,
+		start_yr=2006,
+		end_yr=2301,
+		baseline_start=1995,
+		baseline_end=2014,
+		num_members=1000,  # number of members you want per climate trajectory
+	)
 
 	# Run the model forward!
 	projections = global_model.run(

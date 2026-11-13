@@ -376,9 +376,6 @@ part of an agreed change.
   declares `project(state, rng)`, but `Global` calls `project(state, rng, observations)`
   and every global component accepts the third argument. Spatial components keep the
   two-argument form.
-- **Callers not updated for the new `Global` signature.** `ukcp18_example_script.py`,
-  `docs/source/user_guide.rst` and `profsea/scm_profsea_experiments.py` construct
-  `Global` without the now-required `start_yr`, `baseline_start` and `baseline_end`.
 - **Scenario-dependent legacy components.** `AntarcticaDynAR5` raises `KeyError` for
   scenarios other than `rcp26/45/60/85` unless `cum_emissions_total` is given;
   `GreenlandDynAR5` switches range on `rcp85`/`ssp585`.
