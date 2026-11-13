@@ -514,7 +514,7 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
 def _write_mock_zheng_dataset(tmp_path):
     """Write a small mock NetCDF dataset."""
 
-    component_dir = tmp_path / "aux_data" / "component-obs"
+    component_dir = tmp_path / "auxiliary_data" / "component-obs"
     component_dir.mkdir(parents=True)
 
     ds = xr.Dataset(

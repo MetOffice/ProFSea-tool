@@ -16,7 +16,7 @@ from profsea.components.core.time_projection import time_projection
 @functools.lru_cache(maxsize=1)
 def load_greenland_calibration():
     """Loads the CSV once and keeps it in memory."""
-    path = Path(__file__).parents[2] / "aux_data" / "ISMIP_GIS_calibration.csv"
+    path = Path(__file__).parents[2] / "auxiliary_data" / "ISMIP_GIS_calibration.csv"
     return pd.read_csv(path)
 
 

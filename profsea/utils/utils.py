@@ -709,7 +709,7 @@ def read_greenland_obs(
 
     fpath = (
         PROFSEA_DIR
-        / "aux_data"
+        / "auxiliary_data"
         / "component-obs"
         / "imbie3_greenland_mm_partitioned.csv"
     )
@@ -734,7 +734,7 @@ def read_antarctic_obs(
         ``"peninsula"``, or ``None`` for the total Antarctic Ice Sheet.
     """
 
-    root = PROFSEA_DIR / "aux_data" / "component-obs"
+    root = PROFSEA_DIR / "auxiliary_data" / "component-obs"
 
     files = {
         None: "imbie3_antarctica_mm_partitioned.csv",
@@ -787,7 +787,7 @@ def _load_zheng_component(
         in metres, relative to the requested baseline period.
     """
 
-    filepath = PROFSEA_DIR / "aux_data" / "component-obs" / "Zheng2026.nc"
+    filepath = PROFSEA_DIR / "auxiliary_data" / "component-obs" / "Zheng2026.nc"
 
     with xr.open_dataset(filepath) as ds:
         sle = ds[variable].load()

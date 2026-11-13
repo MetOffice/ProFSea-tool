@@ -13,7 +13,7 @@ from profsea.components.core.observations import Observations
 from profsea.components.core.time_projection import time_projection
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
-AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
+AUX_DATA_DIR = PROFSEA_DIR / "auxiliary_data"
 
 PARAMS_MAP = {
     "wais": AUX_DATA_DIR / "wais_params_expanded.nc",
