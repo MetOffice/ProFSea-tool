@@ -9,10 +9,11 @@ from scipy.stats import norm
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import ClimateState
+from profsea.components.core.observations import Observations
 from profsea.components.core.time_projection import time_projection
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
-AUX_DATA_DIR = PROFSEA_DIR / "aux_data"
+AUX_DATA_DIR = PROFSEA_DIR / "auxiliary_data"
 
 PARAMS_MAP = {
     "wais": AUX_DATA_DIR / "wais_params_expanded.nc",
@@ -51,6 +52,7 @@ class AntarcticaISMIP6(Component):
 
         self.param_ds = xr.load_dataset(params_path)
         self.n_models = self.param_ds.coords["model"].shape[0]
+        self.region = region
 
     def _impulse_response_term(
         self,
@@ -122,7 +124,12 @@ class AntarcticaISMIP6(Component):
 
         return cum_rate1, cum_rate2
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
         """
         Projects AIS response using empirical additive bootstrapping aligned
         to the ClimateState ensemble size.
@@ -172,8 +179,22 @@ class AntarcticaISMIP6(Component):
         term_fast = beta * tas_int[t_indices]
 
         total_ais = term_slow + term_fast
+        total_ais = total_ais.reshape(state.nt, state.num_members, n_time)
 
-        return total_ais.reshape(state.nt, state.num_members, n_time)
+        if observations is not None:
+            # Initialise the projection from the observed regional AIS contribution
+            # at the projection start year, relative to the specified baseline.
+            obs = observations.antarctica(
+                component="total",
+                region=self.region,
+            )
+
+            initial = obs.sel(time=state.start_yr - 1)
+            sle = initial["sle"].item()
+
+            total_ais += sle
+
+        return total_ais
 
 
 class AntarcticaDynAR5(Component):
@@ -186,32 +207,44 @@ class AntarcticaDynAR5(Component):
     or will default to scenario-based regression, based on rcp scenarios.
     """
 
-    def __init__(
-        self, d_ant: float = (2.37 + 0.13) * 1e-3, cum_emissions_total: float = None
-    ):
-        self.d_ant = d_ant
+    def __init__(self, cum_emissions_total: float = None):
         self.cum_emissions_total = cum_emissions_total
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
         """Project Antarctic rapid ice-sheet dynamics contribution to GMSLR.
 
         Parameters
         ----------
-        fraction: np.ndarray
-            Random numbers for the dynamic contribution.
+        state : ClimateState
+            Climate state containing scenario, ensemble, and projection settings.
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         np.ndarray
             Antarctic rapid ice-sheet dynamics contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError(
+                "AntarcticaDynAR5() requires observational initialisation."
+            )
+
         # This is a naive solution to calculating the AntDyn contribution
         # for any given scenario. Basically linear regressions through existing data
         # to find rough relationship between cumulative emissions and AntDyn contribution.
         if self.cum_emissions_total is not None:
             upper = (0.000110 * self.cum_emissions_total) + 0.375  # in metres
             lower = (1.363e-05 * self.cum_emissions_total) + 0.0392  # in metres
-            final = [lower, upper]
+            final = np.array([lower, upper], dtype=state.dtype)
         else:
             lcoeff = dict(
                 rcp26=[-2.881, 0.923, 0.000],
@@ -224,16 +257,40 @@ class AntarcticaDynAR5(Component):
             ascale = norm.ppf(state.fraction).astype(state.dtype)
             final = np.exp(lcoeff[2] * ascale**2 + lcoeff[1] * ascale + lcoeff[0])
 
+        # AR5 end-of-century contribution is expressed relative to the AR5 projection
+        # period. Convert to a change relative to the projection start_yr
+        obs_ar5 = observations.antarctica(
+            component="dyn",
+            baseline_start=1986,
+            baseline_end=2005,
+        )
+
+        start_offset = obs_ar5["sle"].sel(time=state.start_yr - 1).item()
+
+        final -= start_offset
+
+        # Initialise Antarctic dynamic SLE and rate from IMBIE3 at the
+        # projection start year, relative to the specified baseline.
+        obs = observations.antarctica(
+            component="dyn",
+        )
+
+        initial = obs.sel(time=state.start_yr - 1)
+
+        sle = initial["sle"].item()
+        rate = initial["rate"].item()
+        rate_unc = initial["rate_unc"].item()
+
         return (
             time_projection(
                 state,
-                0.41,
-                0.20,
+                rate,
+                rate_unc,
                 final,
                 rng,
                 fraction=state.fraction,
             )
-            + self.d_ant
+            + sle
         )
 
 
@@ -253,21 +310,30 @@ class AntarcticaSMBAR5(Component):
         self,
         state: ClimateState,
         rng: np.random.Generator,
+        observations: Observations | None,
     ) -> np.ndarray:
         """Project Antarctic SMB contribution to GMSLR.
 
         Parameters
         ----------
-        T_int_ens: np.ndarray
-            Ensemble of time-integral temperature anomaly timeseries.
-        fraction: np.ndarray
-            Random numbers for the SMB-dynamic feedback.
+        state : ClimateState
+            Climate state containing scenario, ensemble, and projection settings.
+        rng : np.random.Generator
+            Random number generator used for uncertainty sampling.
+        observations : Observations or None
+            Observational data used to initialise the projection. This component
+            requires observational initialisation and raises an error if None.
 
         Returns
         -------
         antsmb: np.ndarray
             Antarctic SMB contribution to GMSLR.
         """
+        if observations is None:
+            raise ValueError(
+                "AntarcticaSMBAR5() requires observational initialisation."
+            )
+
         # Conversion factor for Gt to m SLE
         mSLEoGt = 1e12 / 3.61e14 * 1e-3
         # The following are [mean,SD]
@@ -305,4 +371,14 @@ class AntarcticaSMBAR5(Component):
             z * state.T_int_ens[:, np.newaxis, :]
         )  # (climate_mem, process_mem, time)
 
-        return antsmb  # (climate_mem, process_mem, time)
+        # Initialise Antarctic SMB SLE from IMBIE3 at the projection start year,
+        # relative to the specified baseline.
+        obs = observations.antarctica(
+            component="smb",
+        )
+
+        initial = obs.sel(time=state.start_yr - 1)
+
+        sle = initial["sle"].item()
+
+        return antsmb + sle  # (climate_mem, process_mem, time)

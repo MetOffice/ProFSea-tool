@@ -6,10 +6,12 @@ import zipfile
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import dask
 import dask.array as da
 import numpy as np
+import pandas as pd
 import requests
 import xarray as xr
 from rich.console import Console
@@ -23,7 +25,8 @@ from rich.progress import (
 )
 from scipy.spatial.distance import cdist
 
-from profsea.components.core.state import ClimateState
+if TYPE_CHECKING:
+    from profsea.components.core.state import ClimateState
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -32,6 +35,8 @@ try:
     PROFSEA_VERSION = package_version("profsea")
 except PackageNotFoundError:
     PROFSEA_VERSION = "unknown"
+
+PROFSEA_DIR = Path(__file__).resolve().parents[1]
 
 
 def validate_component_map(
@@ -82,6 +87,64 @@ def validate_component_map(
         logger.error(msg)
         console.print(f"[red]{msg}[/red]")
         raise ValueError(msg)
+
+
+def validate_projection_years(
+    start_yr: int,
+    end_yr: int,
+    baseline_start: int,
+    baseline_end: int,
+    initialise_from_observations: bool = True,
+) -> None:
+    """Validate the baseline and projections years before model construction.
+
+    Parameters
+    ----------
+    start_yr : int
+        First year of the projection.
+    end_yr : int
+        End year of the projection.
+    baseline_start : int
+        First year of the baseline period.
+    baseline_end : int
+        Last year of the baseline period.
+    initialise_from_observations : bool, default=True
+        If True, the projection and baseline periods must fall within the
+        period covered by observational constraints.
+
+    Raises
+    ------
+    ValueError
+        If the projection or baseline periods are invalid, or if the
+        requested years fall outside the period for which observational
+        constraints are available for all components.
+    """
+    if start_yr >= end_yr:
+        raise ValueError(
+            f"start_yr ({start_yr}) must be earlier than end_yr ({end_yr})."
+        )
+    if baseline_start >= baseline_end:
+        raise ValueError(
+            f"baseline_start ({baseline_start}) must be earlier than "
+            f"baseline_end ({baseline_end})."
+        )
+    if initialise_from_observations:
+        if start_yr < 1980 or baseline_start < 1980:
+            raise ValueError(
+                f"start_yr ({start_yr}) and baseline_start ({baseline_start}) must both "
+                "be 1980 or later when initialising components from observations."
+            )
+        if start_yr > 2023 or baseline_end > 2023:
+            raise ValueError(
+                f"start_yr ({start_yr}) and baseline_end ({baseline_end}) "
+                "cannot be later than 2023 when initialising from observations."
+            )
+
+    elif not (start_yr <= baseline_start < baseline_end <= end_yr):
+        raise ValueError(
+            "The baseline period must fall within the projection period "
+            "when observational initialisation is disabled."
+        )
 
 
 def sample_members_2D(
@@ -456,3 +519,369 @@ def reformat_global_projection(
         flat_projection = raw_projection
 
     return sample_members_2D(flat_projection, state.output_percentiles)
+
+
+def rebaseline_projection(
+    projection: np.ndarray,
+    start_yr: int,
+    baseline_start: int,
+    baseline_end: int,
+) -> np.ndarray:
+    """Rebaseline component projections to the specified baseline period."""
+
+    start_idx = baseline_start - start_yr
+    end_idx = baseline_end - start_yr + 1
+
+    baseline = np.mean(
+        projection[..., start_idx:end_idx],
+        axis=-1,
+        keepdims=True,
+    )
+
+    return projection - baseline
+
+
+def _read_imbie3_obs(
+    fpath: Path,
+    component: str,
+    baseline_start: int,
+    baseline_end: int,
+):
+    """Read IMBIE3 observations for ice-sheet components.
+
+    Reads total, surface mass balance (SMB), and dynamic mass-balance
+    contributions from the Antarctic/Greenland IMBIE3 datasets (Otosaka
+    et al., 2026).
+
+    Cumulative sea-level contributions are expressed relative to the mean
+    contribution over the requested baseline period. The complete annual
+    observational time series is returned so that it can be used both for
+    projection initialisation and comparison with projections.
+
+    Parameters
+    ----------
+    fpath : pathlib.Path
+        Path to IMBIE3 observational dataset (.csv).
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset containing annual sea-level contribution, rate, and rate
+        uncertainty for the total, SMB, and dynamic components.
+
+        ``sle`` is expressed in metres relative to the requested baseline
+        period. ``rate`` and ``rate_unc`` are expressed in mm/yr.
+
+    References
+    ----------
+    Otosaka et al. (2026)
+        Mass balance of the Greenland and Antarctic Ice Sheets from the 1970s to 2023.
+        https://doi.org/10.5285/128c5e33-5224-4197-82f0-19dcc95b80a0
+    """
+
+    df = pd.read_csv(fpath)
+
+    dates = pd.to_datetime(df["Date"], errors="coerce")
+    # retain year as the common temporal coordinate
+    time = dates.to_numpy()
+
+    columns = {
+        "total": {
+            "sle": "Cumulative mass balance anomaly (mm)",
+            "sle_unc": "Cumulative mass balance anomaly uncertainty (mm)",
+            "rate": "Mass balance (mm/yr)",
+            "rate_unc": "Mass balance uncertainty (mm/yr)",
+        },
+        "smb": {
+            "sle": "Cumulative surface mass balance anomaly (mm)",
+            "sle_unc": "Cumulative surface mass balance anomaly uncertainty (mm)",
+            "rate": "Surface mass balance anomaly (mm/yr)",
+            "rate_unc": "Surface mass balance anomaly uncertainty (mm/yr)",
+        },
+        "dyn": {
+            "sle": "Cumulative dynamics mass balance anomaly (mm)",
+            "sle_unc": "Cumulative dynamics mass balance anomaly uncertainty (mm)",
+            "rate": "Dynamics mass balance anomaly (mm/yr)",
+            "rate_unc": "Dynamics mass balance anomaly uncertainty (mm/yr)",
+        },
+    }
+
+    try:
+        component_columns = columns[component]
+    except KeyError:
+        raise ValueError(
+            f"Unknown IMBIE3 component: {component!r}. Expected one of {list(columns)}."
+        )
+
+    sle = -pd.to_numeric(
+        df[component_columns["sle"]],
+        errors="coerce",
+    ).to_numpy()
+
+    sle_unc = pd.to_numeric(
+        df[component_columns["sle_unc"]],
+        errors="coerce",
+    ).to_numpy()
+
+    rate = -pd.to_numeric(
+        df[component_columns["rate"]],
+        errors="coerce",
+    ).to_numpy()
+
+    rate_unc = pd.to_numeric(
+        df[component_columns["rate_unc"]],
+        errors="coerce",
+    ).to_numpy()
+
+    ds = xr.Dataset(
+        data_vars={
+            "sle": (
+                "time",
+                sle / 1e3,
+                {
+                    "long_name": "Sea-level contribution",
+                    "units": "m",
+                },
+            ),
+            "sle_unc": (
+                "time",
+                sle_unc / 1e3,
+                {
+                    "long_name": "Sea-level contribution uncertainty",
+                    "units": "m",
+                },
+            ),
+            "rate": (
+                "time",
+                rate,
+                {
+                    "long_name": "Sea-level contribution rate",
+                    "units": "mm yr-1",
+                },
+            ),
+            "rate_unc": (
+                "time",
+                rate_unc,
+                {
+                    "long_name": "Sea-level contribution rate uncertainty",
+                    "units": "mm yr-1",
+                },
+            ),
+        },
+        coords={"time": time},
+        attrs={
+            "baseline_start": baseline_start,
+            "baseline_end": baseline_end,
+            "component": component,
+            "reference": "IMBIE3 (Otosaka et al., 2026)",
+        },
+    )
+
+    # Convert the monthly observational record to annual means and use
+    # integer years as the time coordinate.
+    ds = ds.groupby("time.year").mean("time")
+    ds = ds.rename({"year": "time"})
+
+    # Reference cumulative SLE to its mean over the requested baseline
+    # period.
+    baseline_mean = ds["sle"].sel(time=slice(baseline_start, baseline_end)).mean("time")
+
+    ds["sle"] = ds["sle"] - baseline_mean
+
+    return ds
+    # # AR5 used the average ice-sheet loss rate over 2005--2010
+    # # (0.63 mm/yr and 0.41mm/yr SLE; AR5 Chapter 4, Table 4.6). Here, we apply
+    # # the equivalent six-year window to support flexible start years.
+    # rate_mask = (
+    #     (time >= state.start_yr - 1)
+    #     & (time <= state.start_yr + 4)
+    # )
+
+
+def read_greenland_obs(
+    baseline_start: int, baseline_end: int, component: str = "total"
+) -> xr.DataSet:
+    """Read IMBIE3 Greenland Ice Sheet observations."""
+
+    fpath = (
+        PROFSEA_DIR
+        / "auxiliary_data"
+        / "component-obs"
+        / "imbie3_greenland_mm_partitioned.csv"
+    )
+
+    return _read_imbie3_obs(fpath, component, baseline_start, baseline_end)
+
+
+def read_antarctic_obs(
+    baseline_start: int,
+    baseline_end: int,
+    component: str = "total",
+    region: str | None = None,
+) -> xr.DataSet:
+    """Read IMBIE3 Antarctic Ice Sheet observations.
+
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
+    region : str, optional
+        Antarctic region to load. One of ``"eais"``, ``"wais"``,
+        ``"peninsula"``, or ``None`` for the total Antarctic Ice Sheet.
+    """
+
+    root = PROFSEA_DIR / "auxiliary_data" / "component-obs"
+
+    files = {
+        None: "imbie3_antarctica_mm_partitioned.csv",
+        "eais": "imbie3_east_antarctica_mm_partitioned.csv",
+        "wais": "imbie3_west_antarctica_mm_partitioned.csv",
+        "peninsula": "imbie3_antarctic_peninsula_mm_partitioned.csv",
+    }
+
+    try:
+        fpath = root / files[region]
+    except KeyError:
+        raise ValueError(f"Unknown Antarctic region: {region!r}")
+
+    return _read_imbie3_obs(fpath, component, baseline_start, baseline_end)
+
+
+def _load_zheng_component(
+    variable: str,
+    uncertainty: str,
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Load and rebaseline an observational sea-level component.
+
+    Loads land-water storage, thermal expansion, or glacier observational
+    data from Zheng et al. (2026 Sci. Adv.), and expresses the sea-level
+    contribution relative to the requested baseline period.
+
+    The complete annual observational time series is returned so that it
+    can be used both for projection initialisation and comparison with
+    projections.
+
+    Parameters
+    ----------
+    state : ClimateState
+        Climate state containing the baseline period and numerical dtype.
+    variable : str
+        Name of the sea-level variable to load.
+    uncertainty : str
+        Name of the corresponding uncertainty variable.
+    baseline_start : int
+        Start year of the baseline period.
+    baseline_end : int
+        End year of the baseline period.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset containing the annual sea-level contribution and uncertainty
+        in metres, relative to the requested baseline period.
+    """
+
+    filepath = PROFSEA_DIR / "auxiliary_data" / "component-obs" / "Zheng2026.nc"
+
+    with xr.open_dataset(filepath) as ds:
+        sle = ds[variable].load()
+        sle_unc = ds[uncertainty].load()
+
+    # Standardise the observational coordinate to integer years.
+    years = sle["time"].values.astype(int)
+
+    sle = sle.assign_coords(time=years)
+    sle_unc = sle_unc.assign_coords(time=years)
+
+    # Reference cumulative SLE to its mean over the requested
+    # baseline period.
+    baseline_mean = sle.sel(time=slice(baseline_start, baseline_end)).mean("time")
+
+    sle = (sle - baseline_mean) / 1e3
+    sle_unc = sle_unc / 1e3
+
+    ds = xr.Dataset(
+        data_vars={
+            "sle": sle,
+            "sle_unc": sle_unc,
+        },
+        attrs={
+            "baseline_start": baseline_start,
+            "baseline_end": baseline_end,
+            "reference": "Zheng et al. (2026)",
+        },
+    )
+
+    ds["sle"].attrs = {
+        "long_name": "Sea-level contribution",
+        "units": "m",
+    }
+
+    ds["sle_unc"].attrs = {
+        "long_name": "Sea-level contribution uncertainty",
+        "units": "m",
+    }
+
+    return ds
+
+
+def read_thermal_expansion_obs(
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Read annual observed thermal-expansion sea-level contribution."""
+
+    return _load_zheng_component(
+        variable="iapv4",
+        uncertainty="iapv4_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
+    )
+
+
+def read_glacier_obs(
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Read annual observed glacier sea-level contribution."""
+
+    return _load_zheng_component(
+        variable="glacier",
+        uncertainty="glacier_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
+    )
+
+
+def read_landwater_obs(
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Read annual observed land-water-storage sea-level contribution."""
+
+    return _load_zheng_component(
+        variable="tws",
+        uncertainty="tws_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
+    )
+
+
+def read_GMSL_obs(
+    baseline_start: int,
+    baseline_end: int,
+) -> xr.Dataset:
+    """Read annual observed GMSL timeseries."""
+
+    return _load_zheng_component(
+        variable="gmsl_m",
+        uncertainty="gmsl_m_u",
+        baseline_start=baseline_start,
+        baseline_end=baseline_end,
+    )

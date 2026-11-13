@@ -1,22 +1,51 @@
 import numpy as np
+import pytest
 import xarray as xr
 
 from profsea.components.core.base import Component
 from profsea.components.core.global_model import Global
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 
 
 class MockGlobalComponent(Component):
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
         # Update shape to (climate_members, process_members, time)
         return np.ones((state.nt, state.num_members, state.n_years), dtype=state.dtype)
+
+
+class MockChangingComponent(Component):
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
+        data = np.arange(state.n_years, dtype=state.dtype)
+
+        return np.broadcast_to(
+            data,
+            (state.nt, state.num_members, state.n_years),
+        ).copy()
 
 
 def test_calculate_drivers_math():
     # 2 members, 3 time steps
     T_change = np.array([[1.0, 2.0, 3.0], [3.0, 4.0, 5.0]])
 
-    global_model = Global(components={}, end_yr=2008, nt=2)
+    global_model = Global(
+        components={},
+        start_yr=2006,
+        end_yr=2008,
+        baseline_start=1986,
+        baseline_end=2005,
+        nt=2,
+    )
     T_ens, T_int_ens, T_int_med = global_model._calculate_drivers(T_change)
 
     # Assert time integrals (cumulative sum over axis 1)
@@ -31,7 +60,15 @@ def test_run_orchestration():
     components = {"mock1": MockGlobalComponent(), "mock2": MockGlobalComponent()}
 
     # nt=2 (climate members), num_members=3 (process members), n_years=4 (2010-2006)
-    global_model = Global(components=components, end_yr=2010, nt=2, num_members=3)
+    global_model = Global(
+        components=components,
+        start_yr=2006,
+        end_yr=2010,
+        baseline_start=1995,
+        baseline_end=2014,
+        nt=2,
+        num_members=3,
+    )
 
     # Shape: (nt=2, n_years=4)
     T_change = np.zeros((2, 4))
@@ -46,7 +83,13 @@ def test_run_orchestration():
 
 def test_save_components(tmp_path):
     # tmp_path is a built-in pytest fixture that creates a temporary directory
-    global_model = Global(components={}, end_yr=2010)
+    global_model = Global(
+        components={},
+        start_yr=2001,
+        end_yr=2010,
+        baseline_start=1986,
+        baseline_end=2014,
+    )
 
     # Create dummy result matching the new 3D dimensional structure
     components = {
@@ -74,54 +117,95 @@ def test_save_components(tmp_path):
     assert list(ds.dims) == ["climate_member", "process_member", "time"]
 
 
-def test_return_types():
-    # Import a number of real components to test their return types
-    from profsea.components.global_ import (
-        AntarcticaDynAR5,
-        AntarcticaISMIP6,
-        AntarcticaSMBAR5,
-        Glacier,
-        GreenlandAR6,
-        GreenlandDynAR5,
-        GreenlandSMBAR5,
-        LandwaterAR5,
-        LandwaterAR6,
-        ThermalExpansion,
-    )
-
-    tas = np.zeros((2, 95))  # 2 trajectories, 95 years
-    ohc = np.zeros((2, 95))
-
+@pytest.mark.parametrize(
+    "dtype",
+    [np.float32, np.float64],
+)
+def test_return_types(dtype):
     components = {
-        "AntarcticaISMIP6": AntarcticaISMIP6(region="wais"),
-        "AntarcticaSMBAR5": AntarcticaSMBAR5(),
-        "AntarcticaDynAR5": AntarcticaDynAR5(),
-        "GreenlandAR6": GreenlandAR6(),
-        "GreenlandDynAR5": GreenlandDynAR5(),
-        "GreenlandSMBAR5": GreenlandSMBAR5(),
-        "Glacier": Glacier(),
-        "LandwaterAR5": LandwaterAR5(),
-        "LandwaterAR6": LandwaterAR6(),
-        "ThermalExpansion": ThermalExpansion(data_input=ohc),
+        "mock": MockGlobalComponent(),
     }
 
-    global_model_float64 = Global(
-        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float64
+    global_model = Global(
+        components=components,
+        start_yr=2006,
+        end_yr=2101,
+        baseline_start=1990,
+        baseline_end=2000,
+        nt=2,
+        num_members=3,
+        dtype=dtype,
     )
-    results = global_model_float64.run(scenario="rcp26", T_change=tas)
 
-    for comp_name, data in results.items():
-        assert isinstance(data, xr.DataArray)
-        assert data.dtype == np.float64
-        # Assert that the real components correctly return the 3D structure
-        assert data.shape == (2, 3, 95)
-
-    global_model_float32 = Global(
-        components=components, end_yr=2101, nt=2, num_members=3, dtype=np.float32
+    T_change = np.zeros(
+        (2, 95),
+        dtype=dtype,
     )
-    results = global_model_float32.run(scenario="rcp26", T_change=tas)
 
-    for comp_name, data in results.items():
-        assert isinstance(data, xr.DataArray)
-        assert data.dtype == np.float32
-        assert data.shape == (2, 3, 95)
+    results = global_model.run(
+        scenario="rcp26",
+        T_change=T_change,
+    )
+
+    data = results["mock"]
+
+    assert isinstance(data, xr.DataArray)
+    assert data.dtype == dtype
+    assert data.shape == (2, 3, 95)
+
+
+def test_global_creates_observations_when_initialising():
+    global_model = Global(
+        components={},
+        start_yr=2006,
+        end_yr=2100,
+        baseline_start=1986,
+        baseline_end=2005,
+        initialise_from_observations=True,
+    )
+
+    assert isinstance(global_model.observations, Observations)
+
+
+def test_global_has_no_observations_when_not_initialising():
+    global_model = Global(
+        components={},
+        start_yr=1850,
+        end_yr=2100,
+        baseline_start=1850,
+        baseline_end=1900,
+        initialise_from_observations=False,
+    )
+
+    assert global_model.observations is None
+
+
+def test_run_rebaselines_when_not_initialising():
+    global_model = Global(
+        components={"mock": MockChangingComponent()},
+        start_yr=2000,
+        end_yr=2010,
+        baseline_start=2002,
+        baseline_end=2004,
+        initialise_from_observations=False,
+        nt=2,
+        num_members=3,
+        parallel=False,
+    )
+
+    T_change = np.zeros((2, 10))
+
+    results = global_model.run(
+        scenario="test",
+        T_change=T_change,
+    )
+
+    result = results["mock"]
+
+    baseline_mean = result.sel(time=slice(2002, 2004)).mean("time")
+
+    np.testing.assert_allclose(
+        baseline_mean,
+        0.0,
+        atol=1e-7,
+    )

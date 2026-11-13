@@ -1,8 +1,39 @@
 import numpy as np
 import pytest
+import xarray as xr
 
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.components.global_.glacier import Glacier
+
+
+@pytest.fixture
+def observations(monkeypatch):
+    """Provide observations without reading external observational files."""
+    obs = Observations(
+        baseline_start=1996,
+        baseline_end=2005,
+    )
+
+    years = np.arange(1900, 2201)
+
+    dataset = xr.Dataset(
+        {
+            "sle": ("time", np.zeros(years.size)),
+            "sle_unc": ("time", np.zeros(years.size)),
+            "rate": ("time", np.zeros(years.size)),
+            "rate_unc": ("time", np.zeros(years.size)),
+        },
+        coords={"time": years},
+    )
+
+    monkeypatch.setattr(
+        obs,
+        "glacier",
+        lambda **kwargs: dataset,
+    )
+
+    return obs
 
 
 def get_dummy_state(
@@ -31,14 +62,17 @@ def get_dummy_state(
         palmer_method=True,
         endofAR5=2100,
         endofhistory=2006,
+        start_yr=2006,
         end_yr=2010,
+        baseline_start=1996,
+        baseline_end=2005,
         n_years=n_years,
         nt=nt,
         num_members=num_members,
     )
 
 
-def test_glacier_parameter_validation():
+def test_glacier_parameter_validation(observations):
     """Invalid GlacierMIP selections should raise a clear error."""
     glacier = Glacier(glaciermip=3)
     state = get_dummy_state()
@@ -48,17 +82,17 @@ def test_glacier_parameter_validation():
         KeyError,
         match="glaciermip must be False",
     ):
-        glacier.project(state, rng)
+        glacier.project(state, rng, observations)
 
 
 @pytest.mark.parametrize("glaciermip", [False, 1, 2])
-def test_glacier_valid_parameter_sets(glaciermip):
+def test_glacier_valid_parameter_sets(glaciermip, observations):
     """All documented GlacierMIP parameter options should produce projections."""
     glacier = Glacier(glaciermip=glaciermip)
     state = get_dummy_state()
     rng = np.random.default_rng(42)
 
-    projection = glacier.project(state, rng)
+    projection = glacier.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -67,7 +101,7 @@ def test_glacier_valid_parameter_sets(glaciermip):
     )
 
 
-def test_glacier_projection_shape():
+def test_glacier_projection_shape(observations):
     """Projection should contain one timeseries per trajectory/member pair."""
     glacier = Glacier(glaciermip=2)
     state = get_dummy_state(
@@ -76,7 +110,7 @@ def test_glacier_projection_shape():
     )
     rng = np.random.default_rng(42)
 
-    projection = glacier.project(state, rng)
+    projection = glacier.project(state, rng, observations)
 
     assert projection.shape == (
         state.nt,
@@ -85,31 +119,25 @@ def test_glacier_projection_shape():
     )
 
 
-def test_glacier_reproducible_with_same_seed():
+def test_glacier_reproducible_with_same_seed(observations):
     """Model selection and random variance should be reproducible with a fixed seed."""
     glacier = Glacier(glaciermip=2)
     state = get_dummy_state()
 
-    projection1 = glacier.project(
-        state,
-        np.random.default_rng(42),
-    )
-    projection2 = glacier.project(
-        state,
-        np.random.default_rng(42),
-    )
+    projection1 = glacier.project(state, np.random.default_rng(42), observations)
+    projection2 = glacier.project(state, np.random.default_rng(42), observations)
 
     np.testing.assert_allclose(projection1, projection2)
 
 
-def test_glacier_mass_limit():
+def test_glacier_mass_limit(observations):
     """Projected glacier contribution should not exceed total available glacier mass."""
     glacier = Glacier(glaciermip=2)
 
     extreme_state = get_dummy_state(1000.0)
     rng = np.random.default_rng(42)
 
-    projection = glacier.project(extreme_state, rng)
+    projection = glacier.project(extreme_state, rng, observations)
 
     max_sle = (412.0 - 96.3) * 1e-3
 
@@ -207,7 +235,10 @@ def test_glacier_project_glacier1_broadcasts_parameters():
     )
 
 
-def test_glacier_adds_reference_period_offset():
+def test_glacier_adds_reference_period_offset(
+    monkeypatch,
+    observations,
+):
     """Projection should include the historical glacier offset dmz."""
     glacier = Glacier(glaciermip=2)
 
@@ -215,19 +246,38 @@ def test_glacier_adds_reference_period_offset():
     state = get_dummy_state(0.0)
     rng = np.random.default_rng(42)
 
-    projection = glacier.project(state, rng)
+    initial_sle = 0.01
 
-    dmzdtref = 0.95
-    expected_dmz = dmzdtref * (state.endofhistory - 1996) * 1e-3
+    def mock_glacier_observations(**kwargs):
+        return xr.Dataset(
+            {
+                "sle": ("time", [initial_sle]),
+            },
+            coords={
+                "time": [state.start_yr - 1],
+            },
+        )
+
+    monkeypatch.setattr(
+        observations,
+        "glacier",
+        mock_glacier_observations,
+    )
+
+    projection = glacier.project(
+        state,
+        rng,
+        observations,
+    )
 
     np.testing.assert_allclose(
         projection,
-        expected_dmz,
+        initial_sle,
         atol=1e-7,
     )
 
 
-def test_glacier_accepts_one_dimensional_temperature():
+def test_glacier_accepts_one_dimensional_temperature(observations):
     """A single temperature trajectory should be accepted when state.nt is one."""
     glacier = Glacier(glaciermip=2)
     state = get_dummy_state(
@@ -241,10 +291,7 @@ def test_glacier_accepts_one_dimensional_temperature():
     )[None, :]
     state.T_int_med = np.cumsum(state.T_ens)
 
-    projection = glacier.project(
-        state,
-        np.random.default_rng(42),
-    )
+    projection = glacier.project(state, np.random.default_rng(42), observations)
 
     assert projection.shape == (
         state.nt,
@@ -253,15 +300,26 @@ def test_glacier_accepts_one_dimensional_temperature():
     )
 
 
-def test_glacier_output_uses_state_dtype():
+def test_glacier_output_uses_state_dtype(observations):
     """Projection output should preserve the configured ClimateState dtype."""
     glacier = Glacier(glaciermip=2)
     state = get_dummy_state()
     state.dtype = np.float32
 
-    projection = glacier.project(
-        state,
-        np.random.default_rng(42),
-    )
+    projection = glacier.project(state, np.random.default_rng(42), observations)
 
     assert projection.dtype == np.float32
+
+
+def test_glacier_without_observations():
+    glacier = Glacier()
+    state = get_dummy_state()
+    rng = np.random.default_rng(42)
+
+    projection = glacier.project(state, rng, None)
+
+    assert projection.shape == (
+        state.nt,
+        state.num_members,
+        state.n_years,
+    )

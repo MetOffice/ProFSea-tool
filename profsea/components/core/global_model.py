@@ -10,13 +10,16 @@ from rich.progress import track
 
 from profsea.utils import (
     check_shapes,
+    rebaseline_projection,
     sample_members_2D,
     save_components,
     validate_component_map,
+    validate_projection_years,
 )
-from profsea.utils.ui import print_global_preflight
+from profsea.utils.ui import print_baseline_warning, print_global_preflight
 
 from .base import Component
+from .observations import Observations
 from .state import ClimateState
 
 console = Console()
@@ -30,8 +33,21 @@ class Global:
     ----------
     components: Dict
         List of SLR components for projections
+    start_yr: int
+        Start year of the projections. Must be later than 1980 and
+        earlier than `end_yr'.
     end_yr: int
-        End year of the projections.
+        End year of the projections. Must be later than `start_yr`.
+    baseline_start: int
+        First year of the period used to define the sea-level baseline.
+        Must be 1980 or later and earlier than `baseline_start`.
+    baseline_end: int
+        Last year of the period used to define the sea-level baseline.
+        Must be later than `baseline_start`.
+    initialise_from_observations : bool, default=True
+        If True, observations to initialise component projections. If
+        False, components are projected without observational
+        initialisation and are re-baselined after projection.
     nt: int
         Number of realisations of the input timeseries
     num_members: int
@@ -53,6 +69,13 @@ class Global:
         If True, randomly sample a single ensemble member across all
         components
 
+    Raises
+    ------
+    ValueError
+        if `start_yr` is later than `end_yr`;
+        if `baseline_start` is later than `baseline_end`;
+        if `start_yr` or `baseline_start` is earlier than 1980.
+
     Attributes
     ----------
     endofhistory: int
@@ -61,12 +84,20 @@ class Global:
         Last year of AR5 projections.
     n_years: int
         Length of projections.
+    observations : Observations
+        Manages observational data used to initialise the sea-level
+        components. Uses `baseline_start` and `baseline_end` as its
+        default baseline
     """
 
     def __init__(
         self,
         components: dict[str, Component],
+        start_yr: int,
         end_yr: int,
+        baseline_start: int,
+        baseline_end: int,
+        initialise_from_observations: bool = True,
         nt: int = 100,
         num_members: int = 1000,
         tcv: float = 1.0,
@@ -77,7 +108,11 @@ class Global:
         dtype: np.dtype | str = np.float32,
     ):
         self.components = components
+        self.start_yr = start_yr
         self.end_yr = end_yr
+        self.baseline_start = baseline_start
+        self.baseline_end = baseline_end
+        self.initialise_from_observations = initialise_from_observations
         self.nt = nt
         self.num_members = num_members
         self.tcv = tcv
@@ -89,9 +124,24 @@ class Global:
 
         self.endofhistory = 2006
         self.endofAR5 = 2100
-        self.n_years = self.end_yr - self.endofhistory
+        self.n_years = self.end_yr - self.start_yr
+
+        if self.initialise_from_observations:
+            self.observations = Observations(
+                baseline_start=self.baseline_start,
+                baseline_end=self.baseline_end,
+            )
+        else:
+            self.observations = None
 
         validate_component_map(self.components, Component, "Global")
+        validate_projection_years(
+            self.start_yr,
+            self.end_yr,
+            self.baseline_start,
+            self.baseline_end,
+            self.initialise_from_observations,
+        )
 
     # Inject method!
     save_components = save_components
@@ -117,9 +167,7 @@ class Global:
                     dims=["percentile", "time"],
                     coords={
                         "percentile": self.output_percentiles,
-                        "time": np.arange(
-                            self.endofhistory, self.endofhistory + arr.shape[1]
-                        ),
+                        "time": np.arange(self.start_yr, self.start_yr + arr.shape[1]),
                     },
                 )
                 xr_dict[name].attrs["units"] = "m"
@@ -132,9 +180,7 @@ class Global:
                     coords={
                         "climate_member": np.arange(arr.shape[0]),
                         "process_member": np.arange(arr.shape[1]),
-                        "time": np.arange(
-                            self.endofhistory, self.endofhistory + arr.shape[2]
-                        ),
+                        "time": np.arange(self.start_yr, self.start_yr + arr.shape[2]),
                     },
                 )
                 xr_dict[name].attrs["units"] = "m"
@@ -157,6 +203,8 @@ class Global:
         member_seed: int
             Seed for numpy.random.
         """
+
+        print_baseline_warning(self)
 
         if isinstance(T_change, xr.DataArray):
             T_change = T_change.to_numpy()
@@ -193,7 +241,10 @@ class Global:
             palmer_method=self.palmer_method,
             endofAR5=self.endofAR5,
             endofhistory=self.endofhistory,
+            start_yr=self.start_yr,
             end_yr=self.end_yr,
+            baseline_start=self.baseline_start,
+            baseline_end=self.baseline_end,
             n_years=self.n_years,
             nt=self.nt,
             num_members=self.num_members,
@@ -211,7 +262,12 @@ class Global:
         if self.parallel:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 futures = {
-                    executor.submit(comp.project, state, comp_rngs[name]): name
+                    executor.submit(
+                        comp.project,
+                        state,
+                        comp_rngs[name],
+                        self.observations,
+                    ): name
                     for name, comp in self.components.items()
                 }
                 for future in concurrent.futures.as_completed(futures):
@@ -224,7 +280,21 @@ class Global:
             for name, comp in track(
                 self.components.items(), description="Projecting components..."
             ):
-                results[name] = comp.project(state, comp_rngs[name])
+                results[name] = comp.project(
+                    state,
+                    comp_rngs[name],
+                    self.observations,
+                )
+
+        # Re-basline each component projection if initialise_from_observations is False
+        if not self.initialise_from_observations:
+            for name, data in results.items():
+                results[name] = rebaseline_projection(
+                    data,
+                    start_yr=self.start_yr,
+                    baseline_start=self.baseline_start,
+                    baseline_end=self.baseline_end,
+                )
 
         # Random Sampling
         if self.random_sample:

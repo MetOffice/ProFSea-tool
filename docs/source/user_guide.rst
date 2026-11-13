@@ -52,7 +52,8 @@ The worked tutorial notebook is available below:
 .. toctree::
 	:maxdepth: 1
 
-	worked_example
-	zarr_output_files
+	tutorial_notebooks/worked_example
+	tutorial_notebooks/zarr_output_files
+	tutorial_notebooks/observations_and_baselines
 	development_guide
 	documentation

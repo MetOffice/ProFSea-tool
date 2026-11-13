@@ -1,4 +1,4 @@
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
 
@@ -22,7 +22,8 @@ def print_global_preflight(model, scenario: str) -> None:
 
     table.add_row("Scenario", scenario)
     table.add_row("Components", components_list)
-    table.add_row("Timeframe", f"{model.endofhistory} -> {model.end_yr}")
+    table.add_row("Baseline", f"{model.baseline_start} -> {model.baseline_end}")
+    table.add_row("Timeframe", f"{model.start_yr} -> {model.end_yr}")
     table.add_row(
         "Ensemble Size",
         f"{model.nt} inputs × {model.num_members} draws (= {ensemble_size})",
@@ -37,6 +38,32 @@ def print_global_preflight(model, scenario: str) -> None:
         title="[bold green]ProFSea Global Run Configuration",
         expand=False,
         border_style="green",
+    )
+    ui_console.print(panel)
+    ui_console.print()
+
+
+def print_baseline_warning(model) -> None:
+    """Renders a reminder that GSAT/OHC inputs must share the ProFSea baseline."""
+    table = Table(show_header=False, box=None)
+    table.add_column("Property", style="cyan", justify="right")
+    table.add_column("Value", style="magenta")
+
+    table.add_row("Baseline Start:", f"{model.baseline_start}")
+    table.add_row("Baseline End:", f"{model.baseline_end}")
+
+    message = (
+        "Check that all input data (GSAT, OHC, and zostoga) are provided \n"
+        "relative to the same reference period as given to ProFSea. If they\n"
+        "use a different baseline, re-baseline them before calling "
+        "[bold]run()[/bold].\n"
+    )
+
+    panel = Panel(
+        Group(message, table),
+        title="[bold yellow]Baseline Check",
+        expand=False,
+        border_style="yellow",
     )
     ui_console.print(panel)
     ui_console.print()

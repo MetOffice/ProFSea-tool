@@ -85,7 +85,8 @@ Run the following commands in your terminal from the root of the repository:
 
 
     # Run the linter and automatically fix formatting issues
-    $ ruff check . --fix
+    $ ruff check --fix .
+    $ ruff format .
     
     Found 3 errors (3 fixed, 0 remaining).
 

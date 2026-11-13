@@ -4,6 +4,7 @@ import numpy as np
 import xarray as xr
 
 from profsea.components.core.base import Component
+from profsea.components.core.observations import Observations
 from profsea.components.core.state import ClimateState
 from profsea.utils import check_shapes
 
@@ -32,7 +33,12 @@ class ThermalExpansion(Component):
         self.distribution_scaler = distribution_scaler
         self.OHC_change = OHC_change
 
-    def project(self, state: ClimateState, rng: np.random.Generator) -> np.ndarray:
+    def project(
+        self,
+        state: ClimateState,
+        rng: np.random.Generator,
+        observations: Observations | None,
+    ) -> np.ndarray:
         if isinstance(self.data_input, xr.DataArray):
             self.data_input = self.data_input.to_numpy()
         else:
