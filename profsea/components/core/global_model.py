@@ -16,7 +16,7 @@ from profsea.utils import (
     validate_component_map,
     validate_projection_years,
 )
-from profsea.utils.ui import print_global_preflight
+from profsea.utils.ui import print_baseline_warning, print_global_preflight
 
 from .base import Component
 from .observations import Observations
@@ -203,6 +203,8 @@ class Global:
         member_seed: int
             Seed for numpy.random.
         """
+
+        print_baseline_warning(self)
 
         if isinstance(T_change, xr.DataArray):
             T_change = T_change.to_numpy()
