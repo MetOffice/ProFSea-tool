@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import dask.array as da
@@ -694,3 +696,13 @@ def test_rebaseline_projection():
     )
 
     np.testing.assert_allclose(result, expected)
+
+
+def test_utils_importable_first():
+    """profsea.utils must import in a fresh interpreter (no circular import)."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import profsea.utils"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
