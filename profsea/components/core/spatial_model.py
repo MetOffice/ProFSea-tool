@@ -4,6 +4,7 @@ import logging
 import warnings
 from pathlib import Path
 import pdb
+import shutil
 
 import dask
 import dask.array as da
@@ -204,7 +205,149 @@ class Spatial:
 
         return xr_dict
 
-    def run(self, member_seed: int = 42):
+
+
+    def _initialise_local_mc_zarr(
+        self,
+        output_path: str | Path,
+        output_lats: np.ndarray,
+        output_lons: np.ndarray,
+        output_names: list[str],
+    ) -> None:
+        """
+        Initialise an empty Zarr store for percentile-reduced local Monte
+        Carlo spatial projections.
+        """
+
+        output_path = Path(output_path)
+          
+        time_coord = np.arange(
+            self.start_year,
+            self.start_year + self.n_years,
+        )
+
+        shape = (
+            len(self.output_percentiles),
+            self.n_years,
+            len(output_lats),
+            len(output_lons),
+        )
+
+        # Create empty Dask-backed arrays. These define the complete output
+        # structure without materialising the complete result in memory.
+        empty_arrays = {
+            name: xr.DataArray(
+                da.full(
+                    shape,
+                    np.nan,
+                    dtype=np.float64,
+                    chunks=(
+                        len(self.output_percentiles),
+                        10,
+                        5,
+                        5,
+                    ),
+                ),
+                name=name,
+                dims=[
+                    "percentile",
+                    "time",
+                    "lat",
+                    "lon",
+                ],
+                coords={
+                    "percentile": self.output_percentiles,
+                    "time": time_coord,
+                    "lat": output_lats,
+                    "lon": output_lons,
+                },
+                attrs={
+                    "units": "m",
+                    "long_name": (
+                        f"Regional {name} sea-level projections"
+                    ),
+                    "source": "ProFSea-Climate v0.1",
+                },
+            )
+            for name in output_names
+        }
+
+        ds = xr.Dataset(empty_arrays)
+
+        # Compute=False because we are creating the structure of the Zarr store:
+        # percentile x time x lat x lon
+        # but we do not want Dask to calculate and write all those np.nan values.
+        # The actual data will be supplied strip by strip afterwards.
+        ds.to_zarr(
+            output_path,
+            mode="w",
+            compute=False,
+            consolidated=False,
+        )
+       
+
+    def _write_local_mc_strip(
+        self,
+        output_path: str | Path,
+        computed_strips: dict[str, xr.DataArray],
+        output_lat_start: int,
+        output_lat_stop: int,
+    ) -> None:
+        """
+        Write one completed latitude strip into an existing local-MC
+        Zarr output store.
+
+        Parameters
+        ----------
+        output_path : str | Path
+            Path to the existing Zarr store.
+
+        computed_strips : dict[str, xr.DataArray]
+            Computed percentile-reduced arrays for the current latitude
+            strip.
+
+        output_lat_start : int
+            Starting latitude index in the output store.
+
+        output_lat_stop : int
+            Stopping latitude index in the output store.
+        """
+
+        strip_ds = xr.Dataset(computed_strips)
+
+        strip_ds.to_zarr(
+            output_path,
+            mode="r+",
+            region={
+                "percentile": slice(
+                    0,
+                    len(self.output_percentiles),
+                ),
+                "time": slice(
+                    0,
+                    self.n_years,
+                ),
+                "lat": slice(
+                    output_lat_start,
+                    output_lat_stop,
+                ),
+                "lon": slice(
+                    0,
+                    strip_ds.sizes["lon"],
+                ),
+            },
+            consolidated=False,
+        )
+
+        
+    
+    def run(
+        self,
+        member_seed: int = 42,
+        output_path: str | Path | None = None,
+        lat_slice: slice | None = None,
+        lon_slice: slice | None = None,
+    ):
         """
         Run the spatial model to generate regional sea level projections for each component.  [LA: might want to change the "-> None" to "-> xr.DataArray" or similar, as it does return something? But _arr_to_xr() may return an xr.Dataset rather than a DataArray, especially since it is receiving a dictionary containing multiple components, so think about the most appropriate type later.]
 
@@ -212,6 +355,18 @@ class Spatial:
         ----------
         member_seed: int, optional
             Seed for random number generation to ensure reproducibility of member sampling. Default is 42.
+
+        output_path : str | Path | None, optional
+            Path for the local Monte Carlo Zarr output store.
+            If None, defaults to "local_mc_development.zarr".
+
+        lat_slice : slice | None, optional
+            Latitude-index range to process. Currently defaults to the
+            development range slice(50, 60).
+
+        lon_slice : slice | None, optional
+            Longitude-index range to process. Currently defaults to the
+            development range slice(20, 35).
 
         Returns
         -------
@@ -366,12 +521,31 @@ class Spatial:
 
         #block_results_list = []
 
-        lat_output_start = 50
-        lat_output_stop = 60
+        #lat_output_start = 50
+        #lat_output_stop = 60
 
-        lon_output_start = 20
-        lon_output_stop = 35
+        #lon_output_start = 20
+        #lon_output_stop = 35
 
+        # Default to the complete spatial grid.
+        #if lat_slice is None:
+        #    lat_slice = slice(0, len(self.grid_lats))
+        #if lon_slice is None:
+        #    lon_slice = slice(0, len(self.grid_lons))
+
+        # Temporary development defaults.
+        if lat_slice is None:
+            lat_slice = slice(50, 60)
+        if lon_slice is None:
+            lon_slice = slice(20, 35)
+
+        # Derive the controller bounds
+        lat_output_start = lat_slice.start
+        lat_output_stop = lat_slice.stop
+        lon_output_start = lon_slice.start
+        lon_output_stop = lon_slice.stop
+
+            
         lat_block_size = 5
         lon_block_size = 5
 
@@ -395,14 +569,41 @@ class Spatial:
             "total_rsl",
         ]
 
-        final_arrays = {
-            name: np.full(
-                final_shape,
-                np.nan,
-                dtype=np.float64,
+
+        if output_path is None:
+            output_path = Path(
+                "local_mc_development.zarr"
             )
-            for name in output_names
-        }
+        else:
+            output_path = Path(output_path)
+
+            
+        #zarr_output_path = Path(
+        #    "local_mc_development.zarr"
+        #)
+
+        # Remove any Zarr store left over from a previous development run.
+        if output_path.exists():
+            shutil.rmtree(output_path)
+
+        # Initialise a fresh empty Zarr store once, before processing strips
+        self._initialise_local_mc_zarr(
+            output_path=output_path,
+            output_lats=output_lats,
+            output_lons=output_lons,
+            output_names=output_names,
+        )
+
+
+            
+        #final_arrays = {
+        #    name: np.full(
+        #        final_shape,
+        #        np.nan,
+        #        dtype=np.float64,
+        #    )
+        #    for name in output_names
+        #}
 
         
         #for lat_start in range(0, len(self.grid_lats), lat_block_size,):
@@ -565,14 +766,6 @@ class Spatial:
 
             output_lat_stop = (lat_stop - lat_output_start)
                 
-            # (Still inside lat loop)
-            #for name, strip_array in strip_results.items():
-            #    final_arrays[name][
-            #        :,
-            #        :,
-            #        output_lat_start:output_lat_stop,
-            #        :,
-            #    ] = strip_array.compute().values
 
             
             # (Still inside lat loop)
@@ -584,14 +777,36 @@ class Spatial:
                     for name in strip_names
                 ]
             )
-            
-            for name, computed_strip in zip(strip_names, computed_strips,):
-                final_arrays[name][
-                    :,
-                    :,
-                    output_lat_start:output_lat_stop,
-                    :,
-                ] = computed_strip.values
+
+            # computed_strips is a tuple, whereas the latitude strip Zarr writer method wants dict[str, xr.DataArray]
+            # so prepare computed_strip_dict in the required format
+            # computed_strip_dict can go to either final_arrays or Zarr writer
+            computed_strip_dict = dict(
+                zip(
+                    strip_names,
+                    computed_strips,
+                )
+            )
+
+            # Existing in-memory reference path - not needed now that the Zarr writer is ready
+            #for name, computed_strip in zip(strip_names, computed_strips,):
+            #    final_arrays[name][
+            #        :,
+            #        :,
+            #        output_lat_start:output_lat_stop,
+            #        :,
+            #    ] = computed_strip.values
+
+                
+            # Write the completed latitude strip to Zarr
+            self._write_local_mc_strip(
+                output_path=output_path,
+                computed_strips=computed_strip_dict,
+                output_lat_start=output_lat_start,
+                output_lat_stop=output_lat_stop,
+            )
+
+
 
             logger.info(
                 "Placed reduced latitude strip %d:%d "
@@ -606,74 +821,71 @@ class Spatial:
             # Release references to this strip before processing the next one
             del strip_tile_results
             del strip_results
+            del computed_strips
+            del computed_strip_dict
 
-                
-        time_coord = np.arange(
-            self.start_year,
-            self.start_year + self.n_years,
+            
+        # -------------------------------------------------
+        # OUTSIDE THE LATITUDE LOOP
+        # All strips have now been written to Zarr.
+        # Reopen the completed store lazily.
+        # -------------------------------------------------        
+        #time_coord = np.arange(
+        #    self.start_year,
+        #    self.start_year + self.n_years,
+        #)
+
+        # This dictionary comprehension (constructing self.results from final_arrays) is not needed
+        # Instead use zarr_results after all latitude strips have been written
+        #self.results = {
+        #    name: xr.DataArray(
+        #        array,
+        #        name=name,
+        #        dims=[
+        #            "percentile",
+        #            "time",
+        #            "lat",
+        #            "lon",
+        #        ],
+        #        coords={
+        #            "percentile": self.output_percentiles,
+        #            "time": time_coord,
+        #            "lat": output_lats,
+        #            "lon": output_lons,
+        #        },
+        #        attrs={
+        #            "units": "m",
+        #            "long_name": (
+        #                f"Regional {name} sea-level projections"
+        #            ),
+        #            "source": "ProFSea-Climate v0.1",
+        #        },
+        #    )
+        #    for name, array in final_arrays.items()
+        #}
+
+    
+        zarr_results = xr.open_zarr(
+            output_path,
+            consolidated=False,
         )
 
+        
         self.results = {
-            name: xr.DataArray(
-                array,
-                name=name,
-                dims=[
-                    "percentile",
-                    "time",
-                    "lat",
-                    "lon",
-                ],
-                coords={
-                    "percentile": self.output_percentiles,
-                    "time": time_coord,
-                    "lat": output_lats,
-                    "lon": output_lons,
-                },
-                attrs={
-                    "units": "m",
-                    "long_name": (
-                        f"Regional {name} sea-level projections"
-                    ),
-                    "source": "ProFSea-Climate v0.1",
-                },
-            )
-            for name, array in final_arrays.items()
+            name: zarr_results[name]
+            for name in output_names
         }
 
-                
-        # Convert percentile-reduced component and total projections to xarray.
-#        spatial_projections_xr = self._arr_to_xr(
-#            percentile_projections,
-#            lat_slice=lat_slice,
-#            lon_slice=lon_slice,
-#        )
-
-#        self.results = spatial_projections_xr
-
-        #self.results = block_results_list
-
+        
         pdb.set_trace()
         
-        #test_combined_results = {name: xr.concat([block[name] for block in self.results],dim="lon",) for name in self.results[0]}
-        
-#p [(block["total_rsl"].lat.values,block["total_rsl"].lon.values,) for block in self.results]
-        
-
-#strip_1 = {name: xr.concat([block[name] for block in self.results[0:3]],dim="lon",)for name in self.results[0]}
-#strip_2 = {name: xr.concat([block[name] for block in self.results[3:6]],dim="lon",)for name in self.results[0]}
-
-#test_2d_results = {name: xr.concat([strip_1[name],strip_2[name],],dim="lat",)for name in strip_1}
-#p {name: arr.shape for name, arr in test_2d_results.items()}
 
 
 
         return self.results
 
         
-        # Put into xarray datasets for easier saving and metadata handling
-        #spatial_projections_xr = self._arr_to_xr(spatial_projections)
-        #self.results = spatial_projections_xr
-        #return self.results
+
 
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """

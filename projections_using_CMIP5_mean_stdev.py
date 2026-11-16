@@ -118,7 +118,9 @@ def generate_mc_ensembles(tas_mean_ts, tas_std_ts, zostoga_mean_ts, zostoga_std_
 def main():
 
     fig_path = "/home/users/lesley.allison/sealevel/profsea/profsea-v3/figs/"
+    local_mc_zarr_path = "/data/users/lesley.allison/ProFSea_data/localMC_development/"
 
+    
     fig_cols = {
         "expansion": 'r',
         "greenland_dyn": 'g',
@@ -542,8 +544,16 @@ def main():
     #     to make the output explicit and easier to inspect and pass to subsequent steps
     #     (spatial_model_results is equivalent to spatial_model.results but easier to follow and inspect)
     
-    spatial_model_results = spatial_model.run(member_seed=42)   
+    #spatial_model_results = spatial_model.run(member_seed=42, output_path=local_mc_zarr_path+'test_local_mc.zarr',lat_slice=slice(50,55), lon_slice=slice(20,30))   
 
+    spatial_model_results = spatial_model.run(
+        member_seed=42,
+        output_path=(local_mc_zarr_path+'test_local_mc_region2.zarr'),
+        lat_slice=slice(50, 55),
+        lon_slice=slice(20, 30),
+    )
+
+    
     pdb.set_trace()
     
     spatial_model.sum_components(spatial_model.results)
