@@ -61,7 +61,7 @@ exclude_patterns = []
 nbsphinx_prolog = ""
 # Allow nbsphinx to find notebooks outside the docs/source directory
 nbsphinx_allow_errors = False
-
+nbsphinx_kernel_name = "python3"
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
