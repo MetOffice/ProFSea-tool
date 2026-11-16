@@ -35,12 +35,12 @@ class Global:
         List of SLR components for projections
     start_yr: int
         Start year of the projections. Must be later than 1980 and
-        earlier than `end_yr'.
+        earlier than `end_yr`.
     end_yr: int
         End year of the projections. Must be later than `start_yr`.
     baseline_start: int
         First year of the period used to define the sea-level baseline.
-        Must be 1980 or later and earlier than `baseline_start`.
+        Must be 1980 or later and earlier than `baseline_end`.
     baseline_end: int
         Last year of the period used to define the sea-level baseline.
         Must be later than `baseline_start`.

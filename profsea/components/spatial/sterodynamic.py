@@ -195,17 +195,22 @@ class SterodynamicCMIP6(SpatialComponent):
 
 class SterodynamicCMIP5(SpatialComponent):
     """
-    Placeholder for a sterodynamic SLR component based on CMIP5 projections.
+    Placeholder for a sterodynamic SLR component based on CMIP5 patterns.
+
+    Not implemented yet: constructing it raises ``NotImplementedError`` so that
+    it cannot silently contribute zeros to a projection. Use
+    :class:`SterodynamicCMIP6` instead.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, *args, **kwargs) -> None:
+        raise NotImplementedError(
+            "SterodynamicCMIP5 is a placeholder and is not implemented yet. "
+            "Use SterodynamicCMIP6 instead."
+        )
+
+    @property
+    def global_projection(self):
+        raise NotImplementedError("SterodynamicCMIP5 is not implemented yet.")
 
     def project(self, state, rng) -> da.Array:
-        # Dynamically determine the spatial shape to prevent crashes when using LocalState
-        if hasattr(state, "target_lats"):
-            spatial_shape = (len(state.target_lats),)
-        else:
-            spatial_shape = (state.grid_lats.shape[0], state.grid_lons.shape[0])
-
-        return da.zeros((state.num_members, state.n_years, *spatial_shape))
+        raise NotImplementedError("SterodynamicCMIP5 is not implemented yet.")
