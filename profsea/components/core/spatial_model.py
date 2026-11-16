@@ -5,7 +5,9 @@ import warnings
 from pathlib import Path
 import pdb
 
+import dask
 import dask.array as da
+
 import numpy as np
 import xarray as xr
 from rich.console import Console
@@ -140,34 +142,58 @@ class Spatial:
     # Instance method!
     save_components = save_components
 
-    def _arr_to_xr(self, arr_dict: dict[str, da.Array]) -> dict[str, xr.DataArray]:
+    # Now pass lat_slice and lon_slice so _arr_to_xr knows which spatial block the reduced arrays belong to
+    def _arr_to_xr(self, arr_dict: dict[str, da.Array], lat_slice: slice, lon_slice: slice,) -> dict[str, xr.DataArray]:
         """
-        Convert a dictionary of Dask arrays to a dictionary of xarray DataArrays with appropriate coordinates and metadata.
+        Convert percentile-reduced Dask arrays to xarray DataArrays with
+        appropriate coordinates and metadata.
 
         Parameters
         ----------
-        arr_dict: Dict[str, da.Array]
-            Dictionary where keys are component names and values are Dask arrays of shape (n_members, n_years, n_lats, n_lons).
+        arr_dict : dict[str, da.Array]
+            Dictionary where keys are component names and values are
+            percentile-reduced Dask arrays with shape
+            (n_percentiles, n_years, n_lats, n_lons).
+
+        lat_slice : slice
+            Slice defining the latitude indices represented by the arrays.
+
+        lon_slice : slice
+            Slice defining the longitude indices represented by the arrays.
 
         Returns
         -------
-        Dict[str, xr.DataArray]
-            Dictionary where keys are component names and values are xarray DataArrays with dimensions (member, time, lat, lon) and appropriate coordinates.
+        dict[str, xr.DataArray]
+            Dictionary where keys are component names and values are xarray
+            DataArrays with dimensions (percentile, time, lat, lon) and
+            coordinates corresponding to the requested percentiles, projection
+            years, and spatial block.
+
         """
+        
+        output_lats = self.grid_lats[lat_slice]
+        output_lons = self.grid_lons[lon_slice]
+
+        expected_shape = (len(self.output_percentiles), self.n_years, len(output_lats), len(output_lons),)
+
         xr_dict = {}
-        member_dim = "percentile" if self.output_percentiles is not None else "member"
 
         for name, arr in arr_dict.items():
+
+            if arr.shape != expected_shape:
+                raise ValueError(
+                    f"{name} has shape {arr.shape}; "
+                    f"expected percentile-reduced shape {expected_shape}"
+                )
+            
             xr_dict[name] = xr.DataArray(
                 arr,
-                dims=[member_dim, "time", "lat", "lon"],
+                dims=["percentile", "time", "lat", "lon"],
                 coords={
-                    member_dim: self.output_percentiles
-                    if self.output_percentiles is not None
-                    else np.arange(arr.shape[0]),
+                    "percentile": self.output_percentiles,
                     "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
-                    "lat": self.grid_lats,
-                    "lon": self.grid_lons,
+                    "lat": output_lats,
+                    "lon": output_lons,
                 },
                 attrs={
                     "units": "m",
@@ -178,7 +204,7 @@ class Spatial:
 
         return xr_dict
 
-    def run(self, member_seed: int = 42) -> None:
+    def run(self, member_seed: int = 42):
         """
         Run the spatial model to generate regional sea level projections for each component.  [LA: might want to change the "-> None" to "-> xr.DataArray" or similar, as it does return something? But _arr_to_xr() may return an xr.Dataset rather than a DataArray, especially since it is receiving a dictionary containing multiple components, so think about the most appropriate type later.]
 
@@ -326,101 +352,328 @@ class Spatial:
                 )
 
         
-#        tile_components = {
-#            "sterodynamic",
-#            "greenland_dyn",
-#            "greenland_smb",
-#            "landwater",
-#            "antarctica_dyn",
-#            "antarctica_smb",
-#            "glacier",
-#            "gia",
-#        }
 
-        lat_slice=slice(50, 55)
-        lon_slice=slice(20, 25)
 
-        n_block_lats = len(self.grid_lats[lat_slice])
-        n_block_lons = len(self.grid_lons[lon_slice])
-        
-        spatial_projections = {}
         console.print()  # Add a blank line for better readability in the console output
         #for name, comp in track(
         #    self.components.items(), description="Spatialising components..."
         #):
 
-        for name, comp in self.components.items():   # LA removed progress tracker for easier use of pdb
-            # lazy_projection does not calculate the projection yet - it returns an object describing the calculation which will be executed later
-            #lazy_projection = comp.project(state, comp_rngs[name])  
-            # Rechunk before saving to optimize memory during writing
-            #lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})   # keep dims 0 and 1 together, but split the spatial dims into 10x10 tiles
 
+        #-----------------------------------------------
+        # Loop over spatial tiles
+        #-----------------------------------------------
 
-            lazy_projection = comp.project(
-                state,
-                comp_rngs[name],
-                lat_slice=lat_slice,
-                lon_slice=lon_slice,
+        #block_results_list = []
+
+        lat_output_start = 50
+        lat_output_stop = 60
+
+        lon_output_start = 20
+        lon_output_stop = 35
+
+        lat_block_size = 5
+        lon_block_size = 5
+
+        output_lats = self.grid_lats[
+            lat_output_start:lat_output_stop
+        ]
+
+        output_lons = self.grid_lons[
+            lon_output_start:lon_output_stop
+        ]
+
+        final_shape = (
+            len(self.output_percentiles),
+            self.n_years,
+            len(output_lats),
+            len(output_lons),
+        )
+
+        output_names = [
+            *self.components.keys(),
+            "total_rsl",
+        ]
+
+        final_arrays = {
+            name: np.full(
+                final_shape,
+                np.nan,
+                dtype=np.float64,
             )
-
-            
-            expected_shape = (
-                state.n_local_members,
-                state.n_years,
-                n_block_lats,
-                n_block_lons,
-            )
-
-            if lazy_projection.shape != expected_shape:
-                raise ValueError(
-                    f"{name} returned shape {lazy_projection.shape}; "
-                    f"expected {expected_shape}"
-                )
-            
-            lazy_projection = lazy_projection.rechunk(
-                {
-                    0: 2000,  # local MC members per chunk
-                    1: 10,     # years per chunk
-                    2: 5,      # latitudes per chunk
-                    3: 5,      # longitudes per chunk
-                }
-            )
-            spatial_projections[name] = lazy_projection
-            
-        console.print()
-
-        # Sum all components member by member before percentile reduction.
-        total_members = self._sum_component_members(spatial_projections)
-
-        # Calculate percentiles from each component's local Monte Carlo
-        component_percentiles = {
-            name: self._calculate_member_percentiles(member_array)
-            for name, member_array in spatial_projections.items()
+            for name in output_names
         }
 
-        # Calculate percentiles from the component-total local Monte Carlo
-        # (independent from the member-wise total)
-        total_percentiles = self._calculate_member_percentiles(
-            total_members
+        
+        #for lat_start in range(0, len(self.grid_lats), lat_block_size,):
+        #for lat_start in range(50, 60, lat_block_size,):
+        for lat_start in range(lat_output_start, lat_output_stop, lat_block_size,):
+            
+            #lat_stop = min(
+            #    lat_start + lat_block_size,
+            #    len(self.grid_lats),
+            #)
+
+            lat_stop = min(
+                lat_start + lat_block_size,
+                lat_output_stop,
+            )
+
+            lat_slice = slice(lat_start, lat_stop)
+
+            # Retain only the percentile-reduced longitude tiles for this latitude strip.
+            strip_tile_results = []
+    
+            #for lon_start in range(0, len(self.grid_lons), lon_block_size,):
+            #for lon_start in range(20, 35, lon_block_size,):
+            #    lon_stop = min(
+            #        lon_start + lon_block_size,
+            #        len(self.grid_lons),
+            #    )
+            
+            for lon_start in range(lon_output_start, lon_output_stop, lon_block_size,):
+                
+                lon_stop = min(lon_start + lon_block_size, lon_output_stop,)
+                
+                lon_slice = slice(lon_start, lon_stop)
+
+
+
+                logger.info(
+                    "Processing spatial block: "
+                    "lat indices %d:%d, lon indices %d:%d",
+                    lat_start,
+                    lat_stop,
+                    lon_start,
+                    lon_stop,
+                )
+                
+                print(
+                    f"Processing block: "
+                    f"lat {lat_start}:{lat_stop}, "
+                    f"lon {lon_start}:{lon_stop}"
+                )
+
+                n_block_lats = len(self.grid_lats[lat_slice])
+                n_block_lons = len(self.grid_lons[lon_slice])
+
+
+                # Create new dictionary for each tile (member-level arrays from previous tile can be released from memory)
+                spatial_projections = {}
+        
+
+                for name, comp in self.components.items():   # LA removed progress tracker for easier use of pdb
+                    # lazy_projection does not calculate the projection yet - it returns an object describing the calculation which will be executed later
+                    #lazy_projection = comp.project(state, comp_rngs[name])  
+                    # Rechunk before saving to optimize memory during writing
+                    #lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 10, 3: 10})   # keep dims 0 and 1 together, but split the spatial dims into 10x10 tiles
+
+
+                    lazy_projection = comp.project(
+                        state,
+                        comp_rngs[name],
+                        lat_slice=lat_slice,
+                        lon_slice=lon_slice,
+                    )
+
+
+                    expected_shape = (
+                        state.n_local_members,
+                        state.n_years,
+                        n_block_lats,
+                        n_block_lons,
+                    )
+
+                    if lazy_projection.shape != expected_shape:
+                        raise ValueError(
+                            f"{name} returned shape {lazy_projection.shape}; "
+                            f"expected {expected_shape}"
+                        )
+
+                    lazy_projection = lazy_projection.rechunk(
+                        {
+                            0: 2000,  # local MC members per chunk
+                            1: 10,     # years per chunk
+                            2: 5,      # latitudes per chunk
+                            3: 5,      # longitudes per chunk
+                        }
+                    )
+                    spatial_projections[name] = lazy_projection
+
+                console.print()
+
+                # Sum all components member by member before percentile reduction.
+                total_members = self._sum_component_members(spatial_projections)
+
+                logger.info("Local MC member-wise total shape: %s", total_members.shape,)
+
+                # Calculate percentiles from each component's local Monte Carlo
+                component_percentiles = {
+                    name: self._calculate_member_percentiles(member_array)
+                    for name, member_array in spatial_projections.items()
+                }
+
+                # Calculate total percentiles from the member-wise component total local Monte Carlo
+                total_percentiles = self._calculate_member_percentiles(
+                    total_members
+                )
+
+                # Collect the percentiles together
+                percentile_projections = {**component_percentiles, "total_rsl": total_percentiles,}
+
+
+                # Convert percentile-reduced component and total projections for this tile to xarray.
+                block_results = self._arr_to_xr(
+                    percentile_projections,
+                    lat_slice=lat_slice,
+                    lon_slice=lon_slice,
+                )
+
+                # Append this tile's results to the block list
+                #block_results_list.append(block_results)
+                strip_tile_results.append(block_results)
+
+                
+            # Inside lat loop but outside lon loop, join the current strip along longitude:
+            strip_results = {
+                name: xr.concat(
+                    [
+                        tile_results[name]
+                        for tile_results in strip_tile_results
+                    ],
+                    dim="lon",
+                )
+                
+                for name in output_names
+            }
+
+            expected_strip_shape = (
+                len(self.output_percentiles),
+                self.n_years,
+                lat_stop - lat_start,
+                len(output_lons),
+            )
+
+            for name, strip_array in strip_results.items():
+                if strip_array.shape != expected_strip_shape:
+                    raise ValueError(
+                        f"{name} strip has shape {strip_array.shape}; "
+                        f"expected {expected_strip_shape}"
+                    )
+
+            output_lat_start = (lat_start - lat_output_start)
+
+            output_lat_stop = (lat_stop - lat_output_start)
+                
+            # (Still inside lat loop)
+            #for name, strip_array in strip_results.items():
+            #    final_arrays[name][
+            #        :,
+            #        :,
+            #        output_lat_start:output_lat_stop,
+            #        :,
+            #    ] = strip_array.compute().values
+
+            
+            # (Still inside lat loop)
+            strip_names = list(strip_results)
+
+            computed_strips = dask.compute(
+                *[
+                    strip_results[name]
+                    for name in strip_names
+                ]
+            )
+            
+            for name, computed_strip in zip(strip_names, computed_strips,):
+                final_arrays[name][
+                    :,
+                    :,
+                    output_lat_start:output_lat_stop,
+                    :,
+                ] = computed_strip.values
+
+            logger.info(
+                "Placed reduced latitude strip %d:%d "
+                "into output positions %d:%d",
+                lat_start,
+                lat_stop,
+                output_lat_start,
+                output_lat_stop,
+            )
+
+
+            # Release references to this strip before processing the next one
+            del strip_tile_results
+            del strip_results
+
+                
+        time_coord = np.arange(
+            self.start_year,
+            self.start_year + self.n_years,
         )
 
-        # Collect the percentiles together
-        percentile_projections = {**component_percentiles, "total_rsl": total_percentiles,}
+        self.results = {
+            name: xr.DataArray(
+                array,
+                name=name,
+                dims=[
+                    "percentile",
+                    "time",
+                    "lat",
+                    "lon",
+                ],
+                coords={
+                    "percentile": self.output_percentiles,
+                    "time": time_coord,
+                    "lat": output_lats,
+                    "lon": output_lons,
+                },
+                attrs={
+                    "units": "m",
+                    "long_name": (
+                        f"Regional {name} sea-level projections"
+                    ),
+                    "source": "ProFSea-Climate v0.1",
+                },
+            )
+            for name, array in final_arrays.items()
+        }
 
+                
+        # Convert percentile-reduced component and total projections to xarray.
+#        spatial_projections_xr = self._arr_to_xr(
+#            percentile_projections,
+#            lat_slice=lat_slice,
+#            lon_slice=lon_slice,
+#        )
+
+#        self.results = spatial_projections_xr
+
+        #self.results = block_results_list
 
         pdb.set_trace()
         
-        logger.info(
-            "Local MC member-wise total shape: %s",
-            total_members.shape,
-        )
+        #test_combined_results = {name: xr.concat([block[name] for block in self.results],dim="lon",) for name in self.results[0]}
+        
+#p [(block["total_rsl"].lat.values,block["total_rsl"].lon.values,) for block in self.results]
+        
 
-        pdb.set_trace()
+#strip_1 = {name: xr.concat([block[name] for block in self.results[0:3]],dim="lon",)for name in self.results[0]}
+#strip_2 = {name: xr.concat([block[name] for block in self.results[3:6]],dim="lon",)for name in self.results[0]}
+
+#test_2d_results = {name: xr.concat([strip_1[name],strip_2[name],],dim="lat",)for name in strip_1}
+#p {name: arr.shape for name, arr in test_2d_results.items()}
+
+
+
+        return self.results
+
         
         # Put into xarray datasets for easier saving and metadata handling
-        spatial_projections_xr = self._arr_to_xr(spatial_projections)
-        self.results = spatial_projections_xr
-        return self.results
+        #spatial_projections_xr = self._arr_to_xr(spatial_projections)
+        #self.results = spatial_projections_xr
+        #return self.results
 
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
         """

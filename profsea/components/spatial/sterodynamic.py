@@ -177,6 +177,7 @@ class SterodynamicCMIP6(SpatialComponent):
         """
         
         apply_mask=True
+        plot_regression_maps=False
         plot_nwes=False
         
         # Select slope coefficients based on the MIP
@@ -208,71 +209,74 @@ class SterodynamicCMIP6(SpatialComponent):
 
         #-------------------------------------------------------------------
         # Plotting maps of regression coeffients for all models
-        n_models = interp_da.sizes["model"]
-        
-        if plot_nwes:
-            NW_Eur_Shelf_da = interp_da.sel(lon=slice(-15, 15), lat=slice(40, 70))
-            plot_data = NW_Eur_Shelf_da
-        else:
-            plot_data = interp_da
-        
-        # Choose subplot layout
-        ncols = 5
-        nrows = int(np.ceil(n_models / ncols))
 
-        # Common colour scale across all models
-        vmin = -2.0
-        vmax = 2.0
-
-        fig, axs = plt.subplots(
-            nrows,
-            ncols,
-            figsize=(3*ncols, 2.5*nrows),
-            constrained_layout=True
-        )
-
-        axs = np.ravel(axs)
+        if plot_regression_maps:
         
+            n_models = interp_da.sizes["model"]
 
-        
-        for i in range(n_models):
-            im = plot_data[i].plot(
-                ax=axs[i],
-                add_colorbar=False,
-                vmin=vmin,
-                vmax=vmax,
-                cmap="RdBu_r"
+            if plot_nwes:
+                NW_Eur_Shelf_da = interp_da.sel(lon=slice(-15, 15), lat=slice(40, 70))
+                plot_data = NW_Eur_Shelf_da
+            else:
+                plot_data = interp_da
+
+            # Choose subplot layout
+            ncols = 5
+            nrows = int(np.ceil(n_models / ncols))
+
+            # Common colour scale across all models
+            vmin = -2.0
+            vmax = 2.0
+
+            fig, axs = plt.subplots(
+                nrows,
+                ncols,
+                figsize=(3*ncols, 2.5*nrows),
+                constrained_layout=True
             )
-            axs[i].axis("off")
-            axs[i].set_title(str(interp_da.model.values[i]),fontsize=7,pad=2)
-            fig.subplots_adjust(wspace=0.02, hspace=0.15)
-            
-        # Hide unused axes
-        for ax in axs[n_models:]:
-            ax.set_visible(False)
 
-        # One shared colourbar
-        fig.colorbar(
-            im,
-            ax=axs[:n_models],
-            shrink=0.8,
-            label="(zos + zostoga)/zostoga Regression coefficient"
-        )
+            axs = np.ravel(axs)
 
-        if plot_nwes:
-            if apply_mask:
-                figname = fig_path+"CMIP6_NWES_reg_coeffs.png"
+
+
+            for i in range(n_models):
+                im = plot_data[i].plot(
+                    ax=axs[i],
+                    add_colorbar=False,
+                    vmin=vmin,
+                    vmax=vmax,
+                    cmap="RdBu_r"
+                )
+                axs[i].axis("off")
+                axs[i].set_title(str(interp_da.model.values[i]),fontsize=7,pad=2)
+                fig.subplots_adjust(wspace=0.02, hspace=0.15)
+
+            # Hide unused axes
+            for ax in axs[n_models:]:
+                ax.set_visible(False)
+
+            # One shared colourbar
+            fig.colorbar(
+                im,
+                ax=axs[:n_models],
+                shrink=0.8,
+                label="(zos + zostoga)/zostoga Regression coefficient"
+            )
+
+            if plot_nwes:
+                if apply_mask:
+                    figname = fig_path+"CMIP6_NWES_reg_coeffs.png"
+                else:
+                    figname = fig_path+"CMIP6_NWES_reg_coeffs_before_mask.png"
             else:
-                figname = fig_path+"CMIP6_NWES_reg_coeffs_before_mask.png"
-        else:
-            if apply_mask:
-                figname = fig_path+"CMIP6_reg_coeffs.png"
-            else:
-                figname = fig_path+"CMIP6_reg_coeffs_before_mask.png"
+                if apply_mask:
+                    figname = fig_path+"CMIP6_reg_coeffs.png"
+                else:
+                    figname = fig_path+"CMIP6_reg_coeffs_before_mask.png"
 
-        fig.savefig(figname, dpi=300, bbox_inches="tight")
-    
-        plt.show()
+            fig.savefig(figname, dpi=300, bbox_inches="tight")
+
+            plt.show()
         #-------------------------------------------------------------------
 
 
