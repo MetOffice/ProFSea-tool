@@ -2,11 +2,15 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.components.spatial.sterodynamic import SterodynamicCMIP6
+from profsea.components.spatial.sterodynamic import (
+    SterodynamicCMIP5,
+    SterodynamicCMIP6,
+)
 
 
 class TestSterodynamicInit:
@@ -150,3 +154,9 @@ def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
     assert result_sampled.shape == (10, 2, 2)
     unique_values = np.unique(result_sampled)
     assert len(unique_values) > 1
+
+
+def test_cmip5_placeholder_raises_clear_error():
+    """The CMIP5 placeholder should fail loudly rather than return zeros."""
+    with pytest.raises(NotImplementedError, match="SterodynamicCMIP6"):
+        SterodynamicCMIP5()

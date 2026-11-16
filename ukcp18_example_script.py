@@ -18,7 +18,7 @@ from profsea.components.spatial import GIA, Fingerprint, SterodynamicCMIP6
 ### Global projections first ###
 global_components = {
     "expansion": ThermalExpansion(
-        OHC_change=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
+        data_input=np.linspace(1, 5, 295).reshape(1, -1) * 1e24
     ),
     "greenland_dyn": GreenlandDynAR5(),
     "greenland_smb": GreenlandSMBAR5(),
@@ -29,7 +29,14 @@ global_components = {
 }
 
 # Pass to the global model
-global_model = Global(components=global_components, end_yr=2301)
+# Forcing is relative to 1995-2014, the same baseline Spatial uses by default
+global_model = Global(
+    components=global_components,
+    start_yr=2006,
+    end_yr=2301,
+    baseline_start=1995,
+    baseline_end=2014,
+)
 projections = global_model.run(
     scenario="rcp85",
     T_change=np.linspace(1, 5, 295).reshape(1, -1),

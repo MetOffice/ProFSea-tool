@@ -7,11 +7,11 @@ This guide explains how to appropriately update, build, and test the Sphinx docu
 
 Initial Steps
 -------------
-Before making changes to the documentation, ensure you have set up your local workspace. For detailed instructions, refer to the following sections in the :ref:`Development Guide <development_guide>`:
+Before making changes to the documentation, ensure you have set up your local workspace. For detailed instructions, refer to the following sections in the :ref:`Development Guide <development-guide>`:
 
 * :ref:`Open an Issue <open-an-issue>`
-* :ref:`Fork the Repository <fork-the-repository>`
-* :ref:`Clone Your Fork <clone-your-fork>`
+* :ref:`Set Up Your Workspace <set-up-your-workspace>`
+* :ref:`Create a Branch <create-a-branch>`
 
 
 Set Up the Environment
@@ -91,10 +91,10 @@ While previewing the site, please verify the following:
 
 Commit Changes and Create a PR
 ------------------------------
-Once you are satisfied with how the documentation looks and builds, commit and push the changes to your branch. For detailed instructions, refer back to the :ref:`Development Guide <development_guide>`:
+Once you are satisfied with how the documentation looks and builds, commit and push the changes to your branch. For detailed instructions, refer back to the :ref:`Development Guide <development-guide>`:
 
-* :ref:`Commit Changes to Your Fork <commit-changes-to-your-fork>`
-* :ref:`Create a Pull Request <create-a-pull-request>`
+* :ref:`The Pre-Push Checklist <pre-push-checklist>`
+* :ref:`Open a Pull Request <open-a-pull-request>`
 
 
 Verify Deployment

@@ -3,6 +3,10 @@
 Development Guide
 =================
 
+.. _set-up-your-workspace:
+
+Set Up Your Workspace
+---------------------
 Before making any changes, you need to set up your local workspace and install the package in "editable" mode. This allows your local changes to take effect immediately without needing to reinstall the package.
 
 1. **Clone the Repository**
@@ -40,6 +44,8 @@ Before making any significant changes, writing new features, or submitting a Pul
 Discussing your ideas with the maintainers beforehand ensures that your proposed changes align with the project's architecture and roadmap, saving you time and preventing duplicate work.
 
 
+.. _create-a-branch:
+
 Create a Branch
 ---------------
 Once your issue is discussed and approved, create a new branch from `main`. We use a standardized branch naming convention based on your initials and a short, descriptive hyphenated name. 
@@ -57,6 +63,8 @@ We rely on a robust test suite to ensure the framework remains stable as it grow
 
 Please include these tests in the same commits as your code changes rather than adding them as an afterthought.
 
+
+.. _pre-push-checklist:
 
 The Pre-Push Checklist
 ----------------------
@@ -121,4 +129,15 @@ So without all the fluff, that's:
     cd docs
     make html
 
-Once all three steps complete successfully, you are ready to push your branch and open a PR!
+Once all three steps complete successfully, you are ready to push your branch and open a PR.
+
+
+.. _open-a-pull-request:
+
+Open a Pull Request
+-------------------
+Commit your changes together with their tests, push your branch to GitHub and open a pull request.
+
+* **Changelog:** add a one-line summary of your change as the first bullet under ``## Unreleased`` in ``CHANGELOG.md``, ending with a link to your pull request, e.g. ``- Brief description [#123](https://github.com/MetOffice/ProFSea-tool/pull/123)``.
+* **Contributor Licence Agreement:** if this is your first contribution, add a row to ``CONTRIBUTORS.md`` to sign the ``CLA.md``. A check on the pull request confirms this.
+* **Review:** a maintainer needs to approve the pull request before it can be merged.

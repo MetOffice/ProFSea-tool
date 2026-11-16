@@ -90,8 +90,11 @@ class TestFingerprintInit:
         assert fp.fp_paths[0] == Path("/fake/path/fp.nc")
         assert mock_exists
 
+    @patch.object(SpatialComponent, "fetch_assets")
     @patch("pathlib.Path.exists", return_value=False)
-    def test_custom_paths_missing(self, mock_exists, sample_global_proj):
+    def test_custom_paths_missing(
+        self, mock_exists, mock_fetch_assets, sample_global_proj
+    ):
         """Missing custom files should raise a FileNotFoundError."""
         with pytest.raises(FileNotFoundError, match="Missing fingerprint file"):
             Fingerprint(
