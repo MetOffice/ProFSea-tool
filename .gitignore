@@ -12,7 +12,7 @@ profsea/profsea-assets/
 docs/build
 *.DS_Store
 
-# Ignore output files from tutorial notebook
-docs/source/tutorial_notebooks/gia_2300.nc
-docs/source/tutorial_notebooks/stabilisation_projection.zarr
-docs/source/tutorial_notebooks/newlyn_GIA_RSL_timeseries.csv
+# Files ignored by default
+*.zarr
+*.nc
+*.csv
