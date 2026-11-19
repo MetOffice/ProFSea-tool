@@ -35,13 +35,15 @@ class SpatialState:
     grid_lons: np.ndarray
     n_years: int
     nt: int
-    num_members: int
+    #num_members: int
     num_output_members: int
+    num_localMC_members: int
     grid_interpolation: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
+    random_fraction: np.ndarray = None
 
 
 @dataclass
@@ -52,10 +54,12 @@ class LocalState:
     target_lons: list[float]
     n_years: int
     nt: int
-    num_members: int
+    #num_members: int
     num_output_members: int
+    num_localMC_members: int
     interpolation_method: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
+    random_fraction: np.ndarray = None

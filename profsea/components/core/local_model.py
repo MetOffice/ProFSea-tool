@@ -15,6 +15,7 @@ from profsea.utils import (
     fetch_zenodo_fingerprints,
     save_components,
     validate_component_map,
+    sample_members_2D
 )
 
 from .base import SpatialComponent
@@ -41,6 +42,8 @@ class Local:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
+        num_localMC_members: int = 100000,
+        sum_comp: dict = {'total_rsl': True},
     ) -> None:
         """
         Parameters
@@ -58,6 +61,10 @@ class Local:
             Tuple defining the start and end years of the baseline period. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output.
+        num_localMC_members: int, optional
+            Number of local Monte Carlo members to generate. Default is 100000.
+        sum_comp: dict, optional
+            Dictionary specifying which components to sum. Default is {'total_rsl': True}.
         """
         fetch_zenodo_fingerprints(
             zenodo_url=ZENODO_DOWNLOAD_LINK,
@@ -72,6 +79,8 @@ class Local:
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
         self.interpolation_method = interpolation_method
+        self.num_localMC_members = num_localMC_members
+        self.sum_comp = sum_comp
 
         validate_component_map(self.components, SpatialComponent, "Local")
 
@@ -86,19 +95,20 @@ class Local:
                 "The components dictionary is empty. Please provide at least one component."
             )
 
-        temp_proj = next(iter(self.components.values())).global_projection
-        self.nt = temp_proj.shape[0]
-        self.num_members = temp_proj.shape[1]
+        #temp_proj = next(iter(self.components.values())).global_projection
+        #self.nt = temp_proj.shape[0]
+        #self.num_members = temp_proj.shape[1]
 
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_output_members = len(self.output_percentiles)
         else:
-            self.num_output_members = self.nt * self.num_members
+            self.num_output_members = self.num_localMC_members
 
         logger.info(
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
         logger.info(f"Configured for {len(self.site_names)} specific target locations.")
+        
 
     # Instance method!
     save_components = save_components
@@ -142,12 +152,11 @@ class Local:
             for name, arr in arr_dict.items():
                 xr_dict[name] = xr.DataArray(
                     arr,
-                    dims=["climate_member", "process_member", "time", "site"],
+                    dims=["process_member", "time", "site"],
                     coords={
-                        "climate_member": np.arange(arr.shape[0]),
-                        "process_member": np.arange(arr.shape[1]),
+                        "process_member": np.arange(arr.shape[0]),
                         "time": np.arange(
-                            self.start_year, self.start_year + arr.shape[2]
+                            self.start_year, self.start_year + arr.shape[1]
                         ),
                         "site": self.site_names,
                         "lat": ("site", self.target_lats),
@@ -185,7 +194,7 @@ class Local:
             ]
         else:
             spatial_slices = [
-                comp.isel(climate_member=0, process_member=0, time=0)
+                comp.isel(process_member=0, time=0)
                 for comp in self.results.values()
             ]
 
@@ -224,7 +233,12 @@ class Local:
         dict
             Dictionary of local projections for each component, where keys are component names and values are xarray DataArrays of shape (num_members, n_years, n_sites).
         """
+
+        # Initialize the random number generator for Monte Carlo member sampling
         seed_seq = np.random.SeedSequence(member_seed)
+        child_seeds = seed_seq.spawn(1)
+        self.rng = np.random.default_rng(child_seeds[0])
+        random_fraction = self.rng.uniform(0, 1, size=self.num_localMC_members)
 
         logger.info(
             f"Simulating {len(self.components)} sea-level components for {len(self.site_names)} sites..."
@@ -233,21 +247,23 @@ class Local:
         state = LocalState(
             n_years=self.n_years,
             nt=self.nt,
-            num_members=self.num_members,
-            num_output_members=self.num_output_members,
+            #num_members=self.num_members,
+            num_output_members=self.num_members,
+            num_localMC_members=self.num_localMC_members,
             target_lats=self.target_lats,
             target_lons=self.target_lons,
             interpolation_method=self.interpolation_method,
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
             endofhistory=self.start_year,  # Use start_year as endofhistory for local projections
+            random_fraction=random_fraction,
         )
 
-        child_seeds = seed_seq.spawn(len(self.components))
-        comp_rngs = {
-            name: np.random.default_rng(s)
-            for name, s in zip(self.components.keys(), child_seeds)
-        }
+        #child_seeds = seed_seq.spawn(len(self.components))
+        #comp_rngs = {
+        #    name: np.random.default_rng(s)
+        #    for name, s in zip(self.components.keys(), child_seeds)
+        #}
 
         local_projections = {}
 
@@ -256,12 +272,26 @@ class Local:
             self.components.items(), description="Localising components..."
         ):
             # Project method should return array of shape (members, time, sites)
-            lazy_projection = comp.project(state, comp_rngs[name])
+            lazy_projection = comp.project(state, self.rng)
 
             # Rechunk to optimize for reading full time-series per site
-            lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: -1})
+            lazy_projection = lazy_projection.rechunk({0: -1, 1: -1, 2: 1})
             local_projections[name] = lazy_projection
         console.print()
+
+        # Sum components to get total sea-level change
+        if self.sum_comp:
+            total_name, should_sum = next(iter(self.sum_comp.items()))
+            if should_sum:
+                total_rsl = sum(local_projections.values())
+                local_projections[total_name] = total_rsl
+
+        # Convert to percentiles if not None
+        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+            for name, lazy_projection in local_projections.items():
+                local_projections[name] = sample_members_2D(local_projections[name], 
+                                                            self.output_percentiles) 
+        
 
         self.results = self._arr_to_xr(local_projections)
         self._apply_universal_mask()

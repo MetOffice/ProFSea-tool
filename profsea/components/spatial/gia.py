@@ -23,14 +23,14 @@ class GIA(SpatialComponent):
     def __init__(
         self,
         gia_paths: str | Path = None,
-        sample_spatial: bool = False,
+        sample_spatial: bool = True,
     ) -> None:
         """
         gia_paths: str, Path, list of str/Path, or None
             Path(s) to a directory containing GIA files or direct paths to specific GIA NetCDF files.
             Defaults to the main GIA_DIR if None.
         sample_spatial: bool, optional
-            Whether to sample spatial patterns probabilistically. Default is False.
+            Whether to sample spatial patterns probabilistically. Default is True.
         """
 
         self.fetch_assets()
@@ -131,32 +131,33 @@ class GIA(SpatialComponent):
 
         # Broadcast 1D time series to match expected (members, years) signature
         temporal_array = da.broadcast_to(
-            unit_series, (state.num_output_members, state.n_years)
+            unit_series, (state.num_localMC_members, state.n_years)
         )
 
         # Handle sampling if required
         if n_patterns == 1:
             selected_gia = da.broadcast_to(
                 gia_rates[0],
-                (state.num_output_members, *spatial_shape),
+                (state.num_localMC_members, *spatial_shape),
             )
         else:
             if self.sample_spatial:
-                rgiai = rng.integers(n_patterns, size=state.num_output_members)
+                #rgiai = rng.integers(n_patterns, size=state.num_localMC_members)
+                rgiai = (state.random_fraction * n_patterns).astype(int)
                 selected_gia = gia_rates[rgiai, ...]
             else:
                 mean_gia = da.nanmean(gia_rates, axis=0)
                 selected_gia = da.broadcast_to(
                     mean_gia,
-                    (state.num_output_members, *spatial_shape),
+                    (state.num_localMC_members, *spatial_shape),
                 )
 
         projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
 
         # Unpack the flattened member dimension back into climate and process dimensions
-        if getattr(state, "output_percentiles", None) is None:
-            return projected.reshape(
-                state.nt, state.num_members, state.n_years, *spatial_shape
-            )
+        #if getattr(state, "output_percentiles", None) is None:
+        #    return projected.reshape(
+        #        state.nt, state.num_localMC_members, state.n_years, *spatial_shape
+        #    )
 
         return projected

@@ -30,7 +30,7 @@ class SterodynamicCMIP6(SpatialComponent):
         global_projection: xr.DataArray,
         patterns_dir: str = None,
         cmip_era: str = "CMIP6",
-        sample_spatial: bool = False,
+        sample_spatial: bool = True,
     ) -> None:
         """
         Parameters
@@ -157,9 +157,9 @@ class SterodynamicCMIP6(SpatialComponent):
         coeffs = interp_da.data
         spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
 
-        if self.sample_spatial:
+        if self.sample_spatial: #selecting models at random 
             rand_samples = rng.choice(
-                coeffs.shape[0], size=state.num_output_members, replace=True
+                coeffs.shape[0], size=state.num_localMC_members, replace=True
             )
             return coeffs[rand_samples, :, :]
         else:
@@ -167,10 +167,10 @@ class SterodynamicCMIP6(SpatialComponent):
             mean_coeff = da.nanmean(coeffs, axis=0)
             return da.broadcast_to(
                 mean_coeff,
-                (state.num_output_members, *spatial_shape),
+                (state.num_localMC_members, *spatial_shape),
             )
 
-    def project(self, state: ClimateState, rng) -> np.ndarray:
+    def project(self, state: ClimateState, rng=None) -> np.ndarray:
         """
         Project the sterodynamic component by applying the CMIP6 patterns to the global expansion projection.
 
@@ -186,8 +186,11 @@ class SterodynamicCMIP6(SpatialComponent):
         np.ndarray
             A numpy array of shape (members, years, lat, lon) containing the sterodynamic component for each member and year.
         """
-        # Calculate percentiles locally without mutating self
+        # Select monte carlo members
         global_projection = reformat_global_projection(self.global_projection, state)
+        indices = (state.random_fraction * global_projection.shape[0]).astype(int)
+        global_projection = global_projection[indices, :, :]
+
         expansion_contribution = self._calc_expansion_contribution(rng, state)
 
         return self.broadcast_spatiotemporal(global_projection, expansion_contribution)
