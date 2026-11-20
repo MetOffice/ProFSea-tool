@@ -189,6 +189,32 @@ def sample_members_2D(
         return _eager_sample(array, percentiles)
 
 
+def members_percentiles(
+    array: np.ndarray | da.Array,
+    percentiles: list[float] | np.ndarray,
+) -> np.ndarray | da.Array:
+    """
+    Compute pointwise percentiles along the first (member) dimension.
+
+    Parameters
+    ----------
+    array: np.ndarray | da.Array
+        Input array of shape (members, ...). NaN values are ignored.
+    percentiles: list[float] | np.ndarray
+        One-dimensional sequence of percentiles between 0 and 100.
+
+    Returns
+    -------
+    np.ndarray | da.Array
+        Array of shape (len(percentiles), *array.shape[1:]). Dask inputs
+        remain lazy; exact percentiles require rechunking the member axis
+        into a single chunk. Locations with only NaNs remain NaN.
+    """
+    if isinstance(array, da.Array):
+        return da.nanpercentile(array, percentiles, axis=0)
+    return np.nanpercentile(array, percentiles, axis=0)
+
+
 def interpolate(data: da.array, lats: int, lons: int) -> da.array:
     """
     Interpolate a 2D dask array to a target grid defined by lats and lons.

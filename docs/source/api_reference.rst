@@ -54,3 +54,9 @@ Spatial Components
 
 .. automodule:: profsea.components.core.local_model
     :members: Local
+
+Utilities
+---------
+
+.. automodule:: profsea.utils.utils
+   :members: members_percentiles

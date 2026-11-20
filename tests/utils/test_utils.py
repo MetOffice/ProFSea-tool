@@ -7,12 +7,14 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from dask.callbacks import Callback
 
 from profsea.utils import (
     check_shapes,
     fetch_zenodo_fingerprints,
     interpolate,
     interpolate_to_grid,
+    members_percentiles,
     read_antarctic_obs,
     read_thermal_expansion_obs,
     rebaseline_projection,
@@ -143,6 +145,39 @@ def test_sample_members_2D_preserves_lazy_evaluation():
 
     assert isinstance(result, da.Array)
     assert result.shape == (3, 5)
+
+
+# --- members_percentiles ---
+
+
+@pytest.mark.parametrize("shape", [(4,), (4, 3, 2), (4, 2, 2, 3)])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_first_axis(shape, lazy):
+    array = np.arange(np.prod(shape), dtype=float).reshape(shape)
+    array[0] = np.nan
+    percentiles = [0, 25, 50, 100]
+    expected = np.nanpercentile(array, percentiles, axis=0)
+    if lazy:
+        array = da.from_array(array, chunks=(2,) + (1,) * (len(shape) - 1))
+
+    with Callback(start=lambda graph: pytest.fail("Percentile computation was eager")):
+        result = members_percentiles(array, percentiles)
+
+    assert isinstance(result, da.Array if lazy else np.ndarray)
+    assert result.shape == (len(percentiles), *shape[1:])
+    np.testing.assert_allclose(result.compute() if lazy else result, expected)
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_all_nan_location(lazy):
+    array = np.array([[0.0, np.nan], [10.0, np.nan], [20.0, np.nan]])
+    if lazy:
+        array = da.from_array(array, chunks=(1, 1))
+    with pytest.warns(RuntimeWarning, match="All-NaN slice encountered"):
+        result = members_percentiles(array, [25, 75])
+        values = result.compute() if lazy else result
+    assert result.shape == (2, 2)
+    np.testing.assert_allclose(values, [[5.0, np.nan], [15.0, np.nan]], equal_nan=True)
 
 
 # --- reformat_global_projection ---

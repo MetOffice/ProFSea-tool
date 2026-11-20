@@ -13,7 +13,7 @@ from rich.progress import track
 from profsea.utils import (
     PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
-    sample_members_2D,
+    members_percentiles,
     save_components,
     validate_component_map,
 )
@@ -274,7 +274,7 @@ class Spatial:
         # Convert to percentiles if not None
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             for name, lazy_projection in spatial_projections.items():
-                spatial_projections[name] = sample_members_2D(
+                spatial_projections[name] = members_percentiles(
                     spatial_projections[name], self.output_percentiles
                 )
 
