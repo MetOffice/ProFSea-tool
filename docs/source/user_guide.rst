@@ -67,10 +67,6 @@ With ``output_percentiles=None`` or ``[]``, gridded output has dimensions
 ``(process_member, time, site)``. Here ``process_member`` labels the local Monte
 Carlo ensemble, not the original global process axis.
 
-The spatial percentile-selection helper still needs adapting to these arrays.
-Until that work is complete, use ``output_percentiles=None`` for spatial and local
-runs. This does not affect global percentile output.
-
 Tutorial Notebook
 -----------------
 
