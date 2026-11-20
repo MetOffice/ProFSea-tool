@@ -23,14 +23,14 @@ class GIA(SpatialComponent):
     def __init__(
         self,
         gia_paths: str | Path = None,
-        sample_spatial: bool = False,
+        sample_spatial: bool = True,
     ) -> None:
         """
         gia_paths: str, Path, list of str/Path, or None
             Path(s) to a directory containing GIA files or direct paths to specific GIA NetCDF files.
             Defaults to the main GIA_DIR if None.
         sample_spatial: bool, optional
-            Whether to sample spatial patterns probabilistically. Default is False.
+            Whether to sample spatial patterns probabilistically. Default is True.
         """
 
         self.fetch_assets()
@@ -84,8 +84,10 @@ class GIA(SpatialComponent):
         """
         grids = []
         for path in self.gia_files:
-            gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
+            gia_da = xr.open_dataarray(path, chunks={"lat": -1, "lon": -1})
             interp_da = self.extract_spatial(gia_da, state)
+            if "lat" in interp_da.dims and "lon" in interp_da.dims:
+                interp_da = interp_da.chunk({"lat": 30, "lon": 30})
             data = interp_da.data
 
             # Determine expected spatial dims based on state
@@ -114,9 +116,9 @@ class GIA(SpatialComponent):
         Returns
         -------
         da.Array
-            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year, in state.dtype.
         """
-        gia_rates = self._load_and_interpolate_rates(state)
+        gia_rates = self._load_and_interpolate_rates(state).astype(state.dtype)
         n_patterns = gia_rates.shape[0]
 
         # Dynamically capture spatial shape (site,) or (lat, lon)
@@ -127,36 +129,33 @@ class GIA(SpatialComponent):
             state.baseline_yrs[1] - state.baseline_yrs[0] + 1
         ) * 0.5 + state.baseline_yrs[0]
         Tdelta = state.endofhistory - midyr
-        unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
+        unit_series = ((np.arange(state.n_years) + Tdelta) * 0.001).astype(state.dtype)
 
         # Broadcast 1D time series to match expected (members, years) signature
         temporal_array = da.broadcast_to(
-            unit_series, (state.num_output_members, state.n_years)
+            unit_series, (state.num_localMC_members, state.n_years)
         )
 
         # Handle sampling if required
         if n_patterns == 1:
             selected_gia = da.broadcast_to(
                 gia_rates[0],
-                (state.num_output_members, *spatial_shape),
+                (state.num_localMC_members, *spatial_shape),
             )
         else:
             if self.sample_spatial:
-                rgiai = rng.integers(n_patterns, size=state.num_output_members)
+                rgiai = (state.random_fraction * n_patterns).astype(int)
                 selected_gia = gia_rates[rgiai, ...]
             else:
                 mean_gia = da.nanmean(gia_rates, axis=0)
                 selected_gia = da.broadcast_to(
                     mean_gia,
-                    (state.num_output_members, *spatial_shape),
+                    (state.num_localMC_members, *spatial_shape),
                 )
+        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
+        temporal_array = temporal_array.rechunk({0: -1, 1: time_chunk})
+        selected_gia = selected_gia.rechunk({0: -1})
 
         projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
-
-        # Unpack the flattened member dimension back into climate and process dimensions
-        if getattr(state, "output_percentiles", None) is None:
-            return projected.reshape(
-                state.nt, state.num_members, state.n_years, *spatial_shape
-            )
 
         return projected

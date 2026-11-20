@@ -27,9 +27,8 @@ class MockLocalComponent(SpatialComponent):
         return np.zeros((2, 3, 4))
 
     def project(self, state, rng):
-        # 4D for site projections: (climate_member, process_member, time, site)
-        return np.ones(
-            (state.nt, state.num_members, state.n_years, len(state.target_lats))
+        return da.ones(
+            (state.num_localMC_members, state.n_years, len(state.target_lats))
         )
 
 
@@ -136,7 +135,7 @@ class TestLocalMetadataGeneration:
 
     @patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
     def test_local_arr_to_xr_metadata_no_percentiles(self, mock_fetch):
-        """Metadata generator should produce 4D tensor when percentiles are None."""
+        """Full output has one local Monte Carlo axis."""
         components = {"mock_comp": MockLocalComponent()}
         locations = {"Newlyn": (50.1, -5.5)}
         local = Local(
@@ -144,17 +143,36 @@ class TestLocalMetadataGeneration:
             locations=locations,
             end_year=2010,
             output_percentiles=None,
+            num_localMC_members=7,
         )
 
-        # Local model should read the 2x3 shape from the dummy component's global projection
-        assert local.nt == 2
-        assert local.num_members == 3
+        assert local.num_output_members == 7
 
-        # Mocking 4D output: (climate_member, process_member, time, site)
-        arr = da.zeros((2, 3, 4, 1))
+        arr = da.zeros((7, 4, 1))
         xr_dict = local._arr_to_xr({"mock_comp": arr})
 
         da_out = xr_dict["mock_comp"]
-        assert list(da_out.dims) == ["climate_member", "process_member", "time", "site"]
-        assert len(da_out.climate_member) == 2
-        assert len(da_out.process_member) == 3
+        assert list(da_out.dims) == ["process_member", "time", "site"]
+        assert da_out.shape == (7, 4, 1)
+        assert len(da_out.process_member) == 7
+
+
+@pytest.mark.parametrize("percentiles", [None, []])
+@patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
+def test_run_full_local_mc_ensemble(mock_fetch, percentiles):
+    model = Local(
+        components={"custom": MockLocalComponent()},
+        locations={"Newlyn": (50.1, -5.5), "Aberdeen": (57.1, -2.1)},
+        end_year=2009,
+        output_percentiles=percentiles,
+        num_localMC_members=7,
+    )
+    results = model.run(member_seed=42)
+    assert set(results) == {"custom", "total_rsl"}
+    assert results["custom"].dims == ("process_member", "time", "site")
+    assert results["custom"].shape == (7, 3, 2)
+    assert isinstance(results["custom"].data, da.Array)
+    np.testing.assert_array_equal(results["custom"].compute(), np.ones((7, 3, 2)))
+    np.testing.assert_array_equal(
+        results["total_rsl"].compute(), results["custom"].compute()
+    )

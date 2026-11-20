@@ -7,34 +7,44 @@ import pytest
 import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
-from profsea.components.core.state import SpatialState
+from profsea.components.core.state import LocalState, SpatialState
 from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
 
 
 def get_dummy_spatial_state(
-    num_output_members: int | None = None,
-    num_members: int = 2,
+    num_output_members: int = 4,
     output_percentiles: list | None = None,
     use_target_points: bool = True,
-) -> SpatialState:
-    """
-    Helper to generate a SpatialState for fingerprint testing.
-    Uses __new__ to bypass potential validation/I_O in the real __init__.
-    """
-    state = SpatialState.__new__(SpatialState)
-    state.num_output_members = num_output_members
-    state.num_members = num_members
-    state.output_percentiles = output_percentiles
-
+) -> LocalState | SpatialState:
+    """Build a complete state with four local Monte Carlo members."""
+    kwargs = dict(
+        n_years=3,
+        num_output_members=num_output_members,
+        num_localMC_members=4,
+        output_percentiles=output_percentiles,
+        baseline_yrs=(1995, 2014),
+        endofhistory=2006,
+        random_fraction=np.random.default_rng(42).uniform(size=4),
+    )
     if use_target_points:
-        state.target_lats = np.array([5])
-        state.target_lons = np.array([45])
-    else:
-        # If testing interpolation to grid rather than specific points
-        state.grid_lats = np.array([0, 10, 20])
-        state.grid_lons = np.array([-180, 0, 180])
+        return LocalState(
+            target_lats=[5],
+            target_lons=[45],
+            interpolation_method="bilinear",
+            **kwargs,
+        )
+    return SpatialState(
+        grid_lats=np.array([0, 10, 20]),
+        grid_lons=np.array([-180, 0, 180]),
+        grid_interpolation="linear",
+        **kwargs,
+    )
 
-    return state
+
+@pytest.fixture(autouse=True)
+def block_assets():
+    with patch.object(SpatialComponent, "fetch_assets"):
+        yield
 
 
 @pytest.fixture
@@ -45,6 +55,21 @@ def sample_global_proj():
 
 
 class TestFingerprintInit:
+    @pytest.mark.parametrize("shape", [(4, 3), (2, 2, 3)])
+    def test_global_projection_chunks_by_year(self, shape):
+        data = np.arange(12, dtype=np.float32).reshape(shape)
+        fp = Fingerprint(
+            global_projection=xr.DataArray(data),
+            fingerprint_component="greenland",
+        )
+
+        assert fp.global_projection.shape == shape
+        assert fp.global_projection.chunks == (
+            *((size,) for size in shape[:-1]),
+            (1,) * shape[-1],
+        )
+        np.testing.assert_array_equal(fp.global_projection.compute(), data)
+
     @patch.object(SpatialComponent, "fetch_assets")
     def test_fetches_assets_on_initialisation(
         self,
@@ -250,5 +275,50 @@ class TestFingerprintProject:
 
             mock_reformat.assert_called_once_with(fp.global_projection, state)
 
-            global_proj, _ = mock_bcast.call_args[0]
-            assert global_proj.compute() == 99.0
+            global_proj, spatial = mock_bcast.call_args[0]
+            assert global_proj.shape == (4, 1)
+            assert spatial.shape == (4, 1)
+            np.testing.assert_array_equal(global_proj.compute(), np.full((4, 1), 99.0))
+
+    @pytest.mark.parametrize("sample_spatial", [False, True])
+    @pytest.mark.parametrize("input_shape", [(2, 2, 3), (4, 3)])
+    @pytest.mark.parametrize(
+        ("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))]
+    )
+    @patch.object(Fingerprint, "_load_and_interpolate")
+    def test_project_resamples_before_spatialising(
+        self, mock_load, sample_spatial, input_shape, n_years, time_chunks
+    ):
+        state = get_dummy_spatial_state(output_percentiles=[50], num_output_members=1)
+        state.n_years = n_years
+        raw = np.arange(4 * n_years, dtype=float).reshape(*input_shape[:-1], n_years)
+        patterns = np.array([[1.0, 2.0], [3.0, 4.0]])
+        mock_load.return_value = da.from_array(patterns, chunks=(1, 1))
+        with patch("pathlib.Path.exists", return_value=True):
+            fp = Fingerprint(
+                xr.DataArray(raw),
+                "custom",
+                ["a.nc", "b.nc"],
+                sample_spatial=sample_spatial,
+            )
+        with patch.object(
+            fp, "broadcast_spatiotemporal", wraps=fp.broadcast_spatiotemporal
+        ) as mock_broadcast:
+            result = fp.project(state, np.random.default_rng(42))
+
+        temporal, spatial = mock_broadcast.call_args.args
+        assert temporal.chunks == ((4,), time_chunks)
+        assert spatial.chunks == ((4,), (1, 1))
+        indices = (state.random_fraction * 4).astype(int)
+        selected = (
+            patterns[(state.random_fraction * 2).astype(int)]
+            if sample_spatial
+            else np.broadcast_to(patterns.mean(axis=0), (4, 2))
+        )
+        assert isinstance(result, da.Array)
+        assert result.shape == (4, n_years, 2)
+        assert result.chunks == ((4,), time_chunks, (1, 1))
+        np.testing.assert_allclose(
+            result.compute(),
+            raw.reshape(4, n_years)[indices, :, None] * selected[:, None, :],
+        )

@@ -26,7 +26,7 @@ from rich.progress import (
 from scipy.spatial.distance import cdist
 
 if TYPE_CHECKING:
-    from profsea.components.core.state import ClimateState
+    from profsea.components.core.state import LocalState, SpatialState
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -187,6 +187,33 @@ def sample_members_2D(
     else:
         # Fallback for standard numpy arrays
         return _eager_sample(array, percentiles)
+
+
+def members_percentiles(
+    array: np.ndarray | da.Array,
+    percentiles: list[float] | np.ndarray,
+) -> np.ndarray | da.Array:
+    """
+    Compute pointwise percentiles along the first (member) dimension.
+
+    Parameters
+    ----------
+    array: np.ndarray | da.Array
+        Input array of shape (members, ...). NaN values are ignored.
+    percentiles: list[float] | np.ndarray
+        One-dimensional sequence of percentiles between 0 and 100.
+
+    Returns
+    -------
+    np.ndarray | da.Array
+        Array of shape (len(percentiles), *array.shape[1:]). Dask inputs
+        remain lazy; exact percentiles require rechunking the member axis
+        into a single chunk. Locations with only NaNs remain NaN.
+    """
+    if isinstance(array, da.Array):
+        members_last = da.moveaxis(array, 0, -1)
+        return da.nanpercentile(members_last, percentiles, axis=-1)
+    return np.nanpercentile(array, percentiles, axis=0)
 
 
 def interpolate(data: da.array, lats: int, lons: int) -> da.array:
@@ -507,18 +534,15 @@ def save_components(
 
 
 def reformat_global_projection(
-    raw_projection: np.ndarray, state: ClimateState
-) -> np.ndarray:
-
-    if state.output_percentiles is None or len(state.output_percentiles) == 0:
-        return raw_projection
-
+    raw_projection: np.ndarray | da.Array, state: SpatialState | LocalState
+) -> np.ndarray | da.Array:
+    """Flatten global ensemble axes to (members, time), without percentile sampling."""
     if raw_projection.ndim == 3:
         flat_projection = raw_projection.reshape(-1, raw_projection.shape[-1])
     else:
         flat_projection = raw_projection
 
-    return sample_members_2D(flat_projection, state.output_percentiles)
+    return flat_projection
 
 
 def rebaseline_projection(
