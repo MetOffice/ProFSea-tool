@@ -151,6 +151,23 @@ class TestExtractPoints:
 
 
 class TestBroadcastSpatiotemporal:
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
+    @pytest.mark.parametrize("members", [10, 1000, 10000])
+    @pytest.mark.parametrize("time_chunk", [1, 17])
+    def test_broadcast_preserves_input_chunks(
+        self, dummy_component, dtype, members, time_chunk
+    ):
+        temporal = da.ones((members, 294), chunks=(members, time_chunk), dtype=dtype)
+        spatial = da.ones((members, 60, 60), chunks=(members, 30, 30), dtype=dtype)
+
+        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+
+        assert isinstance(result, da.Array)
+        assert result.shape == (members, 294, 60, 60)
+        assert result.dtype == dtype
+        assert result.chunks[:2] == temporal.chunks
+        assert result.chunks[2:] == spatial.chunks[1:]
+
     def test_broadcast_2d_temporal_1d_spatial(self, dummy_component):
         """Test broadcasting 2D temporal (members, years) with 1D spatial (members, sites)."""
         temporal = da.ones((2, 3))

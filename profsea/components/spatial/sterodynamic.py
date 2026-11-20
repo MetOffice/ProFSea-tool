@@ -100,7 +100,7 @@ class SterodynamicCMIP6(SpatialComponent):
         ]
 
         # Concatenate along a new dimension (representing the ensemble/models)
-        slopes_stack = xr.concat(datasets, dim="model")
+        slopes_stack = xr.concat(datasets, dim="model").chunk({"model": -1})
 
         # Read land mask if present
         mask_files = sorted(
@@ -115,7 +115,7 @@ class SterodynamicCMIP6(SpatialComponent):
                     xr.open_dataset(f, chunks={"lat": -1, "lon": -1})["zos_mask"]
                     for f in mask_files
                 ]
-                mask_stack = xr.concat(datasets_mask, dim="model")
+                mask_stack = xr.concat(datasets_mask, dim="model").chunk({"model": -1})
                 # mask_stack = mask_stack.sum(dim='model', skipna=True)
             else:
                 logging.warning(
@@ -199,7 +199,9 @@ class SterodynamicCMIP6(SpatialComponent):
 
         expansion_contribution = self._calc_expansion_contribution(rng, state)
 
-        global_projection = global_projection.rechunk({0: -1, 1: 1})
+        # Rechunk (100 MB size) before saving to optimize memory during writing
+        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
+        global_projection = global_projection.rechunk({0: -1, 1: time_chunk})
         expansion_contribution = expansion_contribution.rechunk({0: -1})
 
         return self.broadcast_spatiotemporal(global_projection, expansion_contribution)

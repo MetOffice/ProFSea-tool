@@ -163,13 +163,14 @@ def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
 
 @pytest.mark.parametrize("at_sites", [False, True])
 @pytest.mark.parametrize("sample_spatial", [False, True])
+@pytest.mark.parametrize(("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))])
 @patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
 @patch.object(SpatialComponent, "extract_spatial")
 def test_project_resamples_global_members(
-    mock_extract, mock_load, at_sites, sample_spatial
+    mock_extract, mock_load, at_sites, sample_spatial, n_years, time_chunks
 ):
     kwargs = dict(
-        n_years=3,
+        n_years=n_years,
         num_localMC_members=4,
         num_output_members=1,
         output_percentiles=[50],
@@ -196,17 +197,25 @@ def test_project_resamples_global_members(
     patterns = xr.DataArray(da.ones((3, *spatial_shape)) * 2)
     mock_load.return_value = (patterns, None)
     mock_extract.return_value = patterns
-    raw = np.arange(12, dtype=float).reshape(2, 2, 3)
+    raw = np.arange(4 * n_years, dtype=float).reshape(2, 2, n_years)
     comp = SterodynamicCMIP6(xr.DataArray(raw), sample_spatial=sample_spatial)
     comp.land_mask_present = False
 
-    result = comp.project(state, np.random.default_rng(42))
+    with patch.object(
+        comp, "broadcast_spatiotemporal", wraps=comp.broadcast_spatiotemporal
+    ) as mock_broadcast:
+        result = comp.project(state, np.random.default_rng(42))
+
+    temporal, spatial = mock_broadcast.call_args.args
+    assert temporal.chunks == ((4,), time_chunks)
+    assert spatial.chunks[0] == (4,)
 
     indices = (state.random_fraction * 4).astype(int)
-    expected = raw.reshape(4, 3)[indices] * 2
-    expected = expected.reshape((4, 3) + (1,) * len(spatial_shape))
+    expected = raw.reshape(4, n_years)[indices] * 2
+    expected = expected.reshape((4, n_years) + (1,) * len(spatial_shape))
     assert isinstance(result, da.Array)
-    assert result.shape == (4, 3, *spatial_shape)
+    assert result.shape == (4, n_years, *spatial_shape)
+    assert result.chunks[1] == time_chunks
     np.testing.assert_allclose(
         result.compute(), np.broadcast_to(expected, result.shape)
     )

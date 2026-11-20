@@ -258,8 +258,9 @@ class Spatial:
         ):
             lazy_projection = comp.project(state, self.rng)
 
-            # Rechunk before saving to optimize memory during writing
-            lazy_projection = lazy_projection.rechunk({0: -1, 1: 1, 2: 30, 3: 30})
+            # Rechunk (100 MB size) before saving to optimize memory during writing
+            #time_chunk = max(1, 100_000_000 // (self.num_localMC_members * 30 * 30 * 8))
+            #lazy_projection = lazy_projection.rechunk({0: -1, 1: time_chunk, 2: 30, 3: 30})
 
             spatial_projections[name] = lazy_projection
         console.print()

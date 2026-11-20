@@ -136,3 +136,49 @@ def test_run_full_local_mc_ensemble(mock_fetch, percentiles, capsys):
     np.testing.assert_array_equal(
         results["mock_comp"].compute(), repeated["mock_comp"].compute()
     )
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_run_preserves_time_chunks_and_memberwise_total(mock_fetch):
+    rng = np.random.default_rng(42)
+    temporal = rng.random((7, 4))
+    patterns = rng.random((7, 2, 2))
+    expected = temporal[:, :, None, None] * patterns[:, None, :, :]
+    components = get_dummy_components()
+    components["other"] = MagicMock(spec=SpatialComponent)
+
+    def project(state, rng):
+        return SpatialComponent.broadcast_spatiotemporal(
+            components["mock_comp"],
+            da.from_array(temporal, chunks=(7, 1)),
+            da.from_array(patterns, chunks=(7, 2, 2)),
+        )
+
+    for component in components.values():
+        component.project.side_effect = project
+
+    model = Spatial(
+        components=components,
+        end_year=2010,
+        num_localMC_members=7,
+        output_percentiles=[17, 50, 83],
+        grid_config=dict(
+            start_lat=0,
+            end_lat=1,
+            step_lat=1,
+            start_lon=0,
+            end_lon=1,
+            step_lon=1,
+        ),
+    )
+    results = model.run()
+
+    assert results["total_rsl"].shape == (3, 4, 2, 2)
+    assert results["total_rsl"].data.chunks[1] == (1, 1, 1, 1)
+    np.testing.assert_allclose(
+        results["mock_comp"].compute(), np.nanpercentile(expected, [17, 50, 83], axis=0)
+    )
+    np.testing.assert_allclose(
+        results["total_rsl"].compute(),
+        np.nanpercentile(2 * expected, [17, 50, 83], axis=0),
+    )

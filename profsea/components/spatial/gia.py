@@ -152,8 +152,8 @@ class GIA(SpatialComponent):
                     mean_gia,
                     (state.num_localMC_members, *spatial_shape),
                 )
-
-        temporal_array = temporal_array.rechunk({0: -1, 1: 1})
+        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
+        temporal_array = temporal_array.rechunk({0: -1, 1: time_chunk})
         selected_gia = selected_gia.rechunk({0: -1})
 
         projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)

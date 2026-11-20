@@ -282,12 +282,16 @@ class TestFingerprintProject:
 
     @pytest.mark.parametrize("sample_spatial", [False, True])
     @pytest.mark.parametrize("input_shape", [(2, 2, 3), (4, 3)])
+    @pytest.mark.parametrize(
+        ("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))]
+    )
     @patch.object(Fingerprint, "_load_and_interpolate")
     def test_project_resamples_before_spatialising(
-        self, mock_load, sample_spatial, input_shape
+        self, mock_load, sample_spatial, input_shape, n_years, time_chunks
     ):
         state = get_dummy_spatial_state(output_percentiles=[50], num_output_members=1)
-        raw = np.arange(12, dtype=float).reshape(input_shape)
+        state.n_years = n_years
+        raw = np.arange(4 * n_years, dtype=float).reshape(*input_shape[:-1], n_years)
         patterns = np.array([[1.0, 2.0], [3.0, 4.0]])
         mock_load.return_value = da.from_array(patterns, chunks=(1, 1))
         with patch("pathlib.Path.exists", return_value=True):
@@ -297,7 +301,14 @@ class TestFingerprintProject:
                 ["a.nc", "b.nc"],
                 sample_spatial=sample_spatial,
             )
-        result = fp.project(state, np.random.default_rng(42))
+        with patch.object(
+            fp, "broadcast_spatiotemporal", wraps=fp.broadcast_spatiotemporal
+        ) as mock_broadcast:
+            result = fp.project(state, np.random.default_rng(42))
+
+        temporal, spatial = mock_broadcast.call_args.args
+        assert temporal.chunks == ((4,), time_chunks)
+        assert spatial.chunks == ((4,), (1, 1))
         indices = (state.random_fraction * 4).astype(int)
         selected = (
             patterns[(state.random_fraction * 2).astype(int)]
@@ -305,8 +316,9 @@ class TestFingerprintProject:
             else np.broadcast_to(patterns.mean(axis=0), (4, 2))
         )
         assert isinstance(result, da.Array)
-        assert result.shape == (4, 3, 2)
-        assert result.chunks == ((4,), (1, 1, 1), (1, 1))
+        assert result.shape == (4, n_years, 2)
+        assert result.chunks == ((4,), time_chunks, (1, 1))
         np.testing.assert_allclose(
-            result.compute(), raw.reshape(4, 3)[indices, :, None] * selected[:, None, :]
+            result.compute(),
+            raw.reshape(4, n_years)[indices, :, None] * selected[:, None, :],
         )

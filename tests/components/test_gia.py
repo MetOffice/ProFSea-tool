@@ -126,11 +126,21 @@ class TestGIAProject:
     @pytest.mark.parametrize("dtype", [np.float32, np.float64])
     @pytest.mark.parametrize("sample_spatial", [False, True])
     @pytest.mark.parametrize("at_sites", [False, True])
+    @pytest.mark.parametrize(
+        ("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))]
+    )
     @patch.object(GIA, "_load_and_interpolate_rates")
     def test_project_aligns_chunks_before_broadcast(
-        self, mock_load, mocked_gia, sample_spatial, at_sites, dtype
+        self,
+        mock_load,
+        mocked_gia,
+        sample_spatial,
+        at_sites,
+        dtype,
+        n_years,
+        time_chunks,
     ):
-        state = get_dummy_spatial_state(use_target_points=at_sites)
+        state = get_dummy_spatial_state(use_target_points=at_sites, n_years=n_years)
         state.dtype = dtype
         spatial_shape = (1,) if at_sites else (3, 3)
         patterns = np.arange(2 * np.prod(spatial_shape), dtype=float).reshape(
@@ -148,20 +158,23 @@ class TestGIAProject:
 
         temporal, spatial = mock_broadcast.call_args.args
         assert temporal.dtype == spatial.dtype == np.dtype(dtype)
+        assert temporal.chunks == ((4,), time_chunks)
+        assert spatial.chunks[0] == (4,)
 
         selected = (
             patterns[(state.random_fraction * 2).astype(int)]
             if sample_spatial
             else np.broadcast_to(patterns.mean(axis=0), (4, *spatial_shape))
         )
-        expected = selected[:, None] * np.array([0.001, 0.002, 0.003]).reshape(
-            (1, 3) + (1,) * len(spatial_shape)
+        time_series = (np.arange(1, n_years + 1) * 0.001).astype(dtype)
+        expected = selected.astype(dtype)[:, None] * time_series.reshape(
+            (1, n_years) + (1,) * len(spatial_shape)
         )
-        assert result.shape == (4, 3, *spatial_shape)
+        assert result.shape == (4, n_years, *spatial_shape)
         assert result.dtype == np.dtype(dtype)
         assert result.chunks == (
             (4,),
-            (1, 1, 1),
+            time_chunks,
             *((1,) * size for size in spatial_shape),
         )
         np.testing.assert_allclose(result.compute(), expected)

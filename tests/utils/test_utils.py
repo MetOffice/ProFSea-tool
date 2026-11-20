@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 import dask.array as da
@@ -173,7 +174,11 @@ def test_members_percentiles_all_nan_location(lazy):
     array = np.array([[0.0, np.nan], [10.0, np.nan], [20.0, np.nan]])
     if lazy:
         array = da.from_array(array, chunks=(1, 1))
-    with pytest.warns(RuntimeWarning, match="All-NaN slice encountered"):
+    with (
+        nullcontext()
+        if lazy
+        else pytest.warns(RuntimeWarning, match="All-NaN slice encountered")
+    ):
         result = members_percentiles(array, [25, 75])
         values = result.compute() if lazy else result
     assert result.shape == (2, 2)

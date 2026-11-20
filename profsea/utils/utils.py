@@ -211,7 +211,8 @@ def members_percentiles(
         into a single chunk. Locations with only NaNs remain NaN.
     """
     if isinstance(array, da.Array):
-        return da.nanpercentile(array, percentiles, axis=0)
+        members_last = da.moveaxis(array, 0, -1)
+        return da.nanpercentile(members_last, percentiles, axis=-1)
     return np.nanpercentile(array, percentiles, axis=0)
 
 

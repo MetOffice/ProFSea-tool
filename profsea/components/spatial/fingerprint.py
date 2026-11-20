@@ -173,7 +173,8 @@ class Fingerprint(SpatialComponent):
                 (state.num_localMC_members, *spatial_shape),
             )
 
-        global_projection = global_projection.rechunk({0: -1, 1: 1})
+        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
+        global_projection = global_projection.rechunk({0: -1, 1: time_chunk})
         selected_fps = selected_fps.rechunk({0: -1})
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
