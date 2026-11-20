@@ -73,7 +73,10 @@ class Fingerprint(SpatialComponent):
         """
 
         self.fetch_assets()
-        self._global_projection = da.from_array(global_projection.data, chunks="auto")
+        self._global_projection = da.from_array(
+            global_projection.data,
+            chunks=(*([-1] * (global_projection.ndim - 1)), 1),
+        )
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial
         self.fingerprint_component = fingerprint_component
@@ -117,8 +120,10 @@ class Fingerprint(SpatialComponent):
         """
         grids = []
         for path in self.fp_paths:
-            fp_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
+            fp_da = xr.open_dataarray(path, chunks={"lat": -1, "lon": -1})
             fp_interp = self.extract_spatial(fp_da, state)
+            if "lat" in fp_interp.dims and "lon" in fp_interp.dims:
+                fp_interp = fp_interp.chunk({"lat": 30, "lon": 30})
             grids.append(fp_interp.data * self.scaling_factor)
 
         # Stack them into a 3D array: (n_fingerprints, lat, lon)
@@ -167,6 +172,9 @@ class Fingerprint(SpatialComponent):
                 mean_fp,
                 (state.num_localMC_members, *spatial_shape),
             )
+
+        global_projection = global_projection.rechunk({0: -1, 1: 1})
+        selected_fps = selected_fps.rechunk({0: -1})
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
         return self.broadcast_spatiotemporal(global_projection, selected_fps)

@@ -47,7 +47,10 @@ class SterodynamicCMIP6(SpatialComponent):
         self.fetch_assets()
 
         # Convert to dask array for cheap as possible compute
-        self._global_projection = da.from_array(global_projection.data, chunks="auto")
+        self._global_projection = da.from_array(
+            global_projection.data,
+            chunks=(*([-1] * (global_projection.ndim - 1)), 1),
+        )
         self.sample_spatial = sample_spatial
         self.cmip_era = cmip_era.lower()
 
@@ -90,7 +93,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Lazily load all files keeping metadata intact
         datasets = [
-            xr.open_dataset(f, chunks={"lat": 45, "lon": 45})[
+            xr.open_dataset(f, chunks={"lat": -1, "lon": -1})[
                 "zos_zostoga_regression_slope"
             ]
             for f in slope_files
@@ -109,7 +112,7 @@ class SterodynamicCMIP6(SpatialComponent):
                 self.land_mask_present = True
 
                 datasets_mask = [
-                    xr.open_dataset(f, chunks={"lat": 45, "lon": 45})["zos_mask"]
+                    xr.open_dataset(f, chunks={"lat": -1, "lon": -1})["zos_mask"]
                     for f in mask_files
                 ]
                 mask_stack = xr.concat(datasets_mask, dim="model")
@@ -154,6 +157,9 @@ class SterodynamicCMIP6(SpatialComponent):
 
         # Get the data either at sites or on a grid
         interp_da = self.extract_spatial(coeffs_da, state)
+        if "lat" in interp_da.dims and "lon" in interp_da.dims:
+            interp_da = interp_da.chunk({"lat": 30, "lon": 30})
+
         coeffs = interp_da.data
         spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
 
@@ -192,6 +198,9 @@ class SterodynamicCMIP6(SpatialComponent):
         global_projection = global_projection[indices, :]
 
         expansion_contribution = self._calc_expansion_contribution(rng, state)
+
+        global_projection = global_projection.rechunk({0: -1, 1: 1})
+        expansion_contribution = expansion_contribution.rechunk({0: -1})
 
         return self.broadcast_spatiotemporal(global_projection, expansion_contribution)
 

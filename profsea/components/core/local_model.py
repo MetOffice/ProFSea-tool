@@ -42,7 +42,7 @@ class Local:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
-        num_localMC_members: int = 100000,
+        num_localMC_members: int = 1000,
         sum_comp: dict = {"total_rsl": True},
     ) -> None:
         """
@@ -62,7 +62,7 @@ class Local:
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output.
         num_localMC_members: int, optional
-            Number of local Monte Carlo members to generate. Default is 100000.
+            Number of local Monte Carlo members to generate. Default is 1000.
         sum_comp: dict, optional
             Dictionary specifying which components to sum. Default is {'total_rsl': True}.
         """

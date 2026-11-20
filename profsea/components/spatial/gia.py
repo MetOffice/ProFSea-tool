@@ -84,8 +84,10 @@ class GIA(SpatialComponent):
         """
         grids = []
         for path in self.gia_files:
-            gia_da = xr.open_dataarray(path, chunks={"lat": 45, "lon": 45})
+            gia_da = xr.open_dataarray(path, chunks={"lat": -1, "lon": -1})
             interp_da = self.extract_spatial(gia_da, state)
+            if "lat" in interp_da.dims and "lon" in interp_da.dims:
+                interp_da = interp_da.chunk({"lat": 30, "lon": 30})
             data = interp_da.data
 
             # Determine expected spatial dims based on state
@@ -114,9 +116,9 @@ class GIA(SpatialComponent):
         Returns
         -------
         da.Array
-            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year, in state.dtype.
         """
-        gia_rates = self._load_and_interpolate_rates(state)
+        gia_rates = self._load_and_interpolate_rates(state).astype(state.dtype)
         n_patterns = gia_rates.shape[0]
 
         # Dynamically capture spatial shape (site,) or (lat, lon)
@@ -127,7 +129,7 @@ class GIA(SpatialComponent):
             state.baseline_yrs[1] - state.baseline_yrs[0] + 1
         ) * 0.5 + state.baseline_yrs[0]
         Tdelta = state.endofhistory - midyr
-        unit_series = (np.arange(state.n_years) + Tdelta) * 0.001
+        unit_series = ((np.arange(state.n_years) + Tdelta) * 0.001).astype(state.dtype)
 
         # Broadcast 1D time series to match expected (members, years) signature
         temporal_array = da.broadcast_to(
@@ -150,6 +152,9 @@ class GIA(SpatialComponent):
                     mean_gia,
                     (state.num_localMC_members, *spatial_shape),
                 )
+
+        temporal_array = temporal_array.rechunk({0: -1, 1: 1})
+        selected_gia = selected_gia.rechunk({0: -1})
 
         projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
 

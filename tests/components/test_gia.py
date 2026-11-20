@@ -123,6 +123,49 @@ class TestGIALoadAndInterpolateRates:
 
 
 class TestGIAProject:
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
+    @pytest.mark.parametrize("sample_spatial", [False, True])
+    @pytest.mark.parametrize("at_sites", [False, True])
+    @patch.object(GIA, "_load_and_interpolate_rates")
+    def test_project_aligns_chunks_before_broadcast(
+        self, mock_load, mocked_gia, sample_spatial, at_sites, dtype
+    ):
+        state = get_dummy_spatial_state(use_target_points=at_sites)
+        state.dtype = dtype
+        spatial_shape = (1,) if at_sites else (3, 3)
+        patterns = np.arange(2 * np.prod(spatial_shape), dtype=float).reshape(
+            2, *spatial_shape
+        )
+        mock_load.return_value = da.from_array(patterns, chunks=1)
+        mocked_gia.sample_spatial = sample_spatial
+
+        with patch.object(
+            mocked_gia,
+            "broadcast_spatiotemporal",
+            wraps=mocked_gia.broadcast_spatiotemporal,
+        ) as mock_broadcast:
+            result = mocked_gia.project(state, np.random.default_rng(42))
+
+        temporal, spatial = mock_broadcast.call_args.args
+        assert temporal.dtype == spatial.dtype == np.dtype(dtype)
+
+        selected = (
+            patterns[(state.random_fraction * 2).astype(int)]
+            if sample_spatial
+            else np.broadcast_to(patterns.mean(axis=0), (4, *spatial_shape))
+        )
+        expected = selected[:, None] * np.array([0.001, 0.002, 0.003]).reshape(
+            (1, 3) + (1,) * len(spatial_shape)
+        )
+        assert result.shape == (4, 3, *spatial_shape)
+        assert result.dtype == np.dtype(dtype)
+        assert result.chunks == (
+            (4,),
+            (1, 1, 1),
+            *((1,) * size for size in spatial_shape),
+        )
+        np.testing.assert_allclose(result.compute(), expected)
+
     @pytest.fixture
     def mocked_gia(self):
         with (

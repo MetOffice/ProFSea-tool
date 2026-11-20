@@ -55,6 +55,21 @@ def sample_global_proj():
 
 
 class TestFingerprintInit:
+    @pytest.mark.parametrize("shape", [(4, 3), (2, 2, 3)])
+    def test_global_projection_chunks_by_year(self, shape):
+        data = np.arange(12, dtype=np.float32).reshape(shape)
+        fp = Fingerprint(
+            global_projection=xr.DataArray(data),
+            fingerprint_component="greenland",
+        )
+
+        assert fp.global_projection.shape == shape
+        assert fp.global_projection.chunks == (
+            *((size,) for size in shape[:-1]),
+            (1,) * shape[-1],
+        )
+        np.testing.assert_array_equal(fp.global_projection.compute(), data)
+
     @patch.object(SpatialComponent, "fetch_assets")
     def test_fetches_assets_on_initialisation(
         self,
@@ -274,7 +289,7 @@ class TestFingerprintProject:
         state = get_dummy_spatial_state(output_percentiles=[50], num_output_members=1)
         raw = np.arange(12, dtype=float).reshape(input_shape)
         patterns = np.array([[1.0, 2.0], [3.0, 4.0]])
-        mock_load.return_value = da.asarray(patterns)
+        mock_load.return_value = da.from_array(patterns, chunks=(1, 1))
         with patch("pathlib.Path.exists", return_value=True):
             fp = Fingerprint(
                 xr.DataArray(raw),
@@ -291,6 +306,7 @@ class TestFingerprintProject:
         )
         assert isinstance(result, da.Array)
         assert result.shape == (4, 3, 2)
+        assert result.chunks == ((4,), (1, 1, 1), (1, 1))
         np.testing.assert_allclose(
             result.compute(), raw.reshape(4, 3)[indices, :, None] * selected[:, None, :]
         )

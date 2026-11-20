@@ -24,7 +24,7 @@ def test_spatial_init_blocks_download_and_configures_local_mc(mock_fetch):
 
     mock_fetch.assert_called_once()
     assert spatial.end_year == 2050
-    assert spatial.num_localMC_members == 100000
+    assert spatial.num_localMC_members == 1000
     assert spatial.num_members == 5
 
 

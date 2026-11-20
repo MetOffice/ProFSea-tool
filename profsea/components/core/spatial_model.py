@@ -43,7 +43,7 @@ class Spatial:
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
-        num_localMC_members: int = 100000,
+        num_localMC_members: int = 1000,
         dtype: np.dtype = np.float32,
         sum_comp: dict = {"total_rsl": True},
     ) -> None:
@@ -64,7 +64,7 @@ class Spatial:
         output_percentiles: list or np.ndarray, optional
             List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
         num_localMC_members: int, optional
-            Number of members to use for the local Monte Carlo ensemble. Default is 100000.
+            Number of members to use for the local Monte Carlo ensemble. Default is 1000.
         dtype: np.dtype, optional
             Data type for the output arrays. Default is np.float32.
         sum_comp: dict, optional
@@ -259,7 +259,7 @@ class Spatial:
             lazy_projection = comp.project(state, self.rng)
 
             # Rechunk before saving to optimize memory during writing
-            lazy_projection = lazy_projection.rechunk({0: -1, 1: 1, 2: 10, 3: 10})
+            lazy_projection = lazy_projection.rechunk({0: -1, 1: 1, 2: 30, 3: 30})
 
             spatial_projections[name] = lazy_projection
         console.print()
