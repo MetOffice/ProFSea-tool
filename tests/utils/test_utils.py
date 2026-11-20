@@ -148,52 +148,32 @@ def test_sample_members_2D_preserves_lazy_evaluation():
 # --- reformat_global_projection ---
 
 
-def test_reformat_global_projection_none_percentiles():
-    """Should return raw array unmodified if percentiles are None or empty."""
-    state = DummyClimateState(percentiles=None)
-    raw_arr = np.ones((2, 3, 4))
-
+@pytest.mark.parametrize("percentiles", [None, [], [5, 95]])
+@pytest.mark.parametrize("lazy", [False, True])
+@patch("profsea.utils.utils.sample_members_2D")
+def test_reformat_global_projection_3d_flattens(mock_sample, lazy, percentiles):
+    """Flatten global ensemble axes without selecting percentiles."""
+    state = DummyClimateState(percentiles=percentiles)
+    raw_arr = np.arange(24).reshape(2, 3, 4)
+    if lazy:
+        raw_arr = da.asarray(raw_arr)
     result = reformat_global_projection(raw_arr, state)
-    assert result.shape == (2, 3, 4)
-    assert result is raw_arr
-
-    state.output_percentiles = []
-    result_empty = reformat_global_projection(raw_arr, state)
-    assert result_empty is raw_arr
+    assert result.shape == (6, 4)
+    assert isinstance(result, da.Array if lazy else np.ndarray)
+    np.testing.assert_array_equal(np.asarray(result), np.arange(24).reshape(6, 4))
+    mock_sample.assert_not_called()
 
 
 @patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_3d_flattens(mock_sample):
-    """Should dynamically flatten a 3D array to 2D before sampling."""
-    state = DummyClimateState(percentiles=[50])
-    raw_arr = np.ones((2, 3, 4))  # (climate_members, process_members, years)
-
-    mock_sample.return_value = "sampled_array"
-
-    result = reformat_global_projection(raw_arr, state)
-
-    # Check that sample_members_2D was called with a flattened (6, 4) array
-    flat_args, _ = mock_sample.call_args
-    passed_array = flat_args[0]
-
-    assert passed_array.shape == (6, 4)
-    assert result == "sampled_array"
-
-
-@patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_2d_direct_sample(mock_sample):
-    """Should sample directly if array is already 2D."""
+def test_reformat_global_projection_2d_preserves_members(mock_sample):
+    """Already-flat arrays retain all members until the spatial stage."""
     state = DummyClimateState(percentiles=[5, 95])
     raw_arr = np.ones((6, 4))
 
-    mock_sample.return_value = "sampled_array"
     result = reformat_global_projection(raw_arr, state)
-
-    flat_args, _ = mock_sample.call_args
-    passed_array = flat_args[0]
-
-    assert passed_array.shape == (6, 4)
-    assert result == "sampled_array"
+    assert result.shape == (6, 4)
+    assert result is raw_arr
+    mock_sample.assert_not_called()
 
 
 # --- fetch_zenodo_fingerprints ---

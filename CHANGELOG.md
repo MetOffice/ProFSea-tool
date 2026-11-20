@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix spatial/local Monte Carlo state construction, member indexing and site-pattern sampling; align tests with the single local ensemble axis (spatial percentile selection remains pending).
 - Minor update to CLA documentation [#117](https://github.com/MetOffice/ProFSea-tool/pull/117)
 - Update `.gitignore` and remove excess files [#118](https://github.com/MetOffice/ProFSea-tool/pull/118)
 - `AGENTS.md` guide to the design philosophy, conventions and known rough edges for coding agents and contributors, loaded by Claude Code via `CLAUDE.md`, and this changelog, checked on every PR [#114](https://github.com/MetOffice/ProFSea-tool/pull/114)

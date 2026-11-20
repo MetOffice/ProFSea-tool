@@ -26,7 +26,7 @@ from rich.progress import (
 from scipy.spatial.distance import cdist
 
 if TYPE_CHECKING:
-    from profsea.components.core.state import ClimateState
+    from profsea.components.core.state import LocalState, SpatialState
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -507,25 +507,15 @@ def save_components(
 
 
 def reformat_global_projection(
-    raw_projection: np.ndarray, state: ClimateState
-) -> np.ndarray:
-
-    if raw_projection.ndim == 3: # flattens all dimensions except the last one
+    raw_projection: np.ndarray | da.Array, state: SpatialState | LocalState
+) -> np.ndarray | da.Array:
+    """Flatten global ensemble axes to (members, time), without percentile sampling."""
+    if raw_projection.ndim == 3:
         flat_projection = raw_projection.reshape(-1, raw_projection.shape[-1])
     else:
         flat_projection = raw_projection
 
     return flat_projection
-
-    #if state.output_percentiles is None or len(state.output_percentiles) == 0:
-    #    return raw_projection
-
-    #if raw_projection.ndim == 3:
-    #    flat_projection = raw_projection.reshape(-1, raw_projection.shape[-1])
-    #else:
-    #    flat_projection = raw_projection
-
-    #return sample_members_2D(flat_projection, state.output_percentiles)
 
 
 def rebaseline_projection(

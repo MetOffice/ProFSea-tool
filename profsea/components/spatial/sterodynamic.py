@@ -157,11 +157,11 @@ class SterodynamicCMIP6(SpatialComponent):
         coeffs = interp_da.data
         spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
 
-        if self.sample_spatial: #selecting models at random 
+        if self.sample_spatial:  # selecting models at random
             rand_samples = rng.choice(
                 coeffs.shape[0], size=state.num_localMC_members, replace=True
             )
-            return coeffs[rand_samples, :, :]
+            return coeffs[rand_samples, ...]
         else:
             # Calc pattern ensemble mean
             mean_coeff = da.nanmean(coeffs, axis=0)
@@ -189,7 +189,7 @@ class SterodynamicCMIP6(SpatialComponent):
         # Select monte carlo members
         global_projection = reformat_global_projection(self.global_projection, state)
         indices = (state.random_fraction * global_projection.shape[0]).astype(int)
-        global_projection = global_projection[indices, :, :]
+        global_projection = global_projection[indices, :]
 
         expansion_contribution = self._calc_expansion_contribution(rng, state)
 

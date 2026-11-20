@@ -13,11 +13,11 @@ from rich.progress import track
 from profsea.utils import (
     PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
+    sample_members_2D,
     save_components,
     validate_component_map,
 )
 from profsea.utils.ui import print_spatial_preflight
-from profsea.utils import sample_members_2D
 
 from .base import Component, SpatialComponent
 from .state import SpatialState
@@ -45,7 +45,7 @@ class Spatial:
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
         num_localMC_members: int = 100000,
         dtype: np.dtype = np.float32,
-        sum_comp: dict = {'total_rsl': True},
+        sum_comp: dict = {"total_rsl": True},
     ) -> None:
         """
         Parameters
@@ -101,13 +101,6 @@ class Spatial:
             self.num_members = len(self.output_percentiles)
         else:
             self.num_members = self.num_localMC_members
-            #self.num_members = next(
-            #    iter(self.components.values())
-            #).global_projection.shape[0]
-
-        #temp_component = next(iter(self.components.values()))
-        #self.nt = temp_component.global_projection.shape[0] 
-        #self.num_members = temp_component.global_projection.shape[1]
 
         if grid_config is None:
             grid_config: dict = {
@@ -138,12 +131,6 @@ class Spatial:
         # Log the size of each component and provide an estimate of their memory usage
         # Output shape will be (num_members, n_years, n_lats, n_lons)
         bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
-        #self.num_out_mems = (
-        #    len(output_percentiles)
-        #    if self.output_percentiles is not None and len(self.output_percentiles) > 0
-        #    else self.num_members * self.nt
-        #)
-
         future_size = (
             self.num_members
             * self.n_years
@@ -224,7 +211,7 @@ class Spatial:
 
         return xr_dict
 
-    def run(self, member_seed: int = 42) -> None:
+    def run(self, member_seed: int = 42) -> dict[str, xr.DataArray]:
         """
         Run the spatial model to generate regional sea level projections for each component.
 
@@ -252,9 +239,7 @@ class Spatial:
 
         state = SpatialState(
             n_years=self.n_years,
-            nt=self.nt,
             num_output_members=self.num_members,
-            #num_members=self.num_members,
             num_localMC_members=self.num_localMC_members,
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
@@ -265,12 +250,6 @@ class Spatial:
             endofhistory=self.start_year,
             random_fraction=random_fraction,
         )
-
-        #child_seeds = seed_seq.spawn(len(self.components))
-        #comp_rngs = {
-        #    name: np.random.default_rng(s)
-        #    for name, s in zip(self.components.keys(), child_seeds)
-        #}
 
         spatial_projections = {}
         console.print()  # Add a blank line for better readability in the console output
@@ -291,17 +270,18 @@ class Spatial:
             if should_sum:
                 total_rsl = sum(spatial_projections.values())
                 spatial_projections[total_name] = total_rsl
-        
+
         # Convert to percentiles if not None
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             for name, lazy_projection in spatial_projections.items():
-                spatial_projections[name] = sample_members_2D(spatial_projections[name], 
-                                                               self.output_percentiles) 
+                spatial_projections[name] = sample_members_2D(
+                    spatial_projections[name], self.output_percentiles
+                )
 
         # Put into xarray datasets for easier saving and metadata handling
         spatial_projections_xr = self._arr_to_xr(spatial_projections)
         self.results = spatial_projections_xr
-        
+
         return self.results
 
     def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:

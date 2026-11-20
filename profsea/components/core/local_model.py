@@ -13,9 +13,9 @@ from rich.progress import track
 from profsea.utils import (
     PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
+    sample_members_2D,
     save_components,
     validate_component_map,
-    sample_members_2D
 )
 
 from .base import SpatialComponent
@@ -43,7 +43,7 @@ class Local:
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
         num_localMC_members: int = 100000,
-        sum_comp: dict = {'total_rsl': True},
+        sum_comp: dict = {"total_rsl": True},
     ) -> None:
         """
         Parameters
@@ -95,10 +95,6 @@ class Local:
                 "The components dictionary is empty. Please provide at least one component."
             )
 
-        #temp_proj = next(iter(self.components.values())).global_projection
-        #self.nt = temp_proj.shape[0]
-        #self.num_members = temp_proj.shape[1]
-
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             self.num_output_members = len(self.output_percentiles)
         else:
@@ -108,7 +104,6 @@ class Local:
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
         logger.info(f"Configured for {len(self.site_names)} specific target locations.")
-        
 
     # Instance method!
     save_components = save_components
@@ -194,8 +189,7 @@ class Local:
             ]
         else:
             spatial_slices = [
-                comp.isel(process_member=0, time=0)
-                for comp in self.results.values()
+                comp.isel(process_member=0, time=0) for comp in self.results.values()
             ]
 
         # Site is valid if it is non-NaN in ALL components
@@ -246,9 +240,7 @@ class Local:
 
         state = LocalState(
             n_years=self.n_years,
-            nt=self.nt,
-            #num_members=self.num_members,
-            num_output_members=self.num_members,
+            num_output_members=self.num_output_members,
             num_localMC_members=self.num_localMC_members,
             target_lats=self.target_lats,
             target_lons=self.target_lons,
@@ -258,12 +250,6 @@ class Local:
             endofhistory=self.start_year,  # Use start_year as endofhistory for local projections
             random_fraction=random_fraction,
         )
-
-        #child_seeds = seed_seq.spawn(len(self.components))
-        #comp_rngs = {
-        #    name: np.random.default_rng(s)
-        #    for name, s in zip(self.components.keys(), child_seeds)
-        #}
 
         local_projections = {}
 
@@ -289,9 +275,9 @@ class Local:
         # Convert to percentiles if not None
         if self.output_percentiles is not None and len(self.output_percentiles) > 0:
             for name, lazy_projection in local_projections.items():
-                local_projections[name] = sample_members_2D(local_projections[name], 
-                                                            self.output_percentiles) 
-        
+                local_projections[name] = sample_members_2D(
+                    local_projections[name], self.output_percentiles
+                )
 
         self.results = self._arr_to_xr(local_projections)
         self._apply_universal_mask()

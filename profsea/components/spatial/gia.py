@@ -142,7 +142,6 @@ class GIA(SpatialComponent):
             )
         else:
             if self.sample_spatial:
-                #rgiai = rng.integers(n_patterns, size=state.num_localMC_members)
                 rgiai = (state.random_fraction * n_patterns).astype(int)
                 selected_gia = gia_rates[rgiai, ...]
             else:
@@ -153,11 +152,5 @@ class GIA(SpatialComponent):
                 )
 
         projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
-
-        # Unpack the flattened member dimension back into climate and process dimensions
-        #if getattr(state, "output_percentiles", None) is None:
-        #    return projected.reshape(
-        #        state.nt, state.num_localMC_members, state.n_years, *spatial_shape
-        #    )
 
         return projected

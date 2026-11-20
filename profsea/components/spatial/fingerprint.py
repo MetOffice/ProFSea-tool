@@ -145,7 +145,7 @@ class Fingerprint(SpatialComponent):
 
         global_projection = reformat_global_projection(self.global_projection, state)
         indices = (state.random_fraction * global_projection.shape[0]).astype(int)
-        global_projection = global_projection[indices, :, :]
+        global_projection = global_projection[indices, :]
 
         # Determine the spatial fingerprint for each member
         n_fps = fps.shape[0]
@@ -158,7 +158,6 @@ class Fingerprint(SpatialComponent):
             )
         elif self.sample_spatial:
             # Probabilistic mode: pick a random fingerprint per member
-            #fp_indices = rng.integers(0, n_fps, size=state.num_localMC_members)
             fp_indices = (state.random_fraction * n_fps).astype(int)
             selected_fps = fps[fp_indices, ...]
         else:
@@ -166,7 +165,7 @@ class Fingerprint(SpatialComponent):
             mean_fp = da.nanmean(fps, axis=0)
             selected_fps = da.broadcast_to(
                 mean_fp,
-                (state.num_output_members, *spatial_shape),
+                (state.num_localMC_members, *spatial_shape),
             )
 
         # Broadcast and multiply: (members, years) * (members, lat, lon)
