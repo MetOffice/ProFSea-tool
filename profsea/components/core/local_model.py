@@ -11,6 +11,8 @@ from rich.console import Console
 from rich.progress import track
 
 from profsea.utils import (
+    PROFSEA_ASSETS_URL,
+    PROFSEA_ASSETS_VERSION,
     PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
     save_components,
@@ -25,9 +27,6 @@ console = Console()
 warnings.filterwarnings("ignore")
 
 PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
-ZENODO_DOWNLOAD_LINK = (
-    "https://zenodo.org/records/20427061/files/profsea-assets.zip?download=1"
-)
 
 
 class Local:
@@ -60,9 +59,10 @@ class Local:
             List or array of percentiles to sample from the ensemble for output.
         """
         fetch_zenodo_fingerprints(
-            zenodo_url=ZENODO_DOWNLOAD_LINK,
+            zenodo_url=PROFSEA_ASSETS_URL,
             data_dir=PROFSEA_DIR,
             expected_folder_name="profsea-assets",
+            version=PROFSEA_ASSETS_VERSION,
         )
 
         self.components = components
