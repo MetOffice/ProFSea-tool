@@ -20,6 +20,60 @@ ProFSea can calculate projections of both global mean sea-level rise and spatial
 
 All the data required to run the regionalisation module can be found here: [![DOI](https://doi.org/badge/10.5281/20427061.svg)](https://doi.org/10.5281/zenodo.20427061)
 
+## Quickstart
+
+```bash
+pip install profsea
+```
+
+Build a model from the components you want, run it on your forcing, then map the global
+ensemble onto sites (or a grid, with `Spatial`). The regional data are downloaded
+automatically the first time a regional component is created.
+
+```python
+import numpy as np
+
+from profsea.components.core import Global
+from profsea.components.core.local_model import Local
+from profsea.components.global_ import AntarcticaISMIP6
+from profsea.components.spatial import Fingerprint
+
+# Forcing: one warming trajectory (K), 2006-2300, as an anomaly relative
+# to the 1995-2014 baseline
+years = np.arange(2006, 2301)
+t_change = np.minimum(0.03 * (years - 2005), 3.0)[None, :]
+
+# 1. Global mean sea-level rise from the West and East Antarctic ice sheets
+global_model = Global(
+    components={
+        "wais": AntarcticaISMIP6(region="wais"),
+        "eais": AntarcticaISMIP6(region="eais"),
+    },
+    start_yr=2006,
+    end_yr=2301,
+    baseline_start=1995,
+    baseline_end=2014,
+    num_members=1000,
+)
+projections = global_model.run(scenario="ramp", T_change=t_change, member_seed=42)
+antarctic_slr = global_model.sum_components(projections)  # metres
+
+# 2. Relative sea-level change at a site, from the same global ensemble
+local_model = Local(
+    components={
+        "wais": Fingerprint(projections["wais"], fingerprint_component="wais"),
+        "eais": Fingerprint(projections["eais"], fingerprint_component="eais"),
+    },
+    locations={"Aberdeen": (57.144, -2.080)},
+)
+local = local_model.run(member_seed=42)
+local_antarctic_contribution = local_model.sum_components(local)  # (percentile, time, site), metres
+print(local_antarctic_contribution.sel(time=2100, site="Aberdeen").values)
+```
+
+See the [documentation](https://metoffice.github.io/ProFSea-tool/) for the user guide,
+tutorial notebooks and API reference.
+
 ## Developments
 
 Ongoing developments include:
