@@ -522,7 +522,6 @@ def fetch_zenodo_fingerprints(
             version_file.read_text().strip() if version_file.exists() else None
         )
         if version is None or local_version == version:
-            logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
             return
         found = f"v{local_version}" if local_version else "an unversioned copy"
         logger.info(f"Updating ProFSea assets from {found} to v{version}...")

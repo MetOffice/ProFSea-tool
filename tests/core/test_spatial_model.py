@@ -238,3 +238,23 @@ def test_component_percentiles_without_total_avoid_member_expansion(mock_fetch):
     assert actual.shape == (2, 4, 2, 2)
     expected = np.nanpercentile(temporal, [25, 75], axis=0)[:, :, None, None]
     np.testing.assert_allclose(actual, np.broadcast_to(expected, actual.shape))
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_output_size_estimate_counts_every_output(mock_fetch, capsys):
+    """The estimate covers one array per component plus the total, not just one."""
+    components = get_dummy_components(n_years=4)
+    components["other"] = get_dummy_components(n_years=4)["mock_comp"]
+    spatial = Spatial(
+        components=components, end_year=2010, grid_config=GRID_2X2
+    )  # 5 percentiles, float32, 2 x 2 grid
+
+    per_array_gb = 5 * 4 * 2 * 2 * 4 / 1e9
+    assert spatial.n_output_arrays == 3  # two components + total_rsl
+    assert spatial.output_gb_per_array == pytest.approx(per_array_gb)
+    assert spatial.output_gb == pytest.approx(3 * per_array_gb)
+
+    without_total = Spatial(
+        components=components, end_year=2010, grid_config=GRID_2X2, compute_total=False
+    )
+    assert without_total.n_output_arrays == 2

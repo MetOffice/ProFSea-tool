@@ -188,17 +188,18 @@ def test_members_percentiles_all_nan_location(lazy):
 # --- fetch_zenodo_fingerprints ---
 
 
-def test_fetch_zenodo_early_return(tmp_path, capsys):
-    """Should return immediately if the target directory exists and is populated."""
+@patch("requests.get")
+def test_fetch_zenodo_early_return(mock_get, tmp_path, capsys):
+    """Should return quietly, without downloading, if the assets are present."""
     target_dir = tmp_path / "profsea-assets"
     target_dir.mkdir()
     (target_dir / "dummy_file.nc").touch()
 
     fetch_zenodo_fingerprints("http://fake.url", tmp_path, "profsea-assets")
 
+    mock_get.assert_not_called()
     # Rich logger writes to stdout, so we use capsys instead of caplog
-    captured = capsys.readouterr()
-    assert "ProFSea assets found locally!" in captured.out
+    assert capsys.readouterr().out == ""
 
 
 @patch("requests.get")
@@ -248,7 +249,7 @@ def test_fetch_zenodo_matching_version_early_return(mock_get, tmp_path, capsys):
     )
 
     mock_get.assert_not_called()
-    assert "ProFSea assets found locally!" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize("old_marker", [None, "1.0"])

@@ -1,4 +1,3 @@
-import numpy as np
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
@@ -90,9 +89,12 @@ def print_spatial_preflight(model) -> None:
         members = model.num_spatial_members
         output_str = f"Full Distribution ({members} members)"
 
-    # Memory estimation for one output array
-    bytes_per_element = np.dtype(model.dtype).itemsize
-    future_size_gb = (members * model.n_years * n_lat * n_lon * bytes_per_element) / 1e9
+    # Size of all outputs together (computed by the model), uncompressed
+    total_gb = model.output_gb
+    size_str = (
+        f"~{total_gb:.2f} GB ({model.n_output_arrays} arrays × "
+        f"{model.output_gb_per_array:.2f} GB, uncompressed)"
+    )
 
     table.add_row("Components", components_list)
     table.add_row("Timeframe", f"{model.start_year} -> {model.end_year}")
@@ -101,10 +103,8 @@ def print_spatial_preflight(model) -> None:
     table.add_row("Output", output_str)
 
     # Color-code the memory warning
-    mem_style = "bold red" if future_size_gb > 20 else "magenta"
-    table.add_row(
-        "Est. Output Size", f"[{mem_style}]~{future_size_gb:.2f} GB[/{mem_style}]"
-    )
+    mem_style = "bold red" if total_gb > 20 else "magenta"
+    table.add_row("Est. Output Size", f"[{mem_style}]{size_str}[/{mem_style}]")
 
     panel = Panel(
         table,

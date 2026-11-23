@@ -137,19 +137,24 @@ class Spatial(RegionalEnsemble):
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
 
-        # Warn if each output, (percentiles or members, years, lat, lon), is large
-        output_gb = (
+        # Size of all outputs together: one (percentiles or members, years, lat,
+        # lon) array per component, plus the total
+        self.n_output_arrays = len(self.components) + int(self.compute_total)
+        self.output_gb_per_array = (
             self.num_members
             * self.n_years
             * len(self.grid_lats)
             * len(self.grid_lons)
             * np.dtype(self.dtype).itemsize
         ) / 1e9
-        if output_gb > 20:
+        self.output_gb = self.n_output_arrays * self.output_gb_per_array
+        if self.output_gb > 20:
             logger.warning(
-                f"[bold red]Each output array requires a large amount of memory "
-                f"[bold blue]({output_gb:.2f} GB)[/bold blue]. Consider reducing the "
-                f"number of members, the grid resolution or output percentiles.[/bold red]"
+                f"[bold red]The {self.n_output_arrays} outputs total about "
+                f"[bold blue]{self.output_gb:.1f} GB[/bold blue] uncompressed, all of "
+                f"which is held in memory if they are computed at once or saved to "
+                f"NetCDF. Consider fewer members, a coarser grid, output percentiles "
+                f"or saving to Zarr.[/bold red]"
             )
 
     # Shared output writer (profsea.utils.save_components), used as a method
