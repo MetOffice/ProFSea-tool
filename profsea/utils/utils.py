@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import zipfile
 from importlib.metadata import PackageNotFoundError
@@ -592,22 +593,64 @@ def fetch_zenodo_fingerprints(
             zip_path.unlink()
 
 
+def _storage_chunks(
+    shape: tuple[int, ...],
+    chunks: tuple[tuple[int, ...], ...],
+    itemsize: int,
+    target_bytes: float,
+) -> tuple[int, ...]:
+    """Regular Zarr chunk sizes for an array computed in blocks of ``chunks``.
+
+    Zarr needs every chunk along an axis to be the same size, except for a
+    smaller final one. Dask's "auto" rechunking does not guarantee that: it
+    merges whole compute blocks and can fold a short final block into a larger
+    last chunk (e.g. (88, 92) for 180 latitudes computed in blocks of 44).
+
+    The leading axis (percentiles or members) stays whole. Every other axis
+    gets a single chunk size, a whole multiple of its compute block so blocks
+    are merged rather than split, growing from the last axis (longitude or
+    site) backwards while one chunk stays within ``target_bytes``.
+
+    Parameters
+    ----------
+    shape: tuple[int, ...]
+        Array shape, e.g. (percentile, time, lat, lon).
+    chunks: tuple[tuple[int, ...], ...]
+        The array's Dask chunks.
+    itemsize: int
+        Bytes per element.
+    target_bytes: float
+        Approximate size of one storage chunk in bytes.
+
+    Returns
+    -------
+    tuple[int, ...]
+        One chunk size per axis.
+    """
+    sizes = [shape[0], *(max(1, *axis_chunks) for axis_chunks in chunks[1:])]
+    budget = max(1, int(target_bytes // itemsize))  # elements per chunk
+    for axis in range(len(shape) - 1, 0, -1):
+        blocks_that_fit = max(1, budget // max(1, math.prod(sizes)))
+        sizes[axis] = min(shape[axis], sizes[axis] * blocks_that_fit)
+    return tuple(sizes)
+
+
 def _rechunk_for_storage(ds: xr.Dataset, target_mb: float) -> xr.Dataset:
     """Merge small compute blocks into storage chunks of about ``target_mb``.
 
     The spatial models compute in small blocks to bound memory, and Zarr
     stores one file per chunk, so writing those blocks directly creates tens
     of thousands of tiny files (about 86,000 for a 1-degree run). Each lazily
-    computed variable keeps its leading axis (percentiles or members) whole
-    and Dask chooses the other chunk sizes to fit the budget, in whole
-    multiples of the compute blocks. In-memory variables are left alone.
+    computed variable is rechunked as ``_storage_chunks`` describes; in-memory
+    variables are left alone.
     """
     target_bytes = target_mb * 1e6
     for name, var in ds.data_vars.items():
         if isinstance(var.data, da.Array) and var.ndim > 1:
-            spec = {0: -1, **{axis: "auto" for axis in range(1, var.ndim)}}
-            storage = var.data.rechunk(spec, block_size_limit=target_bytes)
-            ds[name] = var.copy(data=storage)
+            sizes = _storage_chunks(
+                var.shape, var.data.chunks, var.dtype.itemsize, target_bytes
+            )
+            ds[name] = var.copy(data=var.data.rechunk(sizes))
     return ds
 
 
@@ -891,9 +934,16 @@ def _read_imbie3_obs(
         },
     )
 
-    # Convert the monthly observational record to annual means and use
-    # integer years as the time coordinate.
-    ds = ds.groupby("time.year").mean("time")
+    # Convert the monthly observational record to annual means, with integer
+    # years as the time coordinate. Each month is weighted by its number of
+    # days (leap years included); missing months are left out of both the
+    # weighted sum and the total weight.
+    days = ds["time"].dt.days_in_month.astype(np.float64)
+    valid_days = ds.notnull() * days
+    with xr.set_options(keep_attrs=True):
+        annual_sum = (ds * days).groupby("time.year").sum("time")
+        annual_days = valid_days.groupby("time.year").sum("time")
+        ds = annual_sum / annual_days.where(annual_days > 0)
     ds = ds.rename({"year": "time"})
 
     # Reference cumulative SLE to its mean over the requested baseline

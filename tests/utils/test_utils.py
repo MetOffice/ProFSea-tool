@@ -23,7 +23,11 @@ from profsea.utils import (
     save_components,
     validate_projection_years,
 )
-from profsea.utils.utils import _load_zheng_component, _read_imbie3_obs
+from profsea.utils.utils import (
+    _load_zheng_component,
+    _read_imbie3_obs,
+    _rechunk_for_storage,
+)
 
 
 class DummyClimateState:
@@ -374,6 +378,69 @@ def test_save_components_zarr_merges_small_blocks(tmp_path):
     np.testing.assert_array_equal(stored.values, values)
 
 
+def _is_zarr_compatible(chunks: tuple[tuple[int, ...], ...]) -> bool:
+    """Zarr needs equal chunks along each axis, except a smaller final one."""
+    return all(
+        len(set(axis[:-1])) <= 1 and axis[-1] <= axis[0] for axis in chunks if axis
+    )
+
+
+@pytest.mark.parametrize(
+    "leading, compute_block",
+    [
+        (3, 44),  # reported failure: Dask "auto" gave lat (88, 92)
+        (3, 67),  # Dask "auto" gave lon (67, 67, 67, 67, 92)
+        (5, 11),
+        (1000, 3),
+    ],
+)
+def test_rechunk_for_storage_gives_regular_chunks(leading, compute_block):
+    """Storage chunks are regular whole multiples of the compute blocks.
+
+    Lazy only: nothing is computed, so a full 1-degree shape stays cheap.
+    """
+    shape = (leading, 295, 180, 360)
+    lazy = da.zeros(
+        shape, dtype=np.float32, chunks=(leading, 295, compute_block, compute_block)
+    )
+    ds = xr.Dataset({"x": (("percentile", "time", "lat", "lon"), lazy)})
+
+    stored = _rechunk_for_storage(ds, target_mb=32)["x"].data
+
+    assert stored.shape == shape
+    assert _is_zarr_compatible(stored.chunks)
+    assert stored.chunks[0] == (leading,)  # leading axis kept whole
+    for axis in (2, 3):  # merges compute blocks without splitting them
+        size = stored.chunks[axis][0]
+        assert size == shape[axis] or size % compute_block == 0
+    chunk_bytes = np.prod([axis[0] for axis in stored.chunks]) * 4
+    single_block = leading * 295 * compute_block**2 * 4
+    assert chunk_bytes <= max(32e6, single_block)
+
+
+def test_save_components_zarr_regularises_irregular_blocks(tmp_path):
+    """Components computed in irregular blocks are still written to Zarr."""
+    values = np.arange(3 * 4 * 7 * 5, dtype=np.float32).reshape(3, 4, 7, 5)
+    lazy = da.from_array(values, chunks=((3,), (4,), (2, 3, 2), (1, 4)))
+    components = {
+        "comp1": xr.DataArray(lazy, dims=["percentile", "time", "lat", "lon"])
+    }
+
+    save_components(
+        DummyInstance(),
+        components,
+        scenario_name="test",
+        output_dir=str(tmp_path),
+        output_format="zarr",
+        zarr_chunk_mb=0.0002,  # 200 bytes: several chunks along lat
+    )
+
+    stored = xr.open_zarr(tmp_path / "test_projection.zarr")["comp1"]
+    assert stored.shape == values.shape
+    assert stored.encoding["chunks"][2] < values.shape[2]
+    np.testing.assert_array_equal(stored.values, values)
+
+
 def test_validate_projection_years():
     """Valid years should pass with and without observational initialisation."""
     validate_projection_years(
@@ -577,6 +644,35 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
     sle = ds["sle"].sel(time=state.start_yr - 1).item()
 
     assert sle == pytest.approx(-0.003)
+
+
+def test_read_imbie3_obs_weights_months_by_days(tmp_path):
+    """Annual means weight each month by its length (leap years included) and
+    leave out missing months; a year with no data stays NaN."""
+    dates = pd.date_range("2003-01-01", "2005-12-01", freq="MS")
+    rate = np.where(dates.month == 2, 1.0, 0.0)  # mm/yr, February only
+    rate[(dates.year == 2004) & (dates.month == 12)] = np.nan
+    rate[dates.year == 2005] = np.nan
+    columns = [
+        "Cumulative mass balance anomaly (mm)",
+        "Cumulative mass balance anomaly uncertainty (mm)",
+        "Mass balance (mm/yr)",
+        "Mass balance uncertainty (mm/yr)",
+    ]
+    fpath = tmp_path / "imbie3_monthly.csv"
+    pd.DataFrame(
+        {"Date": dates.strftime("%Y-%m-%d"), **{name: rate for name in columns}}
+    ).to_csv(fpath, index=False)
+
+    ds = _read_imbie3_obs(fpath, "total", baseline_start=2003, baseline_end=2004)
+
+    assert list(ds["time"].values) == [2003, 2004, 2005]
+    # Sign flips: IMBIE3 mass balance is negative for sea-level rise
+    assert ds["rate"].sel(time=2003).item() == pytest.approx(-28 / 365)
+    assert ds["rate"].sel(time=2004).item() == pytest.approx(-29 / (366 - 31))
+    assert np.isnan(ds["rate"].sel(time=2005).item())
+    assert ds["rate"].attrs["units"] == "mm yr-1"
+    assert ds.attrs["component"] == "total"
 
 
 def _write_mock_zheng_dataset(tmp_path):
