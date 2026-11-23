@@ -7,9 +7,8 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-from profsea.components.core.base import SpatialComponent
-from profsea.components.core.state import ClimateState
-from profsea.utils import reformat_global_projection
+from profsea.components.core.base import SeparableProjection, SpatialComponent
+from profsea.components.core.state import SpatialState
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -18,11 +17,14 @@ PATTERNS_DIR = PROFSEA_DIR / "profsea-assets"
 
 
 class SterodynamicCMIP6(SpatialComponent):
-    """
-    Parameters and Attributes
-    -------------------------
-    global_projection: np.ndarray
-        Array of global sea level rise projections to use as input for sterodynamic projection.
+    """Local sterodynamic sea-level change from global thermal expansion.
+
+    Sterodynamic change is local sea-level change from ocean density and
+    circulation. For each CMIP model, a regression slope relates the local
+    change (zos + zostoga) to global thermal expansion (zostoga); multiplying
+    a member's global thermal expansion by a model's slope gives its local
+    sterodynamic change. Despite the name, ``cmip_era`` selects CMIP6 (default)
+    or CMIP5 patterns.
     """
 
     def __init__(
@@ -36,21 +38,22 @@ class SterodynamicCMIP6(SpatialComponent):
         Parameters
         ----------
         global_projection: xr.DataArray
-             A 2D array (members x years) of global projections to apply the fingerprints to.
+            Full global thermal expansion ensemble from ``Global``, shape
+            (climate_member, process_member, time), or (members, time).
         patterns_dir: str, optional
-             Path to directory containing {cmip_era} sterodynamic patterns.
+            Directory of regression patterns, one sub-directory per model.
+            Defaults to the "{cmip_era}-patterns" folder of the assets.
         cmip_era: str, optional
-             The CMIP era to use for the sterodynamic patterns. Default is "CMIP6", other option is "CMIP5".
+            "CMIP6" (default, 22 models) or "CMIP5" (21 models, as used by
+            Palmer et al., 2020).
         sample_spatial: bool, optional
-             If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is False.
+            If True, each member uses one CMIP model's slope, drawn at random
+            with equal probability. If False, every member uses the mean of
+            the models ("storyline" mode). Default is True.
         """
         self.fetch_assets()
 
-        # Convert to dask array for cheap as possible compute
-        self._global_projection = da.from_array(
-            global_projection.data,
-            chunks=(*([-1] * (global_projection.ndim - 1)), 1),
-        )
+        self._set_global_projection(global_projection)
         self.sample_spatial = sample_spatial
         self.cmip_era = cmip_era.lower()
 
@@ -59,10 +62,6 @@ class SterodynamicCMIP6(SpatialComponent):
             self.patterns_dir = PATTERNS_DIR / cmip_str
         else:
             self.patterns_dir = Path(patterns_dir)
-
-    @property
-    def global_projection(self):
-        return self._global_projection
 
     def _load_CMIP6_slopes(self) -> tuple[xr.DataArray, xr.DataArray]:
         """
@@ -130,81 +129,56 @@ class SterodynamicCMIP6(SpatialComponent):
 
         return slopes_stack, mask_stack
 
-    def _calc_expansion_contribution(
-        self, rng: np.random.Generator, state: ClimateState
-    ) -> da.Array:
+    def _load_patterns(self, state: SpatialState) -> da.Array:
         """
-        Calculate the thermal expansion contribution to the regional component of
-        sea level rise.
+        Load the CMIP regression patterns at the target grid or sites.
 
         Parameters
         ----------
-        rng: np.random.Generator
-            Random number generator for sampling spatial patterns if needed.
-        state: ClimateState
-            The state object containing the target grid information and number of members.
+        state: SpatialState | LocalState
+            Target grid or sites.
 
         Returns
         -------
         da.Array
-            A dask array of shape (members, years, lat, lon) containing the thermal expansion contribution to the sterodynamic component for each member and year.
+            Regression slopes (metres of local change per metre of global
+            thermal expansion), shape (n_models, *spatial). Land points are
+            NaN where land masks are provided.
         """
-        # Select slope coefficients based on the MIP
         coeffs_da, mask_da = self._load_CMIP6_slopes()
 
         if self.land_mask_present:  # apply land mask
             coeffs_da = coeffs_da.where(mask_da == 0.0)
 
-        # Get the data either at sites or on a grid
-        interp_da = self.extract_spatial(coeffs_da, state)
-        if "lat" in interp_da.dims and "lon" in interp_da.dims:
-            interp_da = interp_da.chunk({"lat": 30, "lon": 30})
+        return self.extract_spatial(coeffs_da, state).data
 
-        coeffs = interp_da.data
-        spatial_shape = coeffs.shape[1:]  # either (lat, lon) or (site,)
-
-        if self.sample_spatial:  # selecting models at random
-            rand_samples = rng.choice(
-                coeffs.shape[0], size=state.num_localMC_members, replace=True
-            )
-            return coeffs[rand_samples, ...]
-        else:
-            # Calc pattern ensemble mean
-            mean_coeff = da.nanmean(coeffs, axis=0)
-            return da.broadcast_to(
-                mean_coeff,
-                (state.num_localMC_members, *spatial_shape),
-            )
-
-    def project(self, state: ClimateState, rng=None) -> np.ndarray:
+    def project_separable(
+        self, state: SpatialState, rng: np.random.Generator
+    ) -> SeparableProjection:
         """
-        Project the sterodynamic component by applying the CMIP6 patterns to the global expansion projection.
+        Global thermal expansion of the sampled members times CMIP patterns.
 
         Parameters
         ----------
-        state: ClimateState
-            The state object containing the target grid information and number of members.
+        state: SpatialState | LocalState
+            Target grid or sites and sampled member indices.
         rng: np.random.Generator
-            Random number generator for sampling spatial patterns if needed.
+            Random number generator for drawing a CMIP model per member if
+            sample_spatial is True.
 
         Returns
         -------
-        np.ndarray
-            A numpy array of shape (members, years, lat, lon) containing the sterodynamic component for each member and year.
+        SeparableProjection
+            Members (members, time) and patterns (n_models, *spatial).
         """
-        # Select monte carlo members
-        global_projection = reformat_global_projection(self.global_projection, state)
-        indices = (state.random_fraction * global_projection.shape[0]).astype(int)
-        global_projection = global_projection[indices, :]
-
-        expansion_contribution = self._calc_expansion_contribution(rng, state)
-
-        # Rechunk (100 MB size) before saving to optimize memory during writing
-        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
-        global_projection = global_projection.rechunk({0: -1, 1: time_chunk})
-        expansion_contribution = expansion_contribution.rechunk({0: -1})
-
-        return self.broadcast_spatiotemporal(global_projection, expansion_contribution)
+        patterns, pattern_index = self.choose_patterns(
+            self._load_patterns(state), state, rng, self.sample_spatial
+        )
+        return SeparableProjection(
+            temporal=self.sample_global_members(state),
+            patterns=patterns,
+            pattern_index=pattern_index,
+        )
 
 
 class SterodynamicCMIP5(SpatialComponent):

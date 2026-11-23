@@ -150,88 +150,91 @@ class TestExtractPoints:
         assert np.isnan(result.values[0])
 
 
-class TestBroadcastSpatiotemporal:
-    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
-    @pytest.mark.parametrize("members", [10, 1000, 10000])
-    @pytest.mark.parametrize("time_chunk", [1, 17])
-    def test_broadcast_preserves_input_chunks(
-        self, dummy_component, dtype, members, time_chunk
-    ):
-        temporal = da.ones((members, 294), chunks=(members, time_chunk), dtype=dtype)
-        spatial = da.ones((members, 60, 60), chunks=(members, 30, 30), dtype=dtype)
+@pytest.mark.parametrize("spatial_shape", [(4,), (2, 2)])
+@pytest.mark.parametrize("sample_patterns", [False, True])
+@pytest.mark.parametrize("shared_time", [False, True])
+def test_separable_percentiles_match_expanded_members(
+    spatial_shape, sample_patterns, shared_time
+):
+    """Every percentile path (single pattern, shared time series, or full
+    ranking) must equal nanpercentile over the expanded member array."""
+    from dask.callbacks import Callback
 
-        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+    from profsea.components.core.base import SeparableProjection
 
-        assert isinstance(result, da.Array)
-        assert result.shape == (members, 294, 60, 60)
-        assert result.dtype == dtype
-        assert result.chunks[:2] == temporal.chunks
-        assert result.chunks[2:] == spatial.chunks[1:]
+    rng = np.random.default_rng(42)
+    if shared_time:
+        # One time series for all members, crossing zero (like GIA before and
+        # after its baseline midpoint)
+        temporal = np.array([-1.5, 0.0, 2.0], dtype=np.float32)
+    else:
+        temporal = rng.normal(size=(7, 3)).astype(np.float32)
+        temporal[0, 1] = np.nan
+    patterns = np.array([2.0, -3.0, 0.0, np.nan], dtype=np.float32).reshape(
+        (1, *spatial_shape)
+    )
+    index = None
+    if sample_patterns:
+        patterns = np.concatenate((patterns, -patterns))
+        index = rng.integers(2, size=7)
+    projection = SeparableProjection(
+        da.from_array(temporal, chunks=2),
+        da.from_array(patterns, chunks=1),
+        index,
+    )
+    state = SimpleNamespace(
+        dtype=np.float32,
+        time_chunk=2,
+        spatial_chunks=(1,) * len(spatial_shape),
+        num_spatial_members=7,
+    )
+    q = [0, 17, 50, 83, 100]
+    with Callback(start=lambda graph: pytest.fail("Projection computed eagerly")):
+        result = projection.percentiles(q, state)
+        members = projection.to_array(state)
+    selected = patterns[0] if index is None else patterns[index][:, None]
+    temporal_members = np.broadcast_to(temporal, (7, 3))
+    expanded = temporal_members[(...,) + (None,) * len(spatial_shape)] * selected
+    expanded = np.broadcast_to(expanded, (7, 3, *spatial_shape))
+    with pytest.warns(RuntimeWarning, match="All-NaN slice"):
+        expected = np.nanpercentile(expanded, q, axis=0)
+    assert members.shape == (7, 3, *spatial_shape)
+    assert members.chunks[0] == (7,)
+    np.testing.assert_allclose(members.compute(), expanded, rtol=1e-6)
+    assert result.shape == (len(q), 3, *spatial_shape)
+    assert result.dtype == np.float32
+    np.testing.assert_allclose(result.compute(), expected, rtol=1e-6, atol=1e-7)
 
-    def test_broadcast_2d_temporal_1d_spatial(self, dummy_component):
-        """Test broadcasting 2D temporal (members, years) with 1D spatial (members, sites)."""
-        temporal = da.ones((2, 3))
-        spatial = da.ones((2, 4)) * 2
 
-        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+def test_separable_rejects_mismatched_pattern_index():
+    """A pattern index that does not match the members, or is missing for several patterns, is an error."""
+    from profsea.components.core.base import SeparableProjection
 
-        assert result.ndim == 3
-        assert result.shape == (2, 3, 4)  # (members, years, site)
-        assert result.compute()[0, 0, 0] == 2.0
+    with pytest.raises(ValueError, match="pattern_index has 3 entries"):
+        SeparableProjection(np.zeros((4, 2)), da.zeros((2, 5)), np.zeros(3, int))
+    with pytest.raises(ValueError, match="pattern_index is required"):
+        SeparableProjection(np.zeros((4, 2)), da.zeros((2, 5)))
 
-    def test_broadcast_2d_temporal_2d_spatial(self, dummy_component):
-        """Test broadcasting 2D temporal (members, years) with 2D spatial (members, lat, lon)."""
-        temporal = da.ones((2, 3))
-        spatial = da.ones((2, 4, 5)) * 3
 
-        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
+def test_independent_member_array_has_own_graph_and_same_values():
+    """The total's member arrays must not share Dask keys with a component's own
+    output, or Dask holds every shared block until both are computed (72 GB at
+    1 degree when saving all outputs together)."""
+    from profsea.components.core.base import SeparableProjection
 
-        assert result.ndim == 4
-        assert result.shape == (2, 3, 4, 5)  # (members, years, lat, lon)
-        assert result.compute()[0, 0, 0, 0] == 3.0
+    rng = np.random.default_rng(1)
+    projection = SeparableProjection(
+        rng.normal(size=(5, 3)),
+        da.from_array(rng.normal(size=(2, 4)), chunks=(1, 2)),
+        np.array([0, 1, 1, 0, 1]),
+    )
+    state = SimpleNamespace(
+        dtype=np.float32, time_chunk=2, spatial_chunks=(2,), num_spatial_members=5
+    )
 
-    def test_broadcast_3d_temporal_1d_spatial(self, dummy_component):
-        """Test broadcasting 3D temporal (climate, process, years) with 1D spatial (total_members, site)."""
-        # Shape: (2 climate_members, 3 process_members, 4 years)
-        temporal = da.ones((2, 3, 4))
+    shared = projection.to_array(state)
+    independent = projection.to_array(state, independent=True)
 
-        # Spatial comes in flattened: 2*3 = 6 output members. Shape: (6 members, 5 sites)
-        spatial = da.ones((6, 5)) * 4
-
-        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
-
-        # Output should be un-flattened: (climate, process, years, site)
-        assert result.ndim == 4
-        assert result.shape == (2, 3, 4, 5)
-        assert result.compute()[0, 0, 0, 0] == 4.0
-
-    def test_broadcast_3d_temporal_2d_spatial(self, dummy_component):
-        """Test broadcasting 3D temporal (climate, process, years) with 2D spatial (total_members, lat, lon)."""
-        # Shape: (2 climate_members, 3 process_members, 4 years)
-        temporal = da.ones((2, 3, 4))
-
-        # Spatial comes in flattened: (6 members, 5 lats, 6 lons)
-        spatial = da.ones((6, 5, 6)) * 5
-
-        result = dummy_component.broadcast_spatiotemporal(temporal, spatial)
-
-        # Output should be un-flattened: (climate, process, years, lat, lon)
-        assert result.ndim == 5
-        assert result.shape == (2, 3, 4, 5, 6)
-        assert result.compute()[0, 0, 0, 0, 0] == 5.0
-
-    def test_invalid_spatial_dimensions(self, dummy_component):
-        """Test ValueError when spatial dimensions are invalid."""
-        temporal = da.ones((2, 3))
-        spatial = da.ones((2,))  # Missing spatial dimension entirely
-
-        with pytest.raises(ValueError, match="Unexpected spatial dimensions"):
-            dummy_component.broadcast_spatiotemporal(temporal, spatial)
-
-    def test_invalid_temporal_dimensions(self, dummy_component):
-        """Test ValueError when temporal dimensions are invalid."""
-        temporal = da.ones((2,))  # 1D temporal array
-        spatial = da.ones((2, 4))
-
-        with pytest.raises(ValueError, match="Unexpected temporal dimensions"):
-            dummy_component.broadcast_spatiotemporal(temporal, spatial)
+    assert independent.name != shared.name
+    assert independent.chunks == shared.chunks
+    np.testing.assert_array_equal(independent.compute(), shared.compute())

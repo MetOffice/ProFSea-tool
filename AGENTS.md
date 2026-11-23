@@ -82,9 +82,11 @@ ProFSea-tool/
 | Type | File | Purpose |
 |------|------|---------|
 | `Component` | `core/base.py` | ABC; one abstract method `project(state, rng)` |
-| `SpatialComponent` | `core/base.py` | Adds `global_projection` (abstract property), `fetch_assets`, `extract_spatial`, `broadcast_spatiotemporal` |
+| `SpatialComponent` | `core/base.py` | Adds `global_projection`, `fetch_assets`, `extract_spatial`, `sample_global_members`, `choose_patterns`, `project_separable` |
+| `SeparableProjection` | `core/base.py` | A spatial projection as time series × patterns; builds member arrays and exact percentile shortcuts |
+| `RegionalEnsemble` | `core/regional.py` | Monte Carlo machinery shared by `Spatial` and `Local`: sampling, chunk plan, totals, percentiles |
 | `ClimateState` | `core/state.py` | Drivers and ensemble layout for the global stage |
-| `SpatialState` / `LocalState` | `core/state.py` | Target grid or target sites, output sizes, baseline |
+| `SpatialState` / `LocalState` | `core/state.py` | Target grid or sites, sampled member indices, fingerprint draws, chunk plan |
 | `Observations` | `core/observations.py` | Cached, re-baselined observational records used to initialise global components |
 | `Global` | `core/global_model.py` | Runs `Component`s on GMST forcing → GMSLR per component |
 | `Spatial` | `core/spatial_model.py` | Runs `SpatialComponent`s on a regular lat/lon grid |
@@ -120,10 +122,11 @@ ClimateState  (T_ens, T_int_ens, T_int_med, shared `fraction`, years, baseline, 
     ↓  if initialise_from_observations=False: rebaseline_projection(...) per component
 {name: DataArray (climate_member, process_member, time)}      # metres
     ↓  each DataArray handed to a SpatialComponent as `global_projection`
-SpatialState (grid)  or  LocalState (sites)
-    ↓  component.project(state, rng)        # lazy dask
-{name: DataArray (percentile, time, lat, lon)}  or  (percentile, time, site)
-    ↓  sum_components(...)  →  "total_gmslr" / "total_rsl" added to the dict in place
+Spatial (grid) / Local (sites): draw member indices (stratified by climate trajectory)
+    ↓  component.project_separable(state, rng)   # lazy: member time series × patterns
+    ↓  "total_rsl" = sum of member arrays (compute_total=True), then percentiles
+{name: DataArray (percentile, time, lat, lon)}  or  (member, time, lat, lon); sites likewise
+    ↓  Global.sum_components(...)  →  "total_gmslr" added to the dict in place
     ↓  save_components(...) →  Zarr v3 (default) or NetCDF, computed here
 ```
 
@@ -133,10 +136,23 @@ SpatialState (grid)  or  LocalState (sites)
   `process_member` (size `num_members`) indexes Monte Carlo draws of component
   parameters. `Global.run` overwrites `nt` from the shape of `T_change`.
 - **Global component output** is always `(nt, num_members, n_years)` in the state dtype.
-- **Spatial component output** is `(members, time, *spatial)` when percentiles are
-  requested and `(nt, num_members, time, *spatial)` otherwise, where `*spatial` is
-  `(lat, lon)` for `SpatialState` and `(site,)` for `LocalState`. Build it with
-  `broadcast_spatiotemporal`, which handles all four cases.
+- **Spatial stage ensemble.** `Spatial`/`Local` draw `num_spatial_members` members from
+  the flattened global ensemble (`state.member_indices`, equal share per climate
+  trajectory) and every component uses those same members. Outputs are
+  `(percentile, time, *spatial)`, or `(member, time, *spatial)` with `climate_member` and
+  `process_member` coordinates; `*spatial` is `(lat, lon)` or `(site,)`. Percentiles are
+  pointwise over members, unlike the global stage's `sample_members_2D`.
+- **Spatial components return factors, not arrays.** Implement `project_separable` and
+  return a `SeparableProjection` (member time series × patterns). The model then chunks
+  it, sums the total, and takes exact percentile shortcuts when members differ through
+  only the time series (one pattern) or only the pattern (one shared time series, e.g.
+  GIA), which skips the per-point sort. Components that cannot factorise may override
+  `project` and return `(members, time, *spatial)` instead.
+- **Never share large member arrays between outputs.** Outputs are usually computed
+  together (`save_components`), and Dask keeps a block shared by two outputs until both
+  have used it; for member arrays that grows to the whole array (76 GB at 1°). The total
+  is therefore built from `to_array(state, independent=True)` copies. Check peak memory
+  of a full save on a coarse grid with fine chunks after changing the regional stage.
 - **Time axis.** Annual. `Global` takes `start_yr` and `end_yr`, with
   `n_years = end_yr - start_yr`, so `start_yr=2006, end_yr=2301` gives 295 steps
   labelled 2006–2300. Forcing arrays must have exactly `n_years` columns
@@ -172,6 +188,12 @@ changes.
 - `state.fraction` is a shared uniform array of shape `(nt, num_members)`. Use it when a
   component must be correlated with others (as the AR5 Antarctic SMB and dynamics terms
   are); draw from `rng` when it should be independent.
+- In `Spatial`/`Local`, the model draws the shared `state.member_indices` and an
+  independent `state.fingerprint_fraction` (shared by `Fingerprint` components so a member
+  uses one GRD model throughout, as in Palmer et al., 2020); other pattern draws (CMIP
+  model, GIA model) use the component's own `rng`. Never derive a pattern choice from the
+  member index. Fingerprint files for a component must list GRD models in the same order
+  as `FP_PATH_MAP` (Klemann, Slangen, Spada) for the shared draw to mean the same model.
 
 ## Typical Usage
 
@@ -248,13 +270,16 @@ components.
 1. Subclass `SpatialComponent` in `profsea/components/spatial/`.
 2. Call `self.fetch_assets()` in `__init__` if it uses the Zenodo assets, and accept an
    optional path argument so users can supply their own patterns.
-3. Provide the `global_projection` property (a dask array).
-4. In `project`, regrid patterns with `self.extract_spatial(pattern, state)` and combine
-   with `self.broadcast_spatiotemporal(temporal, spatial)`. Keep everything lazy; do not
-   call `.compute()` or `.values` on gridded data.
-5. Support both `sample_spatial=True` (draw a pattern per member) and `False` (pattern
-   mean, "storyline" mode) where several patterns exist.
-6. Export, document and test as above.
+3. If driven by a global projection, store it with `self._set_global_projection(...)`
+   (validates it and rejects percentile output).
+4. Implement `project_separable(state, rng)`: regrid patterns with
+   `self.extract_spatial(pattern, state)`, pick each member's pattern with
+   `self.choose_patterns(...)` (handles `sample_spatial`, storyline mean and the shared
+   fingerprint draw), and return `SeparableProjection(self.sample_global_members(state),
+   patterns, pattern_index)`. Pass a 1D time series when all members share it. Keep
+   everything lazy and leave chunking to the model.
+5. Export, document and test as above; compare against `np.nanpercentile` over the
+   expanded members (see `tests/core/test_base.py`).
 
 **New driver or shared quantity**: add a field to the relevant state dataclass and fill it
 in the model's `run`. **New output format or target geometry**: extend `save_components`
@@ -383,9 +408,10 @@ part of an agreed change.
 - **Stale package metadata.** If `test_save_components_netcdf` reports
   `ProFSea v0.0.0`, the `profsea.egg-info/` directory in the repository root is out of
   date; rerun `pip install -e ".[dev]"`.
-- **Component order in `Spatial`/`Local`.** `nt` and `num_members` are read from the
-  first component's `global_projection`. `GIA` carries a `(1, 1)` dummy, so do not put it
-  first in the dictionary.
+- **Coastal sites can lose CMIP models.** `Local` interpolates from the four surrounding
+  cells of each pattern; if all four are land in a model, that model has no value at the
+  site and members that drew it drop out of the percentiles (with CMIP5, 6 of 21 models at
+  Aberdeen and 7 at Sydney). Palmer et al. (2020) used nearby ocean grid boxes instead.
 - **Interpolation options are not wired up.** `Spatial(grid_interpolation=...)` and
   `Local(interpolation_method=...)` are accepted but ignored: gridded output is always
   linear and site output is always bilinear.

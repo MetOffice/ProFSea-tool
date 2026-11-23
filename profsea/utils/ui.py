@@ -1,3 +1,4 @@
+import numpy as np
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
@@ -86,11 +87,11 @@ def print_spatial_preflight(model) -> None:
         output_str = f"Percentiles: {model.output_percentiles}"
         members = len(model.output_percentiles)
     else:
-        members = model.num_localMC_members
+        members = model.num_spatial_members
         output_str = f"Full Distribution ({members} members)"
 
-    # Memory estimation
-    bytes_per_element = 8
+    # Memory estimation for one output array
+    bytes_per_element = np.dtype(model.dtype).itemsize
     future_size_gb = (members * model.n_years * n_lat * n_lon * bytes_per_element) / 1e9
 
     table.add_row("Components", components_list)

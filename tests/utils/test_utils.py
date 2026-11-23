@@ -19,7 +19,6 @@ from profsea.utils import (
     read_antarctic_obs,
     read_thermal_expansion_obs,
     rebaseline_projection,
-    reformat_global_projection,
     sample_members_2D,
     save_components,
     validate_projection_years,
@@ -171,6 +170,7 @@ def test_members_percentiles_first_axis(shape, lazy):
 
 @pytest.mark.parametrize("lazy", [False, True])
 def test_members_percentiles_all_nan_location(lazy):
+    """Columns with no valid members stay NaN."""
     array = np.array([[0.0, np.nan], [10.0, np.nan], [20.0, np.nan]])
     if lazy:
         array = da.from_array(array, chunks=(1, 1))
@@ -183,37 +183,6 @@ def test_members_percentiles_all_nan_location(lazy):
         values = result.compute() if lazy else result
     assert result.shape == (2, 2)
     np.testing.assert_allclose(values, [[5.0, np.nan], [15.0, np.nan]], equal_nan=True)
-
-
-# --- reformat_global_projection ---
-
-
-@pytest.mark.parametrize("percentiles", [None, [], [5, 95]])
-@pytest.mark.parametrize("lazy", [False, True])
-@patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_3d_flattens(mock_sample, lazy, percentiles):
-    """Flatten global ensemble axes without selecting percentiles."""
-    state = DummyClimateState(percentiles=percentiles)
-    raw_arr = np.arange(24).reshape(2, 3, 4)
-    if lazy:
-        raw_arr = da.asarray(raw_arr)
-    result = reformat_global_projection(raw_arr, state)
-    assert result.shape == (6, 4)
-    assert isinstance(result, da.Array if lazy else np.ndarray)
-    np.testing.assert_array_equal(np.asarray(result), np.arange(24).reshape(6, 4))
-    mock_sample.assert_not_called()
-
-
-@patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_2d_preserves_members(mock_sample):
-    """Already-flat arrays retain all members until the spatial stage."""
-    state = DummyClimateState(percentiles=[5, 95])
-    raw_arr = np.ones((6, 4))
-
-    result = reformat_global_projection(raw_arr, state)
-    assert result.shape == (6, 4)
-    assert result is raw_arr
-    mock_sample.assert_not_called()
 
 
 # --- fetch_zenodo_fingerprints ---
@@ -377,6 +346,31 @@ def test_save_components_zarr(tmp_path):
 
     ds = xr.open_zarr(expected_store)
     assert "comp1" in ds
+
+
+def test_save_components_zarr_merges_small_blocks(tmp_path):
+    """Small compute blocks are written as larger Zarr chunks (fewer files),
+    keeping the leading axis whole and the values unchanged."""
+    values = np.arange(5 * 4 * 6 * 8, dtype=np.float32).reshape(5, 4, 6, 8)
+    lazy = da.from_array(values, chunks=(5, 4, 1, 1))  # 48 tiny blocks
+    components = {
+        "comp1": xr.DataArray(lazy, dims=["percentile", "time", "lat", "lon"])
+    }
+
+    save_components(
+        DummyInstance(),
+        components,
+        scenario_name="test",
+        output_dir=str(tmp_path),
+        output_format="zarr",
+        zarr_chunk_mb=0.002,  # about 2 kB: several blocks per chunk, not all
+    )
+
+    stored = xr.open_zarr(tmp_path / "test_projection.zarr")["comp1"]
+    chunks = stored.encoding["chunks"]
+    assert chunks[0] == 5  # leading axis kept whole
+    assert 1 < np.prod(chunks) / (5 * 4) < 48  # merged, but within the budget
+    np.testing.assert_array_equal(stored.values, values)
 
 
 def test_validate_projection_years():
@@ -777,3 +771,60 @@ def test_utils_importable_first():
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_integer_interpolation(lazy):
+    """Integer inputs are interpolated in floating point, as NumPy does."""
+    array = np.array([[0, 10], [3, 15]], dtype=np.int32)
+    source = da.from_array(array, chunks=1) if lazy else array
+    result = members_percentiles(source, [25, 50, 75])
+    assert result.shape == (3, 2)
+    np.testing.assert_allclose(
+        result.compute() if lazy else result,
+        np.nanpercentile(array, [25, 50, 75], axis=0),
+    )
+
+
+@pytest.mark.parametrize("q", [[-1], [101], [np.nan], [[50]]])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_rejects_invalid_requests(q, lazy):
+    """Percentiles outside [0, 100], NaN or nested lists are rejected."""
+    array = np.arange(6, dtype=float).reshape(3, 2)
+    if lazy:
+        array = da.from_array(array, chunks=1)
+    with pytest.raises(ValueError, match="Percentiles"):
+        members_percentiles(array, q)
+
+
+@pytest.mark.parametrize("n_members", [2, 6, 17])
+def test_stratified_members_balance_and_cover_ensemble(n_members):
+    """Each trajectory gets an equal share, and process members cycle before repeating."""
+    from profsea.utils import stratified_member_indices
+
+    indices = stratified_member_indices(2, 3, n_members, np.random.default_rng(42))
+    assert indices.shape == (n_members,)
+    counts = np.bincount(indices // 3, minlength=2)
+    assert counts.max() - counts.min() <= 1
+    for climate, count in enumerate(counts):
+        process = indices[indices // 3 == climate] % 3
+        frequencies = np.bincount(process, minlength=3)
+        assert frequencies.min() == count // 3
+        assert frequencies.max() <= count // 3 + 1
+    np.testing.assert_array_equal(
+        indices,
+        stratified_member_indices(2, 3, n_members, np.random.default_rng(42)),
+    )
+
+
+@pytest.mark.parametrize("spatial_shape", [(15,), (18, 36)])
+@pytest.mark.parametrize("target_bytes", [32, 4096, 1000000])
+def test_plan_chunks_respects_memory_budget(spatial_shape, target_bytes):
+    """Chunks stay within the grid and, where possible, within the byte budget."""
+    from profsea.utils import plan_chunks
+
+    time_chunk, spatial_chunks = plan_chunks(7, 20, spatial_shape, 4, target_bytes)
+    assert 1 <= time_chunk <= 20
+    assert len(spatial_chunks) == len(spatial_shape)
+    assert all(1 <= chunk <= size for chunk, size in zip(spatial_chunks, spatial_shape))
+    assert 7 * time_chunk * np.prod(spatial_chunks) * 4 <= target_bytes

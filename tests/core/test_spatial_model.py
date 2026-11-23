@@ -14,23 +14,50 @@ def get_dummy_components(nt=2, num_members=3, n_years=4):
     mock_comp = MagicMock(spec=SpatialComponent)
     # 3D Shape: (climate_member, process_member, time)
     mock_comp.global_projection.shape = (nt, num_members, n_years)
+    # Not separable: the model calls project() and uses the member array
+    mock_comp.project_separable.return_value = None
     return {"mock_comp": mock_comp}
 
 
+GRID_2X2 = dict(start_lat=0, end_lat=1, step_lat=1, start_lon=0, end_lon=1, step_lon=1)
+
+
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
-def test_spatial_init_blocks_download_and_configures_local_mc(mock_fetch):
-    components = get_dummy_components(nt=5, num_members=10)
+def test_spatial_init_blocks_download_and_configures_spatial_members(mock_fetch):
+    """Construction checks the assets and records the global ensemble shape."""
+    components = get_dummy_components(nt=5, num_members=10, n_years=44)
     spatial = Spatial(components=components, end_year=2050)
 
     mock_fetch.assert_called_once()
     assert spatial.end_year == 2050
-    assert spatial.num_localMC_members == 1000
+    assert spatial.num_spatial_members == 1000
     assert spatial.num_members == 5
+    assert (spatial.n_climate, spatial.n_process) == (5, 10)
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_spatial_rejects_mismatched_global_ensembles(mock_fetch):
+    """Members are shared across components, so their ensembles must match."""
+    components = get_dummy_components(nt=2, num_members=3, n_years=4)
+    components.update(
+        {"other": get_dummy_components(nt=2, num_members=5, n_years=4)["mock_comp"]}
+    )
+    with pytest.raises(ValueError, match="same global ensemble"):
+        Spatial(components=components, end_year=2010)
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_spatial_rejects_wrong_time_axis(mock_fetch):
+    """Global projections must cover the model's years."""
+    components = get_dummy_components(n_years=4)
+    with pytest.raises(ValueError, match="4 years but the model expects 44"):
+        Spatial(components=components, end_year=2050)
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
 def test_arr_to_xr_metadata_with_percentiles(mock_fetch):
     # Initializes with default output_percentiles=[5, 17, 50, 83, 95] (Length 5)
+    """Percentile outputs get a percentile axis and calendar years."""
     components = get_dummy_components(n_years=4)
     spatial = Spatial(components=components, end_year=2010)
 
@@ -49,36 +76,33 @@ def test_arr_to_xr_metadata_with_percentiles(mock_fetch):
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
-def test_arr_to_xr_metadata_no_percentiles(mock_fetch):
-    # Full output uses a single local Monte Carlo axis.
+def test_full_ensemble_output_labels_global_members(mock_fetch):
+    """Full output has one member axis labelled with each member's position in
+    the global ensemble."""
     components = get_dummy_components(nt=2, num_members=3, n_years=4)
+    components["mock_comp"].project.side_effect = lambda state, rng: da.zeros(
+        (6, 4, 2, 2)
+    )
     spatial = Spatial(
         components=components,
         end_year=2010,
         output_percentiles=None,
-        num_localMC_members=6,
+        num_spatial_members=6,
+        grid_config=GRID_2X2,
     )
+    da_out = spatial.run(member_seed=1)["mock_comp"]
 
-    arr = da.zeros((6, 4, 180, 360))
-    arr_dict = {"mock_spatial": arr}
-
-    xr_dict = spatial._arr_to_xr(arr_dict)
-    da_out = xr_dict["mock_spatial"]
-
-    assert isinstance(da_out, xr.DataArray)
-    assert list(da_out.dims) == [
-        "process_member",
-        "time",
-        "lat",
-        "lon",
-    ]
-    assert da_out.shape == (6, 4, 180, 360)
-    np.testing.assert_array_equal(da_out.process_member.values, np.arange(6))
+    assert list(da_out.dims) == ["member", "time", "lat", "lon"]
+    np.testing.assert_array_equal(da_out.member.values, np.arange(6))
+    # 6 members from a 2 x 3 ensemble: every member used once
+    np.testing.assert_array_equal(da_out.climate_member.values, [0, 0, 0, 1, 1, 1])
+    np.testing.assert_array_equal(da_out.process_member.values, [0, 1, 2, 0, 1, 2])
     np.testing.assert_array_equal(da_out.time.values, [2006, 2007, 2008, 2009])
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
 def test_sum_spatial_components(mock_fetch):
+    """sum_components adds full-member components when no total exists yet."""
     components = get_dummy_components()
     spatial = Spatial(components=components, end_year=2010)
 
@@ -94,17 +118,33 @@ def test_sum_spatial_components(mock_fetch):
     assert "total_rsl" in components_dict
 
 
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_sum_components_does_not_double_count_or_sum_percentiles(mock_fetch):
+    """sum_components returns an existing total and refuses to add percentiles."""
+    spatial = Spatial(components=get_dummy_components(), end_year=2010)
+    ones = xr.DataArray(np.ones((3, 2)), dims=["percentile", "lat"])
+
+    existing = {"comp1": ones, "total_rsl": ones * 5}
+    assert spatial.sum_components(existing) is existing["total_rsl"]
+
+    with pytest.raises(ValueError, match="Cannot sum percentiles"):
+        spatial.sum_components({"comp1": ones, "comp2": ones})
+
+
 @pytest.mark.parametrize("percentiles", [None, []])
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
-def test_run_full_local_mc_ensemble(mock_fetch, percentiles, capsys):
-    components = get_dummy_components()
+def test_run_full_spatial_member_ensemble(mock_fetch, percentiles, capsys):
+    """Members are shared by all components, stratified by trajectory and reproducible from the seed."""
+    components = get_dummy_components(nt=2, num_members=3, n_years=3)
     comp = components["mock_comp"]
+    seen = {}
 
     def project(state, rng):
-        assert state.num_output_members == state.num_localMC_members == 7
-        assert state.random_fraction.shape == (7,)
+        seen["indices"] = state.member_indices
+        assert state.num_spatial_members == 7
+        assert state.member_indices.shape == state.fingerprint_fraction.shape == (7,)
         return da.broadcast_to(
-            state.random_fraction[:, None, None, None],
+            state.member_indices[:, None, None, None].astype(float),
             (7, state.n_years, len(state.grid_lats), len(state.grid_lons)),
         )
 
@@ -113,25 +153,20 @@ def test_run_full_local_mc_ensemble(mock_fetch, percentiles, capsys):
         components=components,
         end_year=2009,
         output_percentiles=percentiles,
-        num_localMC_members=7,
-        grid_config=dict(
-            start_lat=0,
-            end_lat=1,
-            step_lat=1,
-            start_lon=0,
-            end_lon=1,
-            step_lon=1,
-        ),
+        num_spatial_members=7,
+        grid_config=GRID_2X2,
     )
     results = model.run(member_seed=42)
     assert "Full Distribution (7 members)" in capsys.readouterr().out
     assert set(results) == {"mock_comp", "total_rsl"}
     assert results["mock_comp"].shape == (7, 3, 2, 2)
-    assert results["mock_comp"].dims == ("process_member", "time", "lat", "lon")
+    assert results["mock_comp"].dims == ("member", "time", "lat", "lon")
     assert isinstance(results["mock_comp"].data, da.Array)
     np.testing.assert_array_equal(
         results["total_rsl"].compute(), results["mock_comp"].compute()
     )
+    # Stratified: 7 members over 2 trajectories gives 4 and 3 (or 3 and 4)
+    assert sorted(np.bincount(seen["indices"] // 3, minlength=2)) == [3, 4]
     repeated = model.run(member_seed=42)
     np.testing.assert_array_equal(
         results["mock_comp"].compute(), repeated["mock_comp"].compute()
@@ -139,46 +174,67 @@ def test_run_full_local_mc_ensemble(mock_fetch, percentiles, capsys):
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
-def test_run_preserves_time_chunks_and_memberwise_total(mock_fetch):
+def test_run_memberwise_total_and_percentiles(mock_fetch):
+    """The total is summed member by member before taking percentiles."""
     rng = np.random.default_rng(42)
     temporal = rng.random((7, 4))
     patterns = rng.random((7, 2, 2))
     expected = temporal[:, :, None, None] * patterns[:, None, :, :]
     components = get_dummy_components()
-    components["other"] = MagicMock(spec=SpatialComponent)
-
-    def project(state, rng):
-        return SpatialComponent.broadcast_spatiotemporal(
-            components["mock_comp"],
-            da.from_array(temporal, chunks=(7, 1)),
-            da.from_array(patterns, chunks=(7, 2, 2)),
-        )
+    components["other"] = get_dummy_components()["mock_comp"]
 
     for component in components.values():
-        component.project.side_effect = project
+        component.project.side_effect = lambda state, rng: da.from_array(
+            expected, chunks=(7, 1, 1, 1)
+        )
 
     model = Spatial(
         components=components,
         end_year=2010,
-        num_localMC_members=7,
+        num_spatial_members=7,
         output_percentiles=[17, 50, 83],
-        grid_config=dict(
-            start_lat=0,
-            end_lat=1,
-            step_lat=1,
-            start_lon=0,
-            end_lon=1,
-            step_lon=1,
-        ),
+        grid_config=GRID_2X2,
     )
     results = model.run()
 
     assert results["total_rsl"].shape == (3, 4, 2, 2)
-    assert results["total_rsl"].data.chunks[1] == (1, 1, 1, 1)
+    # Components are rechunked to the model's single chunk plan
+    assert results["total_rsl"].data.chunks == results["mock_comp"].data.chunks
     np.testing.assert_allclose(
-        results["mock_comp"].compute(), np.nanpercentile(expected, [17, 50, 83], axis=0)
+        results["mock_comp"].compute(),
+        np.nanpercentile(expected, [17, 50, 83], axis=0),
+        rtol=1e-6,
     )
     np.testing.assert_allclose(
         results["total_rsl"].compute(),
         np.nanpercentile(2 * expected, [17, 50, 83], axis=0),
+        rtol=1e-6,
     )
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_component_percentiles_without_total_avoid_member_expansion(mock_fetch):
+    """With compute_total=False, separable components skip building member arrays."""
+    from profsea.components.core.base import SeparableProjection
+
+    temporal = np.arange(24, dtype=np.float32).reshape(6, 4)
+    projection = SeparableProjection(temporal, da.ones((1, 2, 2)))
+    components = get_dummy_components()
+    components["mock_comp"].project_separable.return_value = projection
+    model = Spatial(
+        components=components,
+        end_year=2010,
+        output_percentiles=[25, 75],
+        num_spatial_members=6,
+        compute_total=False,
+        grid_config=GRID_2X2,
+    )
+    with patch.object(
+        projection, "to_array", side_effect=AssertionError("Expanded members")
+    ):
+        results = model.run()
+        actual = results["mock_comp"].compute()
+    assert set(results) == {"mock_comp"}
+    assert actual.shape == (2, 4, 2, 2)
+    expected = np.nanpercentile(temporal, [25, 75], axis=0)[:, :, None, None]
+    np.testing.assert_allclose(actual, np.broadcast_to(expected, actual.shape))

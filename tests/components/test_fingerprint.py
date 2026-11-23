@@ -12,19 +12,26 @@ from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
 
 
 def get_dummy_spatial_state(
-    num_output_members: int = 4,
     output_percentiles: list | None = None,
     use_target_points: bool = True,
+    member_indices: np.ndarray | None = None,
+    fingerprint_fraction: np.ndarray | None = None,
 ) -> LocalState | SpatialState:
-    """Build a complete state with four local Monte Carlo members."""
+    """Build a complete state with four Monte Carlo members."""
     kwargs = dict(
         n_years=3,
-        num_output_members=num_output_members,
-        num_localMC_members=4,
+        num_spatial_members=4,
         output_percentiles=output_percentiles,
         baseline_yrs=(1995, 2014),
         endofhistory=2006,
-        random_fraction=np.random.default_rng(42).uniform(size=4),
+        member_indices=(
+            np.array([3, 0, 2, 1]) if member_indices is None else member_indices
+        ),
+        fingerprint_fraction=(
+            np.array([0.1, 0.6, 0.9, 0.4])
+            if fingerprint_fraction is None
+            else fingerprint_fraction
+        ),
     )
     if use_target_points:
         return LocalState(
@@ -55,20 +62,25 @@ def sample_global_proj():
 
 
 class TestFingerprintInit:
-    @pytest.mark.parametrize("shape", [(4, 3), (2, 2, 3)])
-    def test_global_projection_chunks_by_year(self, shape):
+    @pytest.mark.parametrize(
+        ("shape", "stored"), [((4, 3), (1, 4, 3)), ((2, 2, 3), (2, 2, 3))]
+    )
+    def test_global_projection_stored_as_climate_process_time(self, shape, stored):
+        """2D (members, time) inputs are treated as a single climate trajectory."""
         data = np.arange(12, dtype=np.float32).reshape(shape)
         fp = Fingerprint(
             global_projection=xr.DataArray(data),
             fingerprint_component="greenland",
         )
 
-        assert fp.global_projection.shape == shape
-        assert fp.global_projection.chunks == (
-            *((size,) for size in shape[:-1]),
-            (1,) * shape[-1],
-        )
-        np.testing.assert_array_equal(fp.global_projection.compute(), data)
+        assert fp.global_projection.shape == stored
+        np.testing.assert_array_equal(fp.global_projection.reshape(shape), data)
+
+    def test_rejects_percentile_global_projection(self):
+        """Percentile curves are not an ensemble that can be sampled."""
+        percentiles = xr.DataArray(np.zeros((3, 5)), dims=["percentile", "time"])
+        with pytest.raises(ValueError, match="full global ensemble"):
+            Fingerprint(percentiles, fingerprint_component="greenland")
 
     @patch.object(SpatialComponent, "fetch_assets")
     def test_fetches_assets_on_initialisation(
@@ -162,40 +174,28 @@ class TestFingerprintLoadAndInterpolate:
 
 
 class TestFingerprintProject:
-    @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
-    def test_project_single_fingerprint(self, mock_load, sample_global_proj):
-        """Projection should broadcast properly when only 1 fingerprint is mapped."""
-        # For a 2x2 global projection array, total output members = 4
-        state = get_dummy_spatial_state(num_output_members=4)
-        mock_load.return_value = da.array([[1.0, 2.0, 3.0]])
+    @patch.object(Fingerprint, "_load_and_interpolate")
+    def test_project_samples_members_with_single_fingerprint(
+        self, mock_load, sample_global_proj
+    ):
+        """Each member is its sampled global series times the single fingerprint."""
+        state = get_dummy_spatial_state()
+        mock_load.return_value = da.array([[1.0, 2.0]])
 
-        fp = Fingerprint(
-            global_projection=sample_global_proj, fingerprint_component="greenland"
-        )
+        fp = Fingerprint(sample_global_proj, fingerprint_component="greenland")
+        separable = fp.project_separable(state, np.random.default_rng(42))
+        result = fp.project(state, np.random.default_rng(42))
 
-        rng = np.random.default_rng(42)
+        assert separable.pattern_index is None
+        flat = sample_global_proj.values.reshape(4, 3)
+        expected = flat[state.member_indices][:, :, None] * np.array([1.0, 2.0])
+        assert result.shape == (4, 3, 2)
+        np.testing.assert_allclose(result.compute(), expected)
 
-        with patch.object(
-            fp, "broadcast_spatiotemporal", return_value="done"
-        ) as mock_bcast:
-            result = fp.project(state, rng)
-
-            assert result == "done"
-            mock_bcast.assert_called_once()
-
-            _, selected_fps = mock_bcast.call_args[0]
-
-            # The single FP should be broadcast across all 4 flattened members
-            assert selected_fps.shape == (4, 3)
-            np.testing.assert_allclose(
-                selected_fps.compute(),
-                [[1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0], [1.0, 2.0, 3.0]],
-            )
-
-    @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
+    @patch.object(Fingerprint, "_load_and_interpolate")
     def test_project_storyline_mode(self, mock_load, sample_global_proj):
         """Storyline mode should collapse fingerprints into an unweighted mean."""
-        state = get_dummy_spatial_state(num_output_members=4)
+        state = get_dummy_spatial_state()
         mock_load.return_value = da.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
 
         with patch("pathlib.Path.exists", return_value=True):
@@ -206,33 +206,20 @@ class TestFingerprintProject:
                 sample_spatial=False,
             )
 
-        rng = np.random.default_rng(42)
+        separable = fp.project_separable(state, np.random.default_rng(42))
 
-        with patch.object(fp, "broadcast_spatiotemporal") as mock_bcast:
-            fp.project(state, rng)
+        assert separable.pattern_index is None
+        np.testing.assert_allclose(separable.patterns.compute(), [[3.0, 4.0]])
 
-            _, selected_fps = mock_bcast.call_args[0]
-
-            # Mean of [1,3,5] is 3; Mean of [2,4,6] is 4.
-            assert selected_fps.shape == (4, 2)
-            np.testing.assert_allclose(
-                selected_fps.compute(), [[3.0, 4.0], [3.0, 4.0], [3.0, 4.0], [3.0, 4.0]]
-            )
-
-    @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
-    def test_project_probabilistic_mode(self, mock_load, sample_global_proj):
-        """Probabilistic mode should assign distinct random fingerprints to members."""
-        state = get_dummy_spatial_state(num_output_members=4)
-
-        # 3D array representing (n_fps, lat, lon)
-        fps = np.array(
-            [
-                [[1.0, 1.0]],  # FP 0 (shape 1x2)
-                [[2.0, 2.0]],  # FP 1
-                [[3.0, 3.0]],  # FP 2
-            ]
-        )
-        mock_load.return_value = da.array(fps)
+    @patch.object(Fingerprint, "_load_and_interpolate")
+    def test_project_draws_fingerprints_from_shared_fraction(
+        self, mock_load, sample_global_proj
+    ):
+        """Fingerprint draws come from the state's fingerprint fraction, not from
+        the member indices, so they are independent of the global member."""
+        state = get_dummy_spatial_state()
+        patterns = np.array([[[1.0, 1.0]], [[2.0, 2.0]], [[3.0, 3.0]]])
+        mock_load.return_value = da.array(patterns)
 
         with patch("pathlib.Path.exists", return_value=True):
             fp = Fingerprint(
@@ -242,83 +229,30 @@ class TestFingerprintProject:
                 sample_spatial=True,
             )
 
-        rng = np.random.default_rng(42)
+        separable = fp.project_separable(state, np.random.default_rng(42))
+        result = fp.project(state, np.random.default_rng(42)).compute()
 
-        with patch.object(fp, "broadcast_spatiotemporal") as mock_bcast:
-            fp.project(state, rng)
-
-            _, selected_fps = mock_bcast.call_args[0]
-
-            assert selected_fps.shape == (4, 1, 2)
-            # Make sure we got a mix of indices
-            unique_values = np.unique(selected_fps.compute())
-            assert len(unique_values) > 1
-
-    @patch("profsea.components.spatial.fingerprint.reformat_global_projection")
-    @patch("profsea.components.spatial.fingerprint.Fingerprint._load_and_interpolate")
-    def test_project_with_percentiles(
-        self, mock_load, mock_reformat, sample_global_proj
-    ):
-        """State requesting percentiles should trigger the global array reformatting."""
-        state = get_dummy_spatial_state(
-            output_percentiles=[5, 50, 95], num_output_members=3
+        expected_index = (state.fingerprint_fraction * 3).astype(int)
+        np.testing.assert_array_equal(separable.pattern_index, expected_index)
+        flat = sample_global_proj.values.reshape(4, 3)
+        expected = (
+            flat[state.member_indices][:, :, None, None]
+            * patterns[expected_index][:, None]
         )
-        mock_load.return_value = da.array([[1.0]])
-        mock_reformat.return_value = da.array([[99.0]])
+        np.testing.assert_allclose(result, expected)
 
-        fp = Fingerprint(
-            global_projection=sample_global_proj, fingerprint_component="greenland"
-        )
-
-        with patch.object(fp, "broadcast_spatiotemporal") as mock_bcast:
-            fp.project(state, np.random.default_rng(42))
-
-            mock_reformat.assert_called_once_with(fp.global_projection, state)
-
-            global_proj, spatial = mock_bcast.call_args[0]
-            assert global_proj.shape == (4, 1)
-            assert spatial.shape == (4, 1)
-            np.testing.assert_array_equal(global_proj.compute(), np.full((4, 1), 99.0))
-
-    @pytest.mark.parametrize("sample_spatial", [False, True])
-    @pytest.mark.parametrize("input_shape", [(2, 2, 3), (4, 3)])
-    @pytest.mark.parametrize(
-        ("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))]
-    )
     @patch.object(Fingerprint, "_load_and_interpolate")
-    def test_project_resamples_before_spatialising(
-        self, mock_load, sample_spatial, input_shape, n_years, time_chunks
-    ):
-        state = get_dummy_spatial_state(output_percentiles=[50], num_output_members=1)
-        state.n_years = n_years
-        raw = np.arange(4 * n_years, dtype=float).reshape(*input_shape[:-1], n_years)
-        patterns = np.array([[1.0, 2.0], [3.0, 4.0]])
-        mock_load.return_value = da.from_array(patterns, chunks=(1, 1))
+    def test_project_uses_state_chunk_plan(self, mock_load, sample_global_proj):
+        """The member axis stays in one chunk; time and space follow the state."""
+        state = get_dummy_spatial_state(use_target_points=False)
+        state.time_chunk = 2
+        state.spatial_chunks = (2, 2)
+        mock_load.return_value = da.ones((2, 3, 3), chunks=(1, 1, 1))
+
         with patch("pathlib.Path.exists", return_value=True):
             fp = Fingerprint(
-                xr.DataArray(raw),
-                "custom",
-                ["a.nc", "b.nc"],
-                sample_spatial=sample_spatial,
+                sample_global_proj, "custom", ["a.nc", "b.nc"], sample_spatial=True
             )
-        with patch.object(
-            fp, "broadcast_spatiotemporal", wraps=fp.broadcast_spatiotemporal
-        ) as mock_broadcast:
-            result = fp.project(state, np.random.default_rng(42))
 
-        temporal, spatial = mock_broadcast.call_args.args
-        assert temporal.chunks == ((4,), time_chunks)
-        assert spatial.chunks == ((4,), (1, 1))
-        indices = (state.random_fraction * 4).astype(int)
-        selected = (
-            patterns[(state.random_fraction * 2).astype(int)]
-            if sample_spatial
-            else np.broadcast_to(patterns.mean(axis=0), (4, 2))
-        )
-        assert isinstance(result, da.Array)
-        assert result.shape == (4, n_years, 2)
-        assert result.chunks == ((4,), time_chunks, (1, 1))
-        np.testing.assert_allclose(
-            result.compute(),
-            raw.reshape(4, n_years)[indices, :, None] * selected[:, None, :],
-        )
+        result = fp.project(state, np.random.default_rng(42))
+        assert result.chunks == ((4,), (2, 1), (2, 1), (2, 1))

@@ -2,8 +2,10 @@
 
 ## Unreleased
 
-- Add `members_percentiles` for NaN-aware percentiles along the first axis of NumPy and lazy Dask arrays.
-- Fix spatial/local Monte Carlo state construction, member indexing and site-pattern sampling; align tests with the single local ensemble axis (spatial percentile selection remains pending).
+- `Spatial` and `Local` follow the local-projection method of Palmer et al. (2020): `num_spatial_members` members are drawn once from the full global ensemble (an equal share per climate trajectory) and shared by every component; each member draws its GRD, CMIP and GIA patterns independently of its global member, with one GRD model across all fingerprints; and `total_rsl` is summed member by member before percentiles are taken [#119](https://github.com/MetOffice/ProFSea-tool/pull/119)
+- Spatial components return a `SeparableProjection` (member time series × patterns), which gives exact percentile shortcuts, one memory-bounded chunk plan (`chunk_size_mb`) and a vectorised NaN-aware `members_percentiles`, so spatial runs are several times faster and use less memory; Zarr output is written in chunks of about 32 MB (`zarr_chunk_mb`), about 100 files for a 1° run instead of 86,000 [#119](https://github.com/MetOffice/ProFSea-tool/pull/119)
+- Full-member outputs use a `member` axis with `climate_member` and `process_member` coordinates, and `compute_total` replaces `sum_comp` [#119](https://github.com/MetOffice/ProFSea-tool/pull/119)
+- Fix `sum_components` double counting the total or summing percentiles, `Local` blanking a site when one member draws a pattern that is masked there, and saving all spatial outputs together holding whole member arrays in memory (72 GB at 1°, now under 4 GB) [#119](https://github.com/MetOffice/ProFSea-tool/pull/119)
 - Updated `profsea-assets` fetch to get latest assets version with cmip5-patterns and fingerprints re-scaled [#120](https://github.com/MetOffice/ProFSea-tool/pull/120)
 - Minor update to CLA documentation [#117](https://github.com/MetOffice/ProFSea-tool/pull/117)
 - Update `.gitignore` and remove excess files [#118](https://github.com/MetOffice/ProFSea-tool/pull/118)

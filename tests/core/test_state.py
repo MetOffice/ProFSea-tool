@@ -24,9 +24,9 @@ def real_spatial_state():
         grid_lats=np.array([0, 10, 20]),
         grid_lons=np.array([-180, 0, 180]),
         n_years=3,
-        num_localMC_members=4,
-        num_output_members=4,
-        random_fraction=np.random.default_rng(42).uniform(size=4),
+        num_spatial_members=4,
+        member_indices=np.arange(4),
+        fingerprint_fraction=np.random.default_rng(42).uniform(size=4),
         grid_interpolation="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -41,9 +41,9 @@ def real_local_state():
         target_lats=[5.0, 15.0],
         target_lons=[45.0, 55.0],
         n_years=3,
-        num_localMC_members=4,
-        num_output_members=4,
-        random_fraction=np.random.default_rng(42).uniform(size=4),
+        num_spatial_members=4,
+        member_indices=np.arange(4),
+        fingerprint_fraction=np.random.default_rng(42).uniform(size=4),
         interpolation_method="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -73,7 +73,7 @@ class TestComponentIntegration:
         assert isinstance(result, da.Array)
         assert result.ndim == 4
         assert result.shape == (
-            real_spatial_state.num_localMC_members,
+            real_spatial_state.num_spatial_members,
             real_spatial_state.n_years,
             3,
             3,
@@ -98,7 +98,7 @@ class TestComponentIntegration:
         assert isinstance(result, da.Array)
         assert result.ndim == 3
         assert result.shape == (
-            real_local_state.num_localMC_members,
+            real_local_state.num_spatial_members,
             real_local_state.n_years,
             2,
         )
@@ -137,7 +137,7 @@ class TestComponentIntegration:
         assert isinstance(result, da.Array)
         assert result.ndim == 4
         assert result.shape == (
-            real_spatial_state.num_localMC_members,
+            real_spatial_state.num_spatial_members,
             real_spatial_state.n_years,
             3,
             3,

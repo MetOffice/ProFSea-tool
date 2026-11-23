@@ -4,73 +4,87 @@ import logging
 import warnings
 from pathlib import Path
 
-import dask.array as da
 import numpy as np
 import xarray as xr
-from rich.console import Console
-from rich.progress import track
 
 from profsea.utils import (
     PROFSEA_ASSETS_URL,
     PROFSEA_ASSETS_VERSION,
-    PROFSEA_VERSION,
     fetch_zenodo_fingerprints,
-    members_percentiles,
     save_components,
-    validate_component_map,
 )
 from profsea.utils.ui import print_spatial_preflight
 
-from .base import Component, SpatialComponent
+from .base import SpatialComponent
+from .regional import RegionalEnsemble
 from .state import SpatialState
 
 logger = logging.getLogger(__name__)
-console = Console()
 warnings.filterwarnings("ignore")
 
 PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
 
 
-class Spatial:
-    """Spatial sea level rise component emulator."""
+class Spatial(RegionalEnsemble):
+    """Regional sea-level projections on a regular latitude-longitude grid.
+
+    Takes spatial components (fingerprints, sterodynamics, GIA) built from a
+    full ``Global`` ensemble and runs the regional Monte Carlo described in
+    :class:`~profsea.components.core.regional.RegionalEnsemble`. Outputs have
+    dimensions (percentile, time, lat, lon), or (member, time, lat, lon) when
+    every member is kept.
+    """
 
     def __init__(
         self,
-        components: dict[str, Component],
+        components: dict[str, SpatialComponent],
         grid_config: dict = None,
         grid_interpolation: str = "linear",
         end_year: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
-        num_localMC_members: int = 1000,
+        num_spatial_members: int = 1000,
         dtype: np.dtype = np.float32,
-        sum_comp: dict = {"total_rsl": True},
+        compute_total: bool = True,
+        chunk_size_mb: float = 64,
     ) -> None:
         """
         Parameters
         ----------
         components: dict
-            Dictionary of spatial components to include in the model. Keys should be the component names and values should be instances of Component subclasses.
+            Spatial components keyed by name, e.g.
+            ``{"glacier": Fingerprint(...), "gia": GIA()}``. All components
+            driven by a global projection must come from the same ``Global``
+            run.
         grid_config: dict, optional
-            Dictionary defining the grid configuration with keys 'start_lon', 'end_lon', 'step_lon
-            'start_lat', 'end_lat', 'step_lat'. If None, defaults to a 1-degree global grid.
+            Grid definition with keys 'start_lon', 'end_lon', 'step_lon',
+            'start_lat', 'end_lat' and 'step_lat' (cell centres, in degrees).
+            Default is a 1-degree global grid.
         grid_interpolation: str, optional
-            Interpolation method to use when interpolating patterns to the target grid. Default is 'linear'.
+            Interpolation method for regridding patterns. Currently not applied:
+            patterns are always interpolated linearly. Default is 'linear'.
         end_year: int, optional
-            The final year of the projections. Default is 2301.
+            The projections run from 2006 to end_year - 1. Default is 2301.
         baseline_yrs: tuple, optional
-            Tuple defining the start and end years of the baseline period for calculating anomalies. Default is (1995, 2014).
+            First and last year of the baseline period. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
-            List or array of percentiles to sample from the ensemble for output. If None, outputs all members. Default is [5, 17, 50, 83, 95].
-        num_localMC_members: int, optional
-            Number of members to use for the local Monte Carlo ensemble. Default is 1000.
+            Percentiles to output, taken over the Monte Carlo members at every
+            grid point and year. If None or empty, every member is output.
+            Default is [5, 17, 50, 83, 95].
+        num_spatial_members: int, optional
+            Number of Monte Carlo members, drawn from the global ensemble with an
+            equal share per climate trajectory. If equal to the global ensemble
+            size, every global member is used exactly once. Default is 1000.
         dtype: np.dtype, optional
-            Data type for the output arrays. Default is np.float32.
-        sum_comp: dict, optional
-            Dictionary specifying if sum components should be used to get the total sea level rise. Default is {'total_rsl': True}.
+            Data type of the outputs. Default is np.float32.
+        compute_total: bool, optional
+            If True, add "total_rsl": the components summed member by member,
+            before any percentiles are taken. Default is True.
+        chunk_size_mb: float, optional
+            Approximate memory, in MB, for one block of the total together with
+            the blocks of every component summed into it. Each Dask worker
+            thread needs a few times this. Default is 64.
         """
-        # Define the path where the data should live
-
         fetch_zenodo_fingerprints(
             zenodo_url=PROFSEA_ASSETS_URL,
             data_dir=PROFSEA_DIR,
@@ -78,31 +92,26 @@ class Spatial:
             version=PROFSEA_ASSETS_VERSION,
         )
 
-        self.components = components
         self.grid_interpolation = grid_interpolation
         self.end_year = end_year
         self.baseline_yrs = baseline_yrs
         self.output_percentiles = output_percentiles
         self.start_year = 2006
         self.n_years = self.end_year - self.start_year
-        self.num_localMC_members = num_localMC_members
+        self.num_spatial_members = num_spatial_members
         self.dtype = dtype
-        self.sum_comp = sum_comp
+        self.compute_total = compute_total
+        self.chunk_size_mb = chunk_size_mb
 
-        # Check if components is non-empty
-        if not self.components:
-            raise ValueError(
-                "The components dictionary is empty. Please provide at least one component."
-            )
+        self._set_components(components, "Spatial")
 
-        validate_component_map(self.components, SpatialComponent, "Spatial")
-
-        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
+        # Length of the outputs' leading axis: percentiles or members
+        if self._has_percentiles():
             self.num_members = len(self.output_percentiles)
         else:
-            self.num_members = self.num_localMC_members
+            self.num_members = self.num_spatial_members
 
-        if grid_config is None:
+        if grid_config is None:  # 1-degree global grid of cell centres
             grid_config: dict = {
                 "start_lon": -179.5,
                 "end_lon": 179.5,
@@ -128,88 +137,31 @@ class Spatial:
             f"Baseline period = {self.baseline_yrs[0]} to {self.baseline_yrs[1]}"
         )
 
-        # Log the size of each component and provide an estimate of their memory usage
-        # Output shape will be (num_members, n_years, n_lats, n_lons)
-        bytes_per_element = 8  # Assuming float64. Use 4 if strictly float32.
-        future_size = (
+        # Warn if each output, (percentiles or members, years, lat, lon), is large
+        output_gb = (
             self.num_members
             * self.n_years
             * len(self.grid_lats)
             * len(self.grid_lons)
-            * bytes_per_element
+            * np.dtype(self.dtype).itemsize
         ) / 1e9
+        if output_gb > 20:
+            logger.warning(
+                f"[bold red]Each output array requires a large amount of memory "
+                f"[bold blue]({output_gb:.2f} GB)[/bold blue]. Consider reducing the "
+                f"number of members, the grid resolution or output percentiles.[/bold red]"
+            )
 
-        for name, comp in self.components.items():
-            # Warn if memory usage is going to be large
-            if future_size > 20:
-                logger.warning(
-                    f"[bold red]The output array for component "
-                    f"[bold blue]'{name}'[/bold blue] requires a large amount "
-                    f"of memory [bold blue]({future_size:.2f} GB)[/bold blue]. "
-                    f"Consider reducing the number of members, the grid "
-                    f"resolution or take percentiles.[/bold red]"
-                )
-
-    # Instance method!
+    # Shared output writer (profsea.utils.save_components), used as a method
     save_components = save_components
 
-    def _arr_to_xr(self, arr_dict: dict[str, da.Array]) -> dict[str, xr.DataArray]:
-        """
-        Convert a dictionary of Dask arrays to a dictionary of xarray DataArrays with appropriate coordinates and metadata.
-
-        Parameters
-        ----------
-        arr_dict: Dict[str, da.Array]
-            Dictionary where keys are component names and values are Dask arrays of shape (num_members, n_years, n_lats, n_lons).
-
-        Returns
-        -------
-        Dict[str, xr.DataArray]
-            Dictionary where keys are component names and values are xarray DataArrays with dimensions (member, time, lat, lon) and appropriate coordinates.
-        """
-        xr_dict = {}
-
-        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
-            for name, arr in arr_dict.items():
-                xr_dict[name] = xr.DataArray(
-                    arr,
-                    dims=["percentile", "time", "lat", "lon"],
-                    coords={
-                        "percentile": self.output_percentiles,
-                        "time": np.arange(
-                            self.start_year, self.start_year + arr.shape[1]
-                        ),
-                        "lat": self.grid_lats,
-                        "lon": self.grid_lons,
-                    },
-                    attrs={
-                        "units": "m",
-                        "long_name": f"Regional {name} sea-level projections",
-                        "source": f"ProFSea v{PROFSEA_VERSION}",
-                    },
-                )
-
-        else:
-            for name, arr in arr_dict.items():
-                xr_dict[name] = xr.DataArray(
-                    arr,
-                    dims=["process_member", "time", "lat", "lon"],
-                    coords={
-                        "process_member": np.arange(arr.shape[0]),
-                        "time": np.arange(
-                            self.start_year, self.start_year + arr.shape[1]
-                        ),
-                        "lat": self.grid_lats,
-                        "lon": self.grid_lons,
-                    },
-                    attrs={
-                        "units": "m",
-                        "long_name": f"Regional {name} sea-level projections",
-                        "source": f"ProFSea v{PROFSEA_VERSION}",
-                    },
-                )
-
-        return xr_dict
+    def _spatial_coords(self) -> tuple[list[str], dict, str]:
+        """Grid dimensions and coordinates (see RegionalEnsemble._spatial_coords)."""
+        return (
+            ["lat", "lon"],
+            {"lat": self.grid_lats, "lon": self.grid_lons},
+            "Regional",
+        )
 
     def run(self, member_seed: int = 42) -> dict[str, xr.DataArray]:
         """
@@ -218,87 +170,26 @@ class Spatial:
         Parameters
         ----------
         member_seed: int, optional
-            Seed for random number generation to ensure reproducibility of member sampling. Default is 42.
+            Seed for the Monte Carlo member and pattern draws. Default is 42.
 
         Returns
         -------
-        Dict[str, da.Array]
-            Dictionary of spatial projections for each component, where keys are component names and values are Dask arrays of shape (num_members, n_years, n_lats, n_lons).
+        Dict[str, xr.DataArray]
+            Lazy projections for each component, plus "total_rsl" if
+            compute_total, of shape (percentiles or members, n_years, n_lats,
+            n_lons). Nothing is computed until the results are used or saved.
         """
         print_spatial_preflight(self)
-
-        # Initialize the random number generator for Monte Carlo member sampling
-        seed_seq = np.random.SeedSequence(member_seed)
-        child_seeds = seed_seq.spawn(1)
-        self.rng = np.random.default_rng(child_seeds[0])
-        random_fraction = self.rng.uniform(0, 1, size=self.num_localMC_members)
-
         logger.info(
             f"Simulating {len(self.components)} sea-level components: {', '.join(self.components.keys())}"
         )
-
-        state = SpatialState(
-            n_years=self.n_years,
-            num_output_members=self.num_members,
-            num_localMC_members=self.num_localMC_members,
+        self.results = self._run_ensemble(
+            member_seed,
+            SpatialState,
+            (len(self.grid_lats), len(self.grid_lons)),
+            "Spatialising components...",
             grid_lats=self.grid_lats,
             grid_lons=self.grid_lons,
             grid_interpolation=self.grid_interpolation,
-            output_percentiles=self.output_percentiles,
-            baseline_yrs=self.baseline_yrs,
-            dtype=self.dtype,
-            endofhistory=self.start_year,
-            random_fraction=random_fraction,
         )
-
-        spatial_projections = {}
-        console.print()  # Add a blank line for better readability in the console output
-        for name, comp in track(
-            self.components.items(), description="Spatialising components..."
-        ):
-            lazy_projection = comp.project(state, self.rng)
-            spatial_projections[name] = lazy_projection
-        console.print()
-
-        # Sum components to get total sea-level change
-        if self.sum_comp:
-            total_name, should_sum = next(iter(self.sum_comp.items()))
-            if should_sum:
-                total_rsl = sum(spatial_projections.values())
-                spatial_projections[total_name] = total_rsl
-
-        # Convert to percentiles if not None
-        if self.output_percentiles is not None and len(self.output_percentiles) > 0:
-            for name, lazy_projection in spatial_projections.items():
-                spatial_projections[name] = members_percentiles(
-                    spatial_projections[name], self.output_percentiles
-                )
-
-        # Put into xarray datasets for easier saving and metadata handling
-        spatial_projections_xr = self._arr_to_xr(spatial_projections)
-        self.results = spatial_projections_xr
-
         return self.results
-
-    def sum_components(self, components: dict[str, xr.DataArray]) -> xr.DataArray:
-        """
-        Sum the spatial components to get total sea-level change.
-
-        Parameters
-        ----------
-        components: Dict[str, xr.DataArray]
-            Dictionary of spatial component DataArrays.
-
-        Returns
-        -------
-        xr.DataArray
-            DataArray of the summed spatial projections.
-        """
-        # Using xr.concat preserves all dimensions and coordinates, and summing
-        # along the new dimension handles the underlying dask arrays cleanly.
-        total_rsl = xr.concat(components.values(), dim="component").sum(
-            dim="component", skipna=False
-        )
-        total_rsl.attrs["units"] = "m"
-        components["total_rsl"] = total_rsl
-        return total_rsl

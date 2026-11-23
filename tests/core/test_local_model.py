@@ -28,7 +28,7 @@ class MockLocalComponent(SpatialComponent):
 
     def project(self, state, rng):
         return da.ones(
-            (state.num_localMC_members, state.n_years, len(state.target_lats))
+            (state.num_spatial_members, state.n_years, len(state.target_lats))
         )
 
 
@@ -143,36 +143,71 @@ class TestLocalMetadataGeneration:
             locations=locations,
             end_year=2010,
             output_percentiles=None,
-            num_localMC_members=7,
+            num_spatial_members=7,
         )
 
         assert local.num_output_members == 7
 
-        arr = da.zeros((7, 4, 1))
-        xr_dict = local._arr_to_xr({"mock_comp": arr})
-
-        da_out = xr_dict["mock_comp"]
-        assert list(da_out.dims) == ["process_member", "time", "site"]
+        da_out = local.run(member_seed=1)["mock_comp"]
+        assert list(da_out.dims) == ["member", "time", "site"]
         assert da_out.shape == (7, 4, 1)
-        assert len(da_out.process_member) == 7
+        # Labels survive the land mask and record each member's global origin
+        assert da_out.climate_member.shape == da_out.process_member.shape == (7,)
+        assert sorted(np.bincount(da_out.climate_member.values)) == [3, 4]
 
 
 @pytest.mark.parametrize("percentiles", [None, []])
 @patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
-def test_run_full_local_mc_ensemble(mock_fetch, percentiles):
+def test_run_full_spatial_member_ensemble(mock_fetch, percentiles):
+    """Without percentiles, Local returns every member on a member axis, plus the total."""
     model = Local(
         components={"custom": MockLocalComponent()},
         locations={"Newlyn": (50.1, -5.5), "Aberdeen": (57.1, -2.1)},
-        end_year=2009,
+        end_year=2010,
         output_percentiles=percentiles,
-        num_localMC_members=7,
+        num_spatial_members=7,
     )
     results = model.run(member_seed=42)
     assert set(results) == {"custom", "total_rsl"}
-    assert results["custom"].dims == ("process_member", "time", "site")
-    assert results["custom"].shape == (7, 3, 2)
+    assert results["custom"].dims == ("member", "time", "site")
+    assert results["custom"].shape == (7, 4, 2)
     assert isinstance(results["custom"].data, da.Array)
-    np.testing.assert_array_equal(results["custom"].compute(), np.ones((7, 3, 2)))
+    np.testing.assert_array_equal(results["custom"].compute(), np.ones((7, 4, 2)))
     np.testing.assert_array_equal(
         results["total_rsl"].compute(), results["custom"].compute()
     )
+
+
+class PartlyMaskedComponent(MockLocalComponent):
+    """Member 0 is NaN at every site (as when it draws a model that is masked
+    there); the other members are valid."""
+
+    def project(self, state, rng):
+        values = np.ones(
+            (state.num_spatial_members, state.n_years, len(state.target_lats))
+        )
+        values[0] = np.nan
+        return da.from_array(values)
+
+
+@pytest.mark.parametrize("percentiles", [None, [5, 50, 95]])
+@patch("profsea.components.core.local_model.fetch_zenodo_fingerprints")
+def test_universal_mask_does_not_drop_sites_for_one_masked_member(
+    mock_fetch, percentiles
+):
+    """A site missing data for one member only is kept; it is not treated as land."""
+    model = Local(
+        components={"custom": PartlyMaskedComponent()},
+        locations={"Newlyn": (50.1, -5.5)},
+        end_year=2010,
+        output_percentiles=percentiles,
+        num_spatial_members=7,
+    )
+    result = model.run(member_seed=1)["custom"].compute()
+
+    # Only member 0 is missing; the site itself must not be masked
+    if percentiles is None:
+        assert np.isnan(result.isel(member=0)).all()
+        assert np.isfinite(result.isel(member=slice(1, None))).all()
+    else:
+        assert np.isfinite(result).all()

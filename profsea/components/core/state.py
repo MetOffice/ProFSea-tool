@@ -29,33 +29,59 @@ class ClimateState:
 
 @dataclass
 class SpatialState:
-    """SpatialState context object to hold relevant state information for spatial SLR projections."""
+    """Everything a spatial component needs for one gridded run of ``Spatial``.
+
+    Built by the model and passed to each component's ``project_separable``.
+    ``grid_interpolation`` is recorded but not yet applied (regridding is
+    always linear).
+    """
 
     grid_lats: np.ndarray
     grid_lons: np.ndarray
     n_years: int
-    num_output_members: int
-    num_localMC_members: int
+    num_spatial_members: int
     grid_interpolation: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
-    random_fraction: np.ndarray = None
+    # Indices of the sampled members in the flattened (climate, process) global
+    # ensemble, shared by all components so members stay consistent.
+    member_indices: np.ndarray | None = None
+    # Uniform [0, 1) draw per member for choosing GRD fingerprints, shared by
+    # Fingerprint components (one GRD model per member) and independent
+    # of member_indices.
+    fingerprint_fraction: np.ndarray | None = None
+    # Chunk plan for (members, time, *spatial) arrays, set by the model.
+    time_chunk: int = -1
+    spatial_chunks: tuple[int, ...] = (-1,)
 
 
 @dataclass
 class LocalState:
-    """LocalState context object to hold relevant state information for local SLR projections."""
+    """Everything a spatial component needs for one site run of ``Local``.
+
+    Built by the model and passed to each component's ``project_separable``.
+    ``interpolation_method`` is recorded but not yet applied (sites use a
+    land-aware four-cell interpolation).
+    """
 
     target_lats: list[float]
     target_lons: list[float]
     n_years: int
-    num_output_members: int
-    num_localMC_members: int
+    num_spatial_members: int
     interpolation_method: str
     endofhistory: int
     output_percentiles: list[int] | np.ndarray
     baseline_yrs: tuple[int, int]
     dtype: np.dtype = np.float32
-    random_fraction: np.ndarray = None
+    # Indices of the sampled members in the flattened (climate, process) global
+    # ensemble, shared by all components so members stay consistent.
+    member_indices: np.ndarray | None = None
+    # Uniform [0, 1) draw per member for choosing GRD fingerprints, shared by
+    # Fingerprint components (one GRD model per member) and independent
+    # of member_indices.
+    fingerprint_fraction: np.ndarray | None = None
+    # Chunk plan for (members, time, *spatial) arrays, set by the model.
+    time_chunk: int = -1
+    spatial_chunks: tuple[int, ...] = (-1,)
