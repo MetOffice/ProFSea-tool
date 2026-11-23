@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add `members_percentiles` for NaN-aware percentiles along the first axis of NumPy and lazy Dask arrays.
+- Fix spatial/local Monte Carlo state construction, member indexing and site-pattern sampling; align tests with the single local ensemble axis (spatial percentile selection remains pending).
 - Updated `profsea-assets` fetch to get latest assets version with cmip5-patterns and fingerprints re-scaled [#120](https://github.com/MetOffice/ProFSea-tool/pull/120)
 - Minor update to CLA documentation [#117](https://github.com/MetOffice/ProFSea-tool/pull/117)
 - Update `.gitignore` and remove excess files [#118](https://github.com/MetOffice/ProFSea-tool/pull/118)

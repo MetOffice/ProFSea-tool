@@ -82,11 +82,11 @@ def print_spatial_preflight(model) -> None:
     n_lon = len(model.grid_lons)
     grid_str = f"{n_lat} × {n_lon} cells"
 
-    if model.output_percentiles is not None:
+    if model.output_percentiles is not None and len(model.output_percentiles) > 0:
         output_str = f"Percentiles: {model.output_percentiles}"
         members = len(model.output_percentiles)
     else:
-        members = model.num_members * model.nt
+        members = model.num_localMC_members
         output_str = f"Full Distribution ({members} members)"
 
     # Memory estimation

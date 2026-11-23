@@ -53,6 +53,20 @@ Detailed examples on how to use ProFSea can be found in the tutorial notebooks, 
 	gmslr = global_model.results["total_gmslr"]
 
 
+Spatial and local ensembles
+--------------------------
+
+``Spatial`` and ``Local`` use ``num_localMC_members`` (default 100000) to
+control a separate Monte Carlo ensemble. Global climate and process ensemble
+axes are flattened and sampled using a shared random fraction across components.
+Spatial components return all local Monte Carlo members before any output
+percentile selection.
+
+With ``output_percentiles=None`` or ``[]``, gridded output has dimensions
+``(process_member, time, lat, lon)`` and site output has dimensions
+``(process_member, time, site)``. Here ``process_member`` labels the local Monte
+Carlo ensemble, not the original global process axis.
+
 Tutorial Notebook
 -----------------
 

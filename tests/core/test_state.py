@@ -5,9 +5,16 @@ import dask.array as da
 import numpy as np
 import pytest
 
+from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import LocalState, SpatialState
 from profsea.components.spatial.fingerprint import Fingerprint
 from profsea.components.spatial.gia import GIA
+
+
+@pytest.fixture(autouse=True)
+def block_assets():
+    with patch.object(SpatialComponent, "fetch_assets"):
+        yield
 
 
 @pytest.fixture
@@ -17,9 +24,9 @@ def real_spatial_state():
         grid_lats=np.array([0, 10, 20]),
         grid_lons=np.array([-180, 0, 180]),
         n_years=3,
-        nt=2,
-        num_members=2,
-        num_output_members=4,  # nt * num_members
+        num_localMC_members=4,
+        num_output_members=4,
+        random_fraction=np.random.default_rng(42).uniform(size=4),
         grid_interpolation="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -34,9 +41,9 @@ def real_local_state():
         target_lats=[5.0, 15.0],
         target_lons=[45.0, 55.0],
         n_years=3,
-        nt=2,
-        num_members=2,
-        num_output_members=4,  # nt * num_members
+        num_localMC_members=4,
+        num_output_members=4,
+        random_fraction=np.random.default_rng(42).uniform(size=4),
         interpolation_method="bilinear",
         output_percentiles=None,
         baseline_yrs=(1995, 2014),
@@ -62,12 +69,11 @@ class TestComponentIntegration:
         # Should execute successfully without throwing attribute errors
         result = gia.project(real_spatial_state, np.random.default_rng(42))
 
-        # Expected shape when output_percentiles is None: (nt, num_members, years, lats, lons)
+        # (local Monte Carlo members, years, lats, lons)
         assert isinstance(result, da.Array)
-        assert result.ndim == 5
+        assert result.ndim == 4
         assert result.shape == (
-            real_spatial_state.nt,
-            real_spatial_state.num_members,
+            real_spatial_state.num_localMC_members,
             real_spatial_state.n_years,
             3,
             3,
@@ -88,12 +94,11 @@ class TestComponentIntegration:
 
         result = gia.project(real_local_state, np.random.default_rng(42))
 
-        # Expected shape when output_percentiles is None: (nt, num_members, years, sites)
+        # (local Monte Carlo members, years, sites)
         assert isinstance(result, da.Array)
-        assert result.ndim == 4
+        assert result.ndim == 3
         assert result.shape == (
-            real_local_state.nt,
-            real_local_state.num_members,
+            real_local_state.num_localMC_members,
             real_local_state.n_years,
             2,
         )
@@ -107,8 +112,8 @@ class TestComponentIntegration:
         global_proj = xr.DataArray(
             np.ones(
                 (
-                    real_spatial_state.nt,
-                    real_spatial_state.num_members,
+                    2,
+                    2,
                     real_spatial_state.n_years,
                 )
             ),
@@ -128,13 +133,11 @@ class TestComponentIntegration:
 
         result = fp.project(real_spatial_state, np.random.default_rng(42))
 
-        # The temporal_array (3D) and spatial_array (2D) should combine into a 5D array
-        # Shape: (climate_members, process_members, years, lats, lons)
+        # Global ensemble axes are resampled into one local Monte Carlo axis.
         assert isinstance(result, da.Array)
-        assert result.ndim == 5
+        assert result.ndim == 4
         assert result.shape == (
-            real_spatial_state.nt,
-            real_spatial_state.num_members,
+            real_spatial_state.num_localMC_members,
             real_spatial_state.n_years,
             3,
             3,

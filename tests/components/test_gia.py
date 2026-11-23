@@ -7,36 +7,45 @@ import pytest
 import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
-from profsea.components.core.state import SpatialState
+from profsea.components.core.state import LocalState, SpatialState
 from profsea.components.spatial.gia import GIA
 
 
 def get_dummy_spatial_state(
     num_output_members: int = 4,
-    nt: int = 2,
-    num_members: int = 2,
     n_years: int = 3,
     use_target_points: bool = True,
     output_percentiles: list | None = None,
-) -> SpatialState:
-    """Helper to generate a SpatialState for GIA testing."""
-    state = SpatialState.__new__(SpatialState)
-    state.num_output_members = num_output_members
-    state.nt = nt
-    state.num_members = num_members
-    state.n_years = n_years
-    state.baseline_yrs = [1995, 2014]  # 20-year period, midpoint 2005
-    state.endofhistory = 2006
-    state.output_percentiles = output_percentiles
-
+) -> LocalState | SpatialState:
+    """Build a complete spatial or local Monte Carlo state."""
+    kwargs = dict(
+        n_years=n_years,
+        num_output_members=num_output_members,
+        num_localMC_members=4,
+        output_percentiles=output_percentiles,
+        baseline_yrs=(1995, 2014),
+        endofhistory=2006,
+        random_fraction=np.random.default_rng(42).uniform(size=4),
+    )
     if use_target_points:
-        state.target_lats = np.array([5])
-        state.target_lons = np.array([45])
-    else:
-        state.grid_lats = np.array([0, 10, 20])
-        state.grid_lons = np.array([-180, 0, 180])
+        return LocalState(
+            target_lats=[5],
+            target_lons=[45],
+            interpolation_method="bilinear",
+            **kwargs,
+        )
+    return SpatialState(
+        grid_lats=np.array([0, 10, 20]),
+        grid_lons=np.array([-180, 0, 180]),
+        grid_interpolation="linear",
+        **kwargs,
+    )
 
-    return state
+
+@pytest.fixture(autouse=True)
+def block_assets():
+    with patch.object(SpatialComponent, "fetch_assets"):
+        yield
 
 
 class TestGIAInit:
@@ -65,7 +74,7 @@ class TestGIAInit:
         assert len(gia.gia_files) == 1
         assert gia.gia_files[0] == Path("dummy.nc")
         assert isinstance(gia.global_projection, da.Array)
-        assert gia.sample_spatial is False
+        assert gia.sample_spatial is True
 
     @patch("pathlib.Path.suffix", new_callable=lambda: ".nc")
     @patch("pathlib.Path.is_file", return_value=True)
@@ -114,6 +123,62 @@ class TestGIALoadAndInterpolateRates:
 
 
 class TestGIAProject:
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64])
+    @pytest.mark.parametrize("sample_spatial", [False, True])
+    @pytest.mark.parametrize("at_sites", [False, True])
+    @pytest.mark.parametrize(
+        ("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))]
+    )
+    @patch.object(GIA, "_load_and_interpolate_rates")
+    def test_project_aligns_chunks_before_broadcast(
+        self,
+        mock_load,
+        mocked_gia,
+        sample_spatial,
+        at_sites,
+        dtype,
+        n_years,
+        time_chunks,
+    ):
+        state = get_dummy_spatial_state(use_target_points=at_sites, n_years=n_years)
+        state.dtype = dtype
+        spatial_shape = (1,) if at_sites else (3, 3)
+        patterns = np.arange(2 * np.prod(spatial_shape), dtype=float).reshape(
+            2, *spatial_shape
+        )
+        mock_load.return_value = da.from_array(patterns, chunks=1)
+        mocked_gia.sample_spatial = sample_spatial
+
+        with patch.object(
+            mocked_gia,
+            "broadcast_spatiotemporal",
+            wraps=mocked_gia.broadcast_spatiotemporal,
+        ) as mock_broadcast:
+            result = mocked_gia.project(state, np.random.default_rng(42))
+
+        temporal, spatial = mock_broadcast.call_args.args
+        assert temporal.dtype == spatial.dtype == np.dtype(dtype)
+        assert temporal.chunks == ((4,), time_chunks)
+        assert spatial.chunks[0] == (4,)
+
+        selected = (
+            patterns[(state.random_fraction * 2).astype(int)]
+            if sample_spatial
+            else np.broadcast_to(patterns.mean(axis=0), (4, *spatial_shape))
+        )
+        time_series = (np.arange(1, n_years + 1) * 0.001).astype(dtype)
+        expected = selected.astype(dtype)[:, None] * time_series.reshape(
+            (1, n_years) + (1,) * len(spatial_shape)
+        )
+        assert result.shape == (4, n_years, *spatial_shape)
+        assert result.dtype == np.dtype(dtype)
+        assert result.chunks == (
+            (4,),
+            time_chunks,
+            *((1,) * size for size in spatial_shape),
+        )
+        np.testing.assert_allclose(result.compute(), expected)
+
     @pytest.fixture
     def mocked_gia(self):
         with (
@@ -142,11 +207,9 @@ class TestGIAProject:
             return GIA(sample_spatial=True)
 
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
-    def test_project_reshapes_to_5d(self, mock_load, mocked_gia):
-        """Should reshape the flattened 4D broadcast array into a 5D array."""
-        state = get_dummy_spatial_state(
-            num_output_members=4, nt=2, num_members=2, n_years=3
-        )
+    def test_project_preserves_local_mc_axis(self, mock_load, mocked_gia):
+        """Return the local Monte Carlo axis without restoring global axes."""
+        state = get_dummy_spatial_state(num_output_members=4, n_years=3)
         mock_load.return_value = da.array([[10.0]])  # 1 pattern, 1 site
         rng = np.random.default_rng(42)
 
@@ -158,8 +221,7 @@ class TestGIAProject:
         ):
             result = mocked_gia.project(state, rng)
 
-            # The final result should be reshaped to 4D (climate, process, years, sites)
-            assert result.shape == (2, 2, 3, 1)
+            assert result.shape == (4, 3, 1)
 
     @patch("profsea.components.spatial.gia.GIA._load_and_interpolate_rates")
     def test_project_time_vector_logic(self, mock_load, mocked_gia):
