@@ -7,14 +7,15 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-from profsea.utils import fetch_zenodo_fingerprints
+from profsea.utils import (
+    PROFSEA_ASSETS_URL,
+    PROFSEA_ASSETS_VERSION,
+    fetch_zenodo_fingerprints,
+)
 
 from .state import ClimateState
 
 PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
-ZENODO_DOWNLOAD_LINK = (
-    "https://zenodo.org/records/20427061/files/profsea-assets.zip?download=1"
-)
 
 
 class Component(ABC):
@@ -27,9 +28,10 @@ class Component(ABC):
 class SpatialComponent(Component):
     def fetch_assets(self):
         fetch_zenodo_fingerprints(
-            zenodo_url=ZENODO_DOWNLOAD_LINK,
+            zenodo_url=PROFSEA_ASSETS_URL,
             data_dir=PROFSEA_DIR,
             expected_folder_name="profsea-assets",
+            version=PROFSEA_ASSETS_VERSION,
         )
 
     def extract_spatial(self, da_input: xr.DataArray, state) -> xr.DataArray:

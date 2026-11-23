@@ -266,12 +266,14 @@ or add a new state/model pair rather than branching inside components.
   Antarctic parameters, Greenland calibration CSV, AR6 land-water projections) and, in
   `component-obs/`, the observational records read by `Observations` (IMBIE3 ice
   sheets, Zheng 2026). Keep additions small.
-- `profsea/profsea-assets/` (GRD fingerprints, GIA rates, CMIP6 sterodynamic patterns) is
-  downloaded from Zenodo record 20427061 by `fetch_zenodo_fingerprints` the first time a
+- `profsea/profsea-assets/` (GRD fingerprints, GIA rates, CMIP5 and CMIP6 sterodynamic
+  patterns) is downloaded from Zenodo by `fetch_zenodo_fingerprints` the first time a
   `Spatial`, `Local` or spatial component is constructed. It is gitignored; never commit
-  it. New large assets go into a new Zenodo release, and the download URL (currently
-  repeated in `base.py`, `spatial_model.py` and `local_model.py`) must be updated in all
-  three places.
+  it. The download URL and version live in one place, `PROFSEA_ASSETS_URL` and
+  `PROFSEA_ASSETS_VERSION` in `profsea/utils/utils.py`. A `.assets_version` marker in
+  the folder records the local version, and a mismatch triggers a fresh download. To
+  change the assets, publish a new Zenodo version (it gets a new record ID) and update
+  both constants.
 
 ## Testing
 

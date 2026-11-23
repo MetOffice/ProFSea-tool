@@ -254,6 +254,57 @@ def test_fetch_zenodo_downloads_and_extracts(mock_zip, mock_get, tmp_path):
     assert not (tmp_path / "temp_fingerprints.zip").exists()
 
 
+def _mock_zenodo_download(mock_get, mock_zip, members):
+    mock_response = MagicMock()
+    mock_response.headers = {"content-length": "100"}
+    mock_response.iter_content.return_value = [b"chunk"]
+    mock_get.return_value = mock_response
+
+    mock_zip_instance = MagicMock()
+    mock_zip_instance.namelist.return_value = members
+    mock_zip.return_value.__enter__.return_value = mock_zip_instance
+    return mock_zip_instance
+
+
+@patch("requests.get")
+def test_fetch_zenodo_matching_version_early_return(mock_get, tmp_path, capsys):
+    """A local copy with a matching version marker should not be downloaded again."""
+    target_dir = tmp_path / "profsea-assets"
+    target_dir.mkdir()
+    (target_dir / "dummy_file.nc").touch()
+    (target_dir / ".assets_version").write_text("1.1\n")
+
+    fetch_zenodo_fingerprints(
+        "http://fake.url", tmp_path, "profsea-assets", version="1.1"
+    )
+
+    mock_get.assert_not_called()
+    assert "ProFSea assets found locally!" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("old_marker", [None, "1.0"])
+@patch("requests.get")
+@patch("zipfile.ZipFile")
+def test_fetch_zenodo_outdated_version_redownloads(
+    mock_zip, mock_get, tmp_path, old_marker
+):
+    """A local copy without a marker, or with an old one, should be updated."""
+    target_dir = tmp_path / "profsea-assets"
+    target_dir.mkdir()
+    (target_dir / "dummy_file.nc").touch()
+    if old_marker is not None:
+        (target_dir / ".assets_version").write_text(old_marker)
+    mock_zip_instance = _mock_zenodo_download(mock_get, mock_zip, ["file1.nc"])
+
+    fetch_zenodo_fingerprints(
+        "http://fake.url", tmp_path, "profsea-assets", version="1.1"
+    )
+
+    mock_get.assert_called_once_with("http://fake.url", stream=True)
+    mock_zip_instance.extractall.assert_called_once_with(tmp_path, members=["file1.nc"])
+    assert (target_dir / ".assets_version").read_text().strip() == "1.1"
+
+
 # --- save_components ---
 
 

@@ -38,6 +38,15 @@ except PackageNotFoundError:
 
 PROFSEA_DIR = Path(__file__).resolve().parents[1]
 
+# Zenodo record holding the ProFSea assets (fingerprints, GIA, sterodynamic patterns).
+# When publishing a new Zenodo version, update both: the version change makes existing
+# local copies re-download.
+PROFSEA_ASSETS_VERSION = "1.1"
+PROFSEA_ASSETS_URL = (
+    "https://zenodo.org/records/24449347/files/profsea-assets.zip?download=1"
+)
+ASSETS_VERSION_FILE = ".assets_version"
+
 
 def validate_component_map(
     components: dict,
@@ -338,7 +347,10 @@ def check_shapes(array: np.ndarray, n_time: int) -> None:
 
 
 def fetch_zenodo_fingerprints(
-    zenodo_url: str, data_dir: Path, expected_folder_name: str
+    zenodo_url: str,
+    data_dir: Path,
+    expected_folder_name: str,
+    version: str | None = None,
 ) -> None:
     """
     Downloads and extracts the ProFSea fingerprint dataset from Zenodo if it doesn't already exist locally.
@@ -351,13 +363,25 @@ def fetch_zenodo_fingerprints(
         The base directory where the dataset should be stored.
     expected_folder_name: str
         The name of the folder that should be created when the dataset is extracted. Used to check if the data already exists.
+    version: str | None, optional
+        Expected version of the dataset. If given, an existing local copy is only
+        reused when its version marker file matches; otherwise the dataset is
+        downloaded again and extracted over it. If None, any populated local copy
+        is reused.
     """
     target_dir = data_dir / expected_folder_name
+    version_file = target_dir / ASSETS_VERSION_FILE
 
-    # 1. Check if data already exists
+    # 1. Check if data already exists (and is the expected version)
     if target_dir.exists() and any(target_dir.iterdir()):
-        logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
-        return
+        local_version = (
+            version_file.read_text().strip() if version_file.exists() else None
+        )
+        if version is None or local_version == version:
+            logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
+            return
+        found = f"v{local_version}" if local_version else "an unversioned copy"
+        logger.info(f"Updating ProFSea assets from {found} to v{version}...")
 
     # Create the base directory if it doesn't exist
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -406,6 +430,10 @@ def fetch_zenodo_fingerprints(
                 if not member.startswith("__MACOSX/") and not member.startswith("._")
             ]
             zip_ref.extractall(data_dir, members=valid_members)
+
+        if version is not None:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            version_file.write_text(f"{version}\n")
 
         logger.info(
             f"[bold green]✓ Successfully extracted data to {data_dir}[/bold green]"
