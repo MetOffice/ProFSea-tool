@@ -124,6 +124,40 @@ def test_interpolate_to_grid_longitude_wrapping():
     np.testing.assert_array_almost_equal(result.lon.values, expected_lons)
 
 
+def _no_land_regionmask() -> MagicMock:
+    """Stand-in for regionmask (its shapes are downloaded on first use) for a
+    grid with no land. Like the real ``mask_3D``, it drops the land region
+    unless ``drop=False``."""
+
+    def mask_3D(obj, drop=True):
+        mask = xr.DataArray(
+            np.zeros((1, obj.lat.size, obj.lon.size), dtype=bool),
+            dims=["region", "lat", "lon"],
+            coords={"region": [0], "lat": obj.lat.values, "lon": obj.lon.values},
+        )
+        return mask.isel(region=slice(0, 0)) if drop else mask
+
+    fake = MagicMock()
+    fake.defined_regions.natural_earth_v5_0_0.land_110.mask_3D.side_effect = mask_3D
+    return fake
+
+
+def test_interpolate_to_grid_open_ocean_grid():
+    """A target grid without land cells is regridded rather than rejected."""
+    data = xr.DataArray(
+        np.random.default_rng(42).random((3, 4)),
+        coords=[("lat", [-60, -55, -50]), ("lon", [0, 90, 180, 270])],
+    )
+
+    with patch.dict("sys.modules", {"regionmask": _no_land_regionmask()}):
+        result = interpolate_to_grid(
+            data, np.array([-58.0, -52.0]), np.array([10.0, 100.0, -100.0])
+        )
+
+    assert result.shape == (2, 3)
+    assert not result.isnull().any()
+
+
 # --- sample_members_2D ---
 
 

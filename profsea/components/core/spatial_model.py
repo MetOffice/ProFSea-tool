@@ -59,6 +59,8 @@ class Spatial(RegionalEnsemble):
         grid_config: dict, optional
             Grid definition with keys 'start_lon', 'end_lon', 'step_lon',
             'start_lat', 'end_lat' and 'step_lat' (cell centres, in degrees).
+            Longitudes may use either convention; outputs are on ascending
+            longitudes in [-180, 180), so a 0-360 grid comes back as -180-180.
             Default is a 1-degree global grid.
         grid_interpolation: str, optional
             Interpolation method for regridding patterns. Currently not applied:
@@ -121,12 +123,18 @@ class Spatial(RegionalEnsemble):
                 "step_lat": 1.0,
             }
 
-        # Define the grid coordinates
-        self.grid_lons = np.arange(
+        # Define the grid coordinates. Patterns are regridded onto longitudes
+        # in [-180, 180) in ascending order (interpolate_to_grid), so the grid
+        # takes that form too and the output labels match the data: wrap
+        # values outside the range (values inside are kept exactly), sort, and
+        # drop the duplicate a closed interval gives (e.g. -180 and 180).
+        lons = np.arange(
             grid_config["start_lon"],
             grid_config["end_lon"] + grid_config["step_lon"],
             grid_config["step_lon"],
         )
+        in_range = (lons >= -180) & (lons < 180)
+        self.grid_lons = np.unique(np.where(in_range, lons, (lons + 180) % 360 - 180))
         self.grid_lats = np.arange(
             grid_config["start_lat"],
             grid_config["end_lat"] + grid_config["step_lat"],

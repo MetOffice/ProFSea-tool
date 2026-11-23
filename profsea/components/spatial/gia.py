@@ -57,8 +57,10 @@ class GIA(SpatialComponent):
                 raise FileNotFoundError(f"Provided GIA path does not exist: {p}")
 
             if p.is_dir():
-                # Extract all .nc files if a directory is passed
-                self.gia_files.extend(list(p.glob("*.nc")))
+                # Extract all .nc files if a directory is passed, sorted by
+                # name: members draw a model by position, so the order must not
+                # depend on the file system for a seed to be reproducible
+                self.gia_files.extend(sorted(p.glob("*.nc")))
             elif p.is_file() and p.suffix == ".nc":
                 # Keep direct NetCDF files
                 self.gia_files.append(p)

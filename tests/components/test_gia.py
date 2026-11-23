@@ -91,6 +91,18 @@ class TestGIAInit:
         assert gia.gia_files[0] == Path(custom_path)
         assert gia.sample_spatial is True
 
+    @patch(
+        "pathlib.Path.glob",
+        return_value=[Path("c.nc"), Path("a.nc"), Path("b.nc")],
+    )
+    @patch("pathlib.Path.is_dir", return_value=True)
+    @patch("pathlib.Path.exists", return_value=True)
+    def test_directory_files_sorted_by_name(self, mock_exists, mock_isdir, mock_glob):
+        """Members draw a model by position, so the file order must not depend
+        on the order in which the file system lists a directory."""
+        gia = GIA(gia_paths="/some/dir")
+        assert gia.gia_files == [Path("a.nc"), Path("b.nc"), Path("c.nc")]
+
     @patch("pathlib.Path.glob", return_value=[])
     @patch("pathlib.Path.is_dir", return_value=True)
     @patch("pathlib.Path.exists", return_value=True)

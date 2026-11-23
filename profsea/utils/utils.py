@@ -458,10 +458,11 @@ def interpolate_to_grid(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
 
-    # Account for land mask (using regionmask library)
+    # Account for land mask (using regionmask library). drop=False keeps the
+    # land region even when no target cell is land (an open-ocean grid), which
+    # regionmask would otherwise drop, leaving an empty region axis.
     land = regionmask.defined_regions.natural_earth_v5_0_0.land_110
-    land_mask = land.mask_3D(data_interp)
-    is_land = land_mask.squeeze("region", drop=True)
+    is_land = land.mask_3D(data_interp, drop=False).any("region")
     data_interp = data_interp.where(~is_land)
 
     return data_interp

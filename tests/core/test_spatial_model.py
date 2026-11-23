@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from profsea.components.core.base import SpatialComponent
+from profsea.components.core.base import SeparableProjection, SpatialComponent
 from profsea.components.core.spatial_model import Spatial
 
 
@@ -52,6 +52,99 @@ def test_spatial_rejects_wrong_time_axis(mock_fetch):
     components = get_dummy_components(n_years=4)
     with pytest.raises(ValueError, match="4 years but the model expects 44"):
         Spatial(components=components, end_year=2050)
+
+
+@pytest.mark.parametrize(
+    "start_lon, end_lon, step_lon, expected",
+    [
+        (-179.5, 179.5, 1, np.arange(-179.5, 180)),  # default grid kept exactly
+        (0, 270, 90, [-180, -90, 0, 90]),
+        (-180, 180, 90, [-180, -90, 0, 90]),  # closed interval: 180 is -180
+        (170, 190, 10, [-180, -170, 170]),  # crosses the dateline
+    ],
+)
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_spatial_grid_longitudes_are_normalised_and_sorted(
+    mock_fetch, start_lon, end_lon, step_lon, expected
+):
+    """The grid uses the regridded patterns' longitudes: [-180, 180), ascending."""
+    grid = dict(
+        start_lat=0,
+        end_lat=1,
+        step_lat=1,
+        start_lon=start_lon,
+        end_lon=end_lon,
+        step_lon=step_lon,
+    )
+    spatial = Spatial(
+        components=get_dummy_components(n_years=4), grid_config=grid, end_year=2010
+    )
+    np.testing.assert_array_equal(spatial.grid_lons, expected)
+
+
+class FixedPattern(SpatialComponent):
+    """Every member is one pattern, regridded as the real components do."""
+
+    def __init__(self, pattern: xr.DataArray):
+        self.pattern = pattern
+
+    def project_separable(self, state, rng):
+        regridded = self.extract_spatial(self.pattern, state).data
+        return SeparableProjection(np.ones(state.n_years), regridded[None])
+
+
+def _no_land_regionmask() -> MagicMock:
+    """Stand-in for regionmask (its shapes are downloaded on first use) for a
+    grid with no land. Like the real ``mask_3D``, it drops the land region
+    unless ``drop=False``."""
+
+    def mask_3D(obj, drop=True):
+        mask = xr.DataArray(
+            np.zeros((1, obj.lat.size, obj.lon.size), dtype=bool),
+            dims=["region", "lat", "lon"],
+            coords={"region": [0], "lat": obj.lat.values, "lon": obj.lon.values},
+        )
+        return mask.isel(region=slice(0, 0)) if drop else mask
+
+    fake = MagicMock()
+    fake.defined_regions.natural_earth_v5_0_0.land_110.mask_3D.side_effect = mask_3D
+    return fake
+
+
+@patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
+def test_spatial_output_longitudes_label_their_values(mock_fetch):
+    """A 0-360 grid comes back on -180-180 with each value at its own longitude
+    (previously the labels kept the 0-360 order and were shifted by 180)."""
+    lat = np.arange(-89.5, 90)
+    lon = np.arange(-179.5, 180)
+    pattern = xr.DataArray(
+        np.tile(np.sin(np.radians(lon)), (lat.size, 1)),
+        coords=[("lat", lat), ("lon", lon)],
+    )
+    grid = dict(
+        start_lat=-0.5,
+        end_lat=0.5,
+        step_lat=1,
+        start_lon=0.5,
+        end_lon=359.5,
+        step_lon=1,
+    )
+    spatial = Spatial(
+        components={"pattern": FixedPattern(pattern)},
+        grid_config=grid,
+        end_year=2007,
+        output_percentiles=None,
+        num_spatial_members=1,
+        compute_total=False,
+    )
+
+    with patch.dict("sys.modules", {"regionmask": _no_land_regionmask()}):
+        out = spatial.run()["pattern"].isel(member=0, time=0).compute()
+
+    assert out.shape == (2, 360)
+    np.testing.assert_array_equal(out.lon.values, lon)
+    expected = np.tile(np.sin(np.radians(out.lon.values)), (2, 1))
+    np.testing.assert_allclose(out.values, expected, atol=1e-6)
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
