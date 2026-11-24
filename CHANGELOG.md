@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Packaging for PyPI: the regional assets are downloaded to the user cache directory (or `$PROFSEA_DATA_DIR`, or an existing `profsea/profsea-assets` copy in a source checkout) instead of into the installed package, with retries on transient Zenodo errors; the wheel ships only the code and `auxiliary_data` (the experiments script moves to `experimental_scripts/`); package metadata gains a licence, Python requirement, classifiers and project links; a release workflow publishes GitHub releases to PyPI; and the WAIS and Peninsula ISMIP6 parameter files carry the right titles [#NNN](https://github.com/MetOffice/ProFSea-tool/pull/NNN)
 - Updated `profsea-assets` fetch to get latest assets version with cmip5-patterns and fingerprints re-scaled [#120](https://github.com/MetOffice/ProFSea-tool/pull/120)
 - Minor update to CLA documentation [#117](https://github.com/MetOffice/ProFSea-tool/pull/117)
 - Update `.gitignore` and remove excess files [#118](https://github.com/MetOffice/ProFSea-tool/pull/118)

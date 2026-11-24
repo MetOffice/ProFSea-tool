@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm"]
+requires = ["setuptools>=77", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,9 +7,22 @@ name = "profsea"
 version = "3.0.0"
 description = "A rapid, modular sea-level simulator."
 readme = "README.md"
+license = "OGL-UK-3.0"
+license-files = ["LICENCE"]
+requires-python = ">=3.12"
+keywords = ["sea level", "climate", "emulator", "ice sheets", "Monte Carlo"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+    "Topic :: Scientific/Engineering :: Hydrology",
+]
 authors = [
     { name = "Jennifer Weeks", email = "jennifer.weeks@metoffice.gov.uk" },
-    { name = "Gregory Munday", email = "gregory.munday@keble.ox.ac.uk" },
+    { name = "Gregory Munday", email = "gregory.munday@physics.ox.ac.uk" },
     { name = "Hemant Khatri", email = "hemant.khatri@metoffice.gov.uk" },
 ]
 dependencies = [
@@ -19,15 +32,30 @@ dependencies = [
     "dask",
     "rich",
     "requests",
+    "platformdirs",
     "regionmask",
     "netcdf4",
     "h5netcdf",
     "zarr>=3.1.3"
 ]
 
+[project.urls]
+Homepage = "https://github.com/MetOffice/ProFSea-tool"
+Documentation = "https://metoffice.github.io/ProFSea-tool/"
+Repository = "https://github.com/MetOffice/ProFSea-tool"
+Issues = "https://github.com/MetOffice/ProFSea-tool/issues"
+Changelog = "https://github.com/MetOffice/ProFSea-tool/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+# Ship only the data files listed below, not every file tracked in git
+include-package-data = false
+
 [tool.setuptools.packages.find]
 include = ["profsea*"]
-exclude = ["docs*", "tests*"]
+exclude = ["docs*", "tests*", "profsea.development*"]
+
+[tool.setuptools.package-data]
+profsea = ["auxiliary_data/*", "auxiliary_data/**/*"]
 
 [project.optional-dependencies]
 dev = [

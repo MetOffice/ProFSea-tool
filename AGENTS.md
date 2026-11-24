@@ -64,8 +64,8 @@ ProFSea-tool/
 │   │   └── spatial/           # Regional components (dask)
 │   ├── utils/                 # utils.py (sampling, regridding, I/O), ui.py (rich panels)
 │   ├── auxiliary_data/        # Calibration files; component-obs/ holds observations
-│   ├── profsea-assets/        # Zenodo download (gitignored, fetched on demand)
-│   ├── development/           # Exploratory notebooks, not part of the package API
+│   └── development/           # Exploratory notebooks, not shipped in the package
+├── experimental_scripts/
 │   └── scm_profsea_experiments.py  # Research script; needs `fair`, `rich_argparse`
 ├── tests/                     # pytest; mirrors the package (core/, components/, utils/)
 ├── docs/source/               # Sphinx (rst); notebooks in docs/source/tutorial_notebooks/
@@ -266,10 +266,15 @@ or add a new state/model pair rather than branching inside components.
   Antarctic parameters, Greenland calibration CSV, AR6 land-water projections) and, in
   `component-obs/`, the observational records read by `Observations` (IMBIE3 ice
   sheets, Zheng 2026). Keep additions small.
-- `profsea/profsea-assets/` (GRD fingerprints, GIA rates, CMIP5 and CMIP6 sterodynamic
-  patterns) is downloaded from Zenodo by `fetch_zenodo_fingerprints` the first time a
-  `Spatial`, `Local` or spatial component is constructed. It is gitignored; never commit
-  it. The download URL and version live in one place, `PROFSEA_ASSETS_URL` and
+- The `profsea-assets` folder (GRD fingerprints, GIA rates, CMIP5 and CMIP6
+  sterodynamic patterns) is downloaded from Zenodo by `fetch_zenodo_fingerprints` the
+  first time a `Spatial`, `Local` or spatial component is constructed. It lives outside
+  the package, at `assets_dir()` in `profsea/utils/utils.py`:
+  `$PROFSEA_DATA_DIR/profsea-assets` if that variable is set, else
+  `profsea/profsea-assets` in a source checkout if it is populated (gitignored; never
+  commit it), else the per-user cache directory (via `platformdirs`). Find asset files through `assets_dir()`, never relative to the
+  package, so read-only installs work. Downloads retry transient failures. The
+  download URL and version live in one place, `PROFSEA_ASSETS_URL` and
   `PROFSEA_ASSETS_VERSION` in `profsea/utils/utils.py`. A `.assets_version` marker in
   the folder records the local version, and a mismatch triggers a fresh download. To
   change the assets, publish a new Zenodo version (it gets a new record ID) and update
@@ -371,9 +376,11 @@ CI runs `ruff check .` and `ruff format --check .`; both must pass.
   check enforces it. This is a human's decision — never add a contributor row on
   someone's behalf.
 - The version is set statically in `pyproject.toml` and asserted in
-  `tests/utils/test_utils.py`; change both together.
+  `tests/utils/test_utils.py`; change both together. Releases are published by
+  `.github/workflows/release.yml` when a GitHub release is published; its tag must be
+  `v` plus that version (e.g. `v3.0.0`), and a version can only be uploaded to PyPI once.
 - Do not commit run outputs or forcing data from the repository root (`*.nc`, `*.zarr/`,
-  `*.csv`, `*.png`), nor anything under `profsea/profsea-assets/`.
+  `*.csv`, `*.png`), nor a copy of the assets.
 
 ## Known Rough Edges
 

@@ -34,6 +34,29 @@ Before making any changes, you need to set up your local workspace and install t
 
        pip install -e ".[dev]"
 
+4. **Regional Data (Optional)**
+
+   The regional components download their patterns from Zenodo (about 50 MB) the first
+   time they are used. ProFSea looks for them in this order:
+
+   * ``$PROFSEA_DATA_DIR/profsea-assets``, if the ``PROFSEA_DATA_DIR`` environment
+     variable is set;
+   * ``profsea/profsea-assets`` in your checkout, if that folder exists and is not
+     empty. This is handy while developing, for example to try out new patterns
+     before publishing them; the folder is gitignored, so never commit it;
+   * your user cache directory (``~/.cache/profsea`` on Linux,
+     ``~/Library/Caches/profsea`` on macOS), which is what installed copies of
+     ProFSea use.
+
+   For example, to share one copy between several checkouts:
+
+   .. code-block:: bash
+
+       export PROFSEA_DATA_DIR="$HOME/profsea-data"
+
+   The unit tests never download the data, so you only need it to run spatial or
+   local projections.
+
 
 .. _open-an-issue:
 

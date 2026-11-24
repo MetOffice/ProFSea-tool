@@ -8,9 +8,7 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-
-PROFSEA_DIR = Path(__file__).resolve().parents[2]
-GIA_DIR = PROFSEA_DIR / "profsea-assets" / "gia"
+from profsea.utils import assets_dir
 
 
 class GIA(SpatialComponent):
@@ -28,7 +26,7 @@ class GIA(SpatialComponent):
         """
         gia_paths: str, Path, list of str/Path, or None
             Path(s) to a directory containing GIA files or direct paths to specific GIA NetCDF files.
-            Defaults to the main GIA_DIR if None.
+            Defaults to the "gia" folder of the downloaded assets if None.
         sample_spatial: bool, optional
             Whether to sample spatial patterns probabilistically. Default is False.
         """
@@ -37,7 +35,7 @@ class GIA(SpatialComponent):
         self.sample_spatial = sample_spatial
 
         if gia_paths is None:
-            raw_paths = [GIA_DIR]
+            raw_paths = [assets_dir() / "gia"]
         elif isinstance(gia_paths, (str, Path)):
             raw_paths = [Path(gia_paths)]
         else:

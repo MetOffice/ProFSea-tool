@@ -1,11 +1,13 @@
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import dask.array as da
 import numpy as np
 import pandas as pd
 import pytest
+import requests
 import xarray as xr
 
 from profsea.utils import (
@@ -21,7 +23,13 @@ from profsea.utils import (
     save_components,
     validate_projection_years,
 )
-from profsea.utils.utils import _load_zheng_component, _read_imbie3_obs
+from profsea.utils.utils import (
+    DOWNLOAD_TIMEOUT,
+    _load_zheng_component,
+    _read_imbie3_obs,
+    assets_dir,
+    assets_root,
+)
 
 
 class DummyClimateState:
@@ -227,7 +235,9 @@ def test_fetch_zenodo_downloads_and_extracts(mock_zip, mock_get, tmp_path):
 
     fetch_zenodo_fingerprints("http://fake.url", tmp_path, "profsea-assets")
 
-    mock_get.assert_called_once_with("http://fake.url", stream=True)
+    mock_get.assert_called_once_with(
+        "http://fake.url", stream=True, timeout=DOWNLOAD_TIMEOUT
+    )
     # Ensure hidden macOS files are filtered out during extraction
     mock_zip_instance.extractall.assert_called_once_with(tmp_path, members=["file1.nc"])
     # Zip file should be cleaned up
@@ -280,9 +290,102 @@ def test_fetch_zenodo_outdated_version_redownloads(
         "http://fake.url", tmp_path, "profsea-assets", version="1.1"
     )
 
-    mock_get.assert_called_once_with("http://fake.url", stream=True)
+    mock_get.assert_called_once_with(
+        "http://fake.url", stream=True, timeout=DOWNLOAD_TIMEOUT
+    )
     mock_zip_instance.extractall.assert_called_once_with(tmp_path, members=["file1.nc"])
     assert (target_dir / ".assets_version").read_text().strip() == "1.1"
+
+
+@patch("time.sleep")
+@patch("requests.get")
+@patch("zipfile.ZipFile")
+def test_fetch_zenodo_retries_transient_errors(
+    mock_zip, mock_get, mock_sleep, tmp_path
+):
+    """A transient failure (e.g. a Zenodo 504) is retried with a growing delay."""
+    _mock_zenodo_download(mock_get, mock_zip, ["file1.nc"])
+    good_response = mock_get.return_value
+    mock_get.side_effect = [
+        requests.exceptions.HTTPError("504 Server Error"),
+        requests.exceptions.ConnectionError("reset"),
+        good_response,
+    ]
+
+    fetch_zenodo_fingerprints(
+        "http://fake.url", tmp_path, "profsea-assets", retries=3, retry_delay=1.0
+    )
+
+    assert mock_get.call_count == 3
+    assert [c.args[0] for c in mock_sleep.call_args_list] == [1.0, 2.0]
+    assert not (tmp_path / "temp_fingerprints.zip").exists()
+
+
+@patch("time.sleep")
+@patch("requests.get", side_effect=requests.exceptions.HTTPError("504 Server Error"))
+def test_fetch_zenodo_gives_up_with_clear_error(mock_get, mock_sleep, tmp_path):
+    """After the last attempt the error says what to do, and nothing is left behind."""
+    with pytest.raises(RuntimeError, match="after 2 attempts.*PROFSEA_DATA_DIR"):
+        fetch_zenodo_fingerprints(
+            "http://fake.url", tmp_path, "profsea-assets", retries=2, retry_delay=0
+        )
+
+    assert mock_get.call_count == 2
+    assert not (tmp_path / "temp_fingerprints.zip").exists()
+    assert not (tmp_path / "profsea-assets").exists()
+
+
+def _fake_package(tmp_path, checkout: bool, with_assets: bool) -> Path:
+    """A stand-in profsea package folder, optionally inside a git checkout and
+    optionally holding a populated profsea-assets copy."""
+    package = tmp_path / "repo" / "profsea"
+    package.mkdir(parents=True)
+    if checkout:
+        (package.parent / "pyproject.toml").touch()
+        (package.parent / ".git").mkdir()
+    if with_assets:
+        (package / "profsea-assets").mkdir()
+        (package / "profsea-assets" / "gia").mkdir()
+    return package
+
+
+@pytest.mark.parametrize(
+    "checkout, with_assets",
+    [(False, False), (False, True), (True, False)],
+)
+def test_assets_dir_defaults_to_user_cache(
+    monkeypatch, tmp_path, checkout, with_assets
+):
+    """Installed packages, and checkouts without a local copy, use the per-user
+    cache, outside the (possibly read-only) package."""
+    import platformdirs
+
+    package = _fake_package(tmp_path, checkout, with_assets)
+    monkeypatch.setattr("profsea.utils.utils.PROFSEA_DIR", package)
+    monkeypatch.delenv("PROFSEA_DATA_DIR", raising=False)
+    expected = Path(platformdirs.user_cache_dir("profsea", appauthor=False))
+
+    assert assets_root() == expected
+    assert assets_dir() == expected / "profsea-assets"
+
+
+def test_assets_dir_uses_checkout_copy(monkeypatch, tmp_path):
+    """A source checkout with a populated profsea/profsea-assets uses that copy."""
+    package = _fake_package(tmp_path, checkout=True, with_assets=True)
+    monkeypatch.setattr("profsea.utils.utils.PROFSEA_DIR", package)
+    monkeypatch.delenv("PROFSEA_DATA_DIR", raising=False)
+
+    assert assets_dir() == package / "profsea-assets"
+
+
+def test_assets_dir_environment_override(monkeypatch, tmp_path):
+    """PROFSEA_DATA_DIR chooses the folder that holds profsea-assets, even over a
+    checkout copy."""
+    package = _fake_package(tmp_path, checkout=True, with_assets=True)
+    monkeypatch.setattr("profsea.utils.utils.PROFSEA_DIR", package)
+    monkeypatch.setenv("PROFSEA_DATA_DIR", str(tmp_path / "data"))
+
+    assert assets_dir() == tmp_path / "data" / "profsea-assets"
 
 
 # --- save_components ---

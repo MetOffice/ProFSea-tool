@@ -8,40 +8,39 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import reformat_global_projection
+from profsea.utils import assets_dir, reformat_global_projection
 
-PROFSEA_DIR = Path(__file__).resolve().parents[2]
-FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
-
+# Default fingerprint files for each component, in the "grd-fingerprints" folder of
+# the downloaded assets (see profsea.utils.assets_dir)
 FP_PATH_MAP = {
     "greendyn": [
-        FP_DIR / "greendyn_klemann.nc",
-        FP_DIR / "greendyn_slangen.nc",
-        FP_DIR / "greendyn_spada.nc",
+        "greendyn_klemann.nc",
+        "greendyn_slangen.nc",
+        "greendyn_spada.nc",
     ],
     "greensmb": [
-        FP_DIR / "greensmb_klemann.nc",
-        FP_DIR / "greensmb_slangen.nc",
-        FP_DIR / "greensmb_spada.nc",
+        "greensmb_klemann.nc",
+        "greensmb_slangen.nc",
+        "greensmb_spada.nc",
     ],
-    "greenland": [FP_DIR / "greenland_ar6.nc"],
-    "landwater": [FP_DIR / "landwater_slangen.nc"],
-    "wais": [FP_DIR / "wais.nc"],
-    "eais": [FP_DIR / "eais.nc"],
+    "greenland": ["greenland_ar6.nc"],
+    "landwater": ["landwater_slangen.nc"],
+    "wais": ["wais.nc"],
+    "eais": ["eais.nc"],
     "antdyn": [
-        FP_DIR / "antdyn_klemann.nc",
-        FP_DIR / "antdyn_slangen.nc",
-        FP_DIR / "antdyn_spada.nc",
+        "antdyn_klemann.nc",
+        "antdyn_slangen.nc",
+        "antdyn_spada.nc",
     ],
     "antsmb": [
-        FP_DIR / "antsmb_klemann.nc",
-        FP_DIR / "antsmb_slangen.nc",
-        FP_DIR / "antsmb_spada.nc",
+        "antsmb_klemann.nc",
+        "antsmb_slangen.nc",
+        "antsmb_spada.nc",
     ],
     "glacier": [
-        FP_DIR / "glacier_klemann.nc",
-        FP_DIR / "glacier_slangen.nc",
-        FP_DIR / "glacier_spada.nc",
+        "glacier_klemann.nc",
+        "glacier_slangen.nc",
+        "glacier_spada.nc",
     ],
 }
 
@@ -82,7 +81,8 @@ class Fingerprint(SpatialComponent):
         if fingerprint_paths is None:
             # Determine default paths based on the component type
             try:
-                self.fp_paths = [Path(p) for p in FP_PATH_MAP[fingerprint_component]]
+                fp_dir = assets_dir() / "grd-fingerprints"
+                self.fp_paths = [fp_dir / p for p in FP_PATH_MAP[fingerprint_component]]
             except KeyError:
                 raise ValueError(
                     f"No default fingerprint paths found for fingerprint component '{fingerprint_component}'. Please provide explicit paths."
