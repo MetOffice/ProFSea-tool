@@ -78,14 +78,17 @@ def assets_root() -> Path:
     custom = os.environ.get(DATA_DIR_ENV_VAR)
     if custom:
         return Path(custom).expanduser()
-    checkout_copy = PROFSEA_DIR / ASSETS_FOLDER_NAME
-    if (
-        _in_source_checkout()
-        and checkout_copy.is_dir()
-        and any(checkout_copy.iterdir())
-    ):
+    if _in_source_checkout() and _is_populated(PROFSEA_DIR / ASSETS_FOLDER_NAME):
         return PROFSEA_DIR
     return Path(platformdirs.user_cache_dir("profsea", appauthor=False))
+
+
+def _is_populated(folder: Path) -> bool:
+    """True if ``folder`` exists and holds at least one entry."""
+    try:
+        return any(folder.iterdir())
+    except OSError:  # missing, not a directory, or unreadable
+        return False
 
 
 def assets_dir() -> Path:

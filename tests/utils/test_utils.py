@@ -369,6 +369,22 @@ def test_assets_dir_defaults_to_user_cache(
     assert assets_dir() == expected / "profsea-assets"
 
 
+def test_assets_dir_tolerates_unlistable_checkout_copy(monkeypatch, tmp_path):
+    """A checkout copy that cannot be listed (here: missing, while Path.exists and
+    Path.is_dir are mocked to True, as some component tests do) falls back to the
+    cache instead of raising."""
+    import platformdirs
+
+    package = _fake_package(tmp_path, checkout=True, with_assets=False)
+    monkeypatch.setattr("profsea.utils.utils.PROFSEA_DIR", package)
+    monkeypatch.delenv("PROFSEA_DATA_DIR", raising=False)
+    monkeypatch.setattr(Path, "exists", lambda self: True)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    expected = Path(platformdirs.user_cache_dir("profsea", appauthor=False))
+    assert assets_root() == expected
+
+
 def test_assets_dir_uses_checkout_copy(monkeypatch, tmp_path):
     """A source checkout with a populated profsea/profsea-assets uses that copy."""
     package = _fake_package(tmp_path, checkout=True, with_assets=True)
