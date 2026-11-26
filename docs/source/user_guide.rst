@@ -53,6 +53,19 @@ Detailed examples on how to use ProFSea can be found in the tutorial notebooks, 
 	gmslr = global_model.results["total_gmslr"]
 
 
+Regional Data
+-------------
+
+The regional components (``Fingerprint``, ``SterodynamicCMIP6`` and ``GIA``) use
+patterns that are too large to ship with the package. They are downloaded from
+`Zenodo <https://doi.org/10.5281/zenodo.20427061>`__ (about 50 MB) the first time a
+regional component or model is created, and reused afterwards. They are stored in your
+user cache directory (for example ``~/.cache/profsea`` on Linux or
+``~/Library/Caches/profsea`` on macOS). To keep them elsewhere, for instance on a
+shared drive, set the ``PROFSEA_DATA_DIR`` environment variable to a folder of your
+choice before running ProFSea. The :doc:`development_guide` describes how a source
+checkout finds them.
+
 Tutorial Notebook
 -----------------
 

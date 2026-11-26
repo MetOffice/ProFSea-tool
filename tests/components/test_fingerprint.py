@@ -9,6 +9,7 @@ import xarray as xr
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import SpatialState
 from profsea.components.spatial.fingerprint import FP_PATH_MAP, Fingerprint
+from profsea.utils import assets_dir
 
 
 def get_dummy_spatial_state(
@@ -69,6 +70,7 @@ class TestFingerprintInit:
         assert len(fp.fp_paths) == len(FP_PATH_MAP["greenland"])
         assert isinstance(fp.fp_paths[0], Path)
         assert fp.fp_paths[0].name == "greenland_ar6.nc"
+        assert fp.fp_paths[0].parent == assets_dir() / "grd-fingerprints"
 
     def test_invalid_default_component(self, sample_global_proj):
         """Requesting an unmapped component should raise a ValueError."""

@@ -9,12 +9,9 @@ import xarray as xr
 
 from profsea.components.core.base import SpatialComponent
 from profsea.components.core.state import ClimateState
-from profsea.utils import reformat_global_projection
+from profsea.utils import assets_dir, reformat_global_projection
 
 logging.basicConfig(level=logging.WARNING)
-
-PROFSEA_DIR = Path(__file__).resolve().parents[2]
-PATTERNS_DIR = PROFSEA_DIR / "profsea-assets"
 
 
 class SterodynamicCMIP6(SpatialComponent):
@@ -53,7 +50,7 @@ class SterodynamicCMIP6(SpatialComponent):
 
         if patterns_dir is None:
             cmip_str = self.cmip_era + "-patterns"
-            self.patterns_dir = PATTERNS_DIR / cmip_str
+            self.patterns_dir = assets_dir() / cmip_str
         else:
             self.patterns_dir = Path(patterns_dir)
 

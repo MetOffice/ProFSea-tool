@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
 
 import dask.array as da
 import numpy as np
 import xarray as xr
 
 from profsea.utils import (
+    ASSETS_FOLDER_NAME,
     PROFSEA_ASSETS_URL,
     PROFSEA_ASSETS_VERSION,
+    assets_root,
     fetch_zenodo_fingerprints,
 )
 
 from .state import ClimateState
-
-PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Component(ABC):
@@ -29,8 +28,8 @@ class SpatialComponent(Component):
     def fetch_assets(self):
         fetch_zenodo_fingerprints(
             zenodo_url=PROFSEA_ASSETS_URL,
-            data_dir=PROFSEA_DIR,
-            expected_folder_name="profsea-assets",
+            data_dir=assets_root(),
+            expected_folder_name=ASSETS_FOLDER_NAME,
             version=PROFSEA_ASSETS_VERSION,
         )
 

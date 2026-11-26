@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import warnings
-from pathlib import Path
 
 import dask.array as da
 import numpy as np
@@ -11,9 +10,11 @@ from rich.console import Console
 from rich.progress import track
 
 from profsea.utils import (
+    ASSETS_FOLDER_NAME,
     PROFSEA_ASSETS_URL,
     PROFSEA_ASSETS_VERSION,
     PROFSEA_VERSION,
+    assets_root,
     fetch_zenodo_fingerprints,
     save_components,
     validate_component_map,
@@ -26,8 +27,6 @@ from .state import SpatialState
 logger = logging.getLogger(__name__)
 console = Console()
 warnings.filterwarnings("ignore")
-
-PROFSEA_DIR = Path(__file__).resolve().parent.parent.parent
 
 
 class Spatial:
@@ -66,8 +65,8 @@ class Spatial:
 
         fetch_zenodo_fingerprints(
             zenodo_url=PROFSEA_ASSETS_URL,
-            data_dir=PROFSEA_DIR,
-            expected_folder_name="profsea-assets",
+            data_dir=assets_root(),
+            expected_folder_name=ASSETS_FOLDER_NAME,
             version=PROFSEA_ASSETS_VERSION,
         )
 

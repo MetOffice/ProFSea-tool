@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import zipfile
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
@@ -12,6 +13,7 @@ import dask
 import dask.array as da
 import numpy as np
 import pandas as pd
+import platformdirs
 import requests
 import xarray as xr
 from rich.console import Console
@@ -46,6 +48,52 @@ PROFSEA_ASSETS_URL = (
     "https://zenodo.org/records/24449347/files/profsea-assets.zip?download=1"
 )
 ASSETS_VERSION_FILE = ".assets_version"
+ASSETS_FOLDER_NAME = "profsea-assets"
+
+# The assets are downloaded to a per-user cache rather than into the installed
+# package, so read-only installs work and environments share one copy. Set this
+# environment variable to use another folder.
+DATA_DIR_ENV_VAR = "PROFSEA_DATA_DIR"
+
+# Seconds to wait for Zenodo to connect, and between received chunks
+DOWNLOAD_TIMEOUT = (10, 60)
+
+
+def _in_source_checkout() -> bool:
+    """True when running from a git checkout of ProFSea rather than an install."""
+    repo = PROFSEA_DIR.parent
+    return (repo / "pyproject.toml").is_file() and (repo / ".git").exists()
+
+
+def assets_root() -> Path:
+    """Folder that holds the downloaded ``profsea-assets`` folder, chosen in order:
+
+    1. ``$PROFSEA_DATA_DIR``, if set;
+    2. the package folder of a source checkout, if it already holds a populated
+       ``profsea-assets`` copy (``profsea/profsea-assets``, gitignored), which is
+       handy in development;
+    3. the per-user cache directory (e.g. ``~/.cache/profsea`` on Linux,
+       ``~/Library/Caches/profsea`` on macOS).
+    """
+    custom = os.environ.get(DATA_DIR_ENV_VAR)
+    if custom:
+        return Path(custom).expanduser()
+    if _in_source_checkout() and _is_populated(PROFSEA_DIR / ASSETS_FOLDER_NAME):
+        return PROFSEA_DIR
+    return Path(platformdirs.user_cache_dir("profsea", appauthor=False))
+
+
+def _is_populated(folder: Path) -> bool:
+    """True if ``folder`` exists and holds at least one entry."""
+    try:
+        return any(folder.iterdir())
+    except OSError:  # missing, not a directory, or unreadable
+        return False
+
+
+def assets_dir() -> Path:
+    """The downloaded ProFSea assets (fingerprints, GIA, sterodynamic patterns)."""
+    return assets_root() / ASSETS_FOLDER_NAME
 
 
 def validate_component_map(
@@ -319,11 +367,35 @@ def check_shapes(array: np.ndarray, n_time: int) -> None:
         )
 
 
+def _download_with_progress(url: str, destination: Path) -> None:
+    """Stream ``url`` to ``destination`` with a rich progress bar."""
+    response = requests.get(url, stream=True, timeout=DOWNLOAD_TIMEOUT)
+    response.raise_for_status()  # Raise an error for bad status codes
+    total_size = int(response.headers.get("content-length", 0))
+
+    with Progress(
+        TextColumn("[bold cyan]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        download_task = progress.add_task("Downloading dataset...", total=total_size)
+        with open(destination, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    file.write(chunk)
+                    progress.update(download_task, advance=len(chunk))
+
+
 def fetch_zenodo_fingerprints(
     zenodo_url: str,
     data_dir: Path,
     expected_folder_name: str,
     version: str | None = None,
+    retries: int = 3,
+    retry_delay: float = 5.0,
 ) -> None:
     """
     Downloads and extracts the ProFSea fingerprint dataset from Zenodo if it doesn't already exist locally.
@@ -341,6 +413,17 @@ def fetch_zenodo_fingerprints(
         reused when its version marker file matches; otherwise the dataset is
         downloaded again and extracted over it. If None, any populated local copy
         is reused.
+    retries: int, optional
+        Number of download attempts before giving up. Zenodo occasionally
+        returns transient errors (e.g. 504). Default is 3.
+    retry_delay: float, optional
+        Seconds to wait after the first failed attempt, doubling after each
+        further failure. Default is 5.
+
+    Raises
+    ------
+    RuntimeError
+        If every download attempt fails.
     """
     target_dir = data_dir / expected_folder_name
     version_file = target_dir / ASSETS_VERSION_FILE
@@ -362,36 +445,30 @@ def fetch_zenodo_fingerprints(
 
     logger.info(f"Initiating download from {zenodo_url}...")
 
-    # 2. Stream the download with a rich progress bar
-    try:
-        response = requests.get(zenodo_url, stream=True)
-        response.raise_for_status()  # Raise an error for bad status codes
-
-        total_size = int(response.headers.get("content-length", 0))
-
-        with Progress(
-            TextColumn("[bold cyan]{task.description}"),
-            BarColumn(),
-            DownloadColumn(),
-            TransferSpeedColumn(),
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            download_task = progress.add_task(
-                "Downloading dataset...", total=total_size
+    # 2. Stream the download, retrying transient failures with a growing delay
+    for attempt in range(1, retries + 1):
+        try:
+            _download_with_progress(zenodo_url, zip_path)
+            break
+        except requests.exceptions.RequestException as e:
+            if zip_path.exists():
+                zip_path.unlink()  # Clean up partial downloads
+            if attempt == retries:
+                msg = (
+                    f"Could not download the ProFSea assets from {zenodo_url} after "
+                    f"{retries} attempts ({e}). Zenodo may be temporarily "
+                    "unavailable: try again later, or download the zip yourself and "
+                    f"extract it into {data_dir} (set {DATA_DIR_ENV_VAR} to use "
+                    "another folder)."
+                )
+                logger.error(f"[bold red]{msg}[/bold red]")
+                raise RuntimeError(msg) from e
+            delay = retry_delay * 2 ** (attempt - 1)
+            logger.warning(
+                f"Download failed ({e}); retrying in {delay:.0f} s "
+                f"(attempt {attempt} of {retries})..."
             )
-
-            with open(zip_path, "wb") as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        file.write(chunk)
-                        progress.update(download_task, advance=len(chunk))
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"[bold red]Failed to download data: {e}[/bold red]")
-        if zip_path.exists():
-            zip_path.unlink()  # Clean up partial downloads
-        raise
+            time.sleep(delay)
 
     logger.info("Extracting data...")
     try:
