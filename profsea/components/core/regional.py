@@ -64,8 +64,8 @@ class RegionalEnsemble:
     - one random stream per component, for any other draws (CMIP model, GIA
       model).
 
-    The class using this mixin must set ``n_years``, ``start_year``,
-    ``end_year``, ``baseline_yrs``, ``num_spatial_members``,
+    The class using this mixin must set ``n_years``, ``start_yr``,
+    ``end_yr``, ``baseline_yrs``, ``num_spatial_members``,
     ``output_percentiles``, ``compute_total``, ``chunk_size_mb`` and
     ``dtype``, call :meth:`_set_components`, and implement
     :meth:`_spatial_coords`.
@@ -121,7 +121,7 @@ class RegionalEnsemble:
         if n_time != self.n_years:
             raise ValueError(
                 f"Global projections have {n_time} years but the model expects "
-                f"{self.n_years} ({self.start_year} to {self.end_year - 1})."
+                f"{self.n_years} ({self.start_yr} to {self.end_yr - 1})."
             )
         return n_climate, n_process
 
@@ -280,7 +280,7 @@ class RegionalEnsemble:
             output_percentiles=self.output_percentiles,
             baseline_yrs=self.baseline_yrs,
             dtype=self.dtype,
-            endofhistory=self.start_year,
+            endofhistory=self.start_yr,
             member_indices=self.member_indices,
             fingerprint_fraction=self.fingerprint_fraction,
             time_chunk=time_chunk,
@@ -318,7 +318,7 @@ class RegionalEnsemble:
                 dims=[ensemble_dim, "time", *spatial_dims],
                 coords={
                     **self._ensemble_coords(arr.shape[0]),
-                    "time": np.arange(self.start_year, self.start_year + arr.shape[1]),
+                    "time": np.arange(self.start_yr, self.start_yr + arr.shape[1]),
                     **spatial_coords,
                 },
                 attrs={

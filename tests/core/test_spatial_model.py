@@ -26,10 +26,11 @@ GRID_2X2 = dict(start_lat=0, end_lat=1, step_lat=1, start_lon=0, end_lon=1, step
 def test_spatial_init_blocks_download_and_configures_spatial_members(mock_fetch):
     """Construction checks the assets and records the global ensemble shape."""
     components = get_dummy_components(nt=5, num_members=10, n_years=44)
-    spatial = Spatial(components=components, end_year=2050)
+    spatial = Spatial(components=components, start_yr=2006, end_yr=2050)
 
     mock_fetch.assert_called_once()
-    assert spatial.end_year == 2050
+    assert spatial.start_yr == 2006
+    assert spatial.end_yr == 2050
     assert spatial.num_spatial_members == 1000
     assert spatial.num_members == 5
     assert (spatial.n_climate, spatial.n_process) == (5, 10)
@@ -43,7 +44,7 @@ def test_spatial_rejects_mismatched_global_ensembles(mock_fetch):
         {"other": get_dummy_components(nt=2, num_members=5, n_years=4)["mock_comp"]}
     )
     with pytest.raises(ValueError, match="same global ensemble"):
-        Spatial(components=components, end_year=2010)
+        Spatial(components=components, end_yr=2010)
 
 
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
@@ -51,7 +52,7 @@ def test_spatial_rejects_wrong_time_axis(mock_fetch):
     """Global projections must cover the model's years."""
     components = get_dummy_components(n_years=4)
     with pytest.raises(ValueError, match="4 years but the model expects 44"):
-        Spatial(components=components, end_year=2050)
+        Spatial(components=components, end_yr=2050)
 
 
 @pytest.mark.parametrize(
@@ -77,7 +78,7 @@ def test_spatial_grid_longitudes_are_normalised_and_sorted(
         step_lon=step_lon,
     )
     spatial = Spatial(
-        components=get_dummy_components(n_years=4), grid_config=grid, end_year=2010
+        components=get_dummy_components(n_years=4), grid_config=grid, end_yr=2010
     )
     np.testing.assert_array_equal(spatial.grid_lons, expected)
 
@@ -132,7 +133,8 @@ def test_spatial_output_longitudes_label_their_values(mock_fetch):
     spatial = Spatial(
         components={"pattern": FixedPattern(pattern)},
         grid_config=grid,
-        end_year=2007,
+        start_yr=2006,
+        end_yr=2007,
         output_percentiles=None,
         num_spatial_members=1,
         compute_total=False,
@@ -152,7 +154,7 @@ def test_arr_to_xr_metadata_with_percentiles(mock_fetch):
     # Initializes with default output_percentiles=[5, 17, 50, 83, 95] (Length 5)
     """Percentile outputs get a percentile axis and calendar years."""
     components = get_dummy_components(n_years=4)
-    spatial = Spatial(components=components, end_year=2010)
+    spatial = Spatial(components=components, end_yr=2010)
 
     # 4D Array: (percentiles, time, lat, lon)
     arr = da.zeros((5, 4, 180, 360))
@@ -178,7 +180,7 @@ def test_full_ensemble_output_labels_global_members(mock_fetch):
     )
     spatial = Spatial(
         components=components,
-        end_year=2010,
+        end_yr=2010,
         output_percentiles=None,
         num_spatial_members=6,
         grid_config=GRID_2X2,
@@ -197,7 +199,7 @@ def test_full_ensemble_output_labels_global_members(mock_fetch):
 def test_sum_spatial_components(mock_fetch):
     """sum_components adds full-member components when no total exists yet."""
     components = get_dummy_components()
-    spatial = Spatial(components=components, end_year=2010)
+    spatial = Spatial(components=components, end_yr=2010)
 
     # Two identical arrays of 1s
     da1 = xr.DataArray(np.ones((2, 2)), dims=["lat", "lon"])
@@ -214,7 +216,7 @@ def test_sum_spatial_components(mock_fetch):
 @patch("profsea.components.core.spatial_model.fetch_zenodo_fingerprints")
 def test_sum_components_does_not_double_count_or_sum_percentiles(mock_fetch):
     """sum_components returns an existing total and refuses to add percentiles."""
-    spatial = Spatial(components=get_dummy_components(), end_year=2010)
+    spatial = Spatial(components=get_dummy_components(), end_yr=2010)
     ones = xr.DataArray(np.ones((3, 2)), dims=["percentile", "lat"])
 
     existing = {"comp1": ones, "total_rsl": ones * 5}
@@ -244,7 +246,7 @@ def test_run_full_spatial_member_ensemble(mock_fetch, percentiles, capsys):
     comp.project.side_effect = project
     model = Spatial(
         components=components,
-        end_year=2009,
+        end_yr=2009,
         output_percentiles=percentiles,
         num_spatial_members=7,
         grid_config=GRID_2X2,
@@ -283,7 +285,7 @@ def test_run_memberwise_total_and_percentiles(mock_fetch):
 
     model = Spatial(
         components=components,
-        end_year=2010,
+        end_yr=2010,
         num_spatial_members=7,
         output_percentiles=[17, 50, 83],
         grid_config=GRID_2X2,
@@ -316,7 +318,7 @@ def test_component_percentiles_without_total_avoid_member_expansion(mock_fetch):
     components["mock_comp"].project_separable.return_value = projection
     model = Spatial(
         components=components,
-        end_year=2010,
+        end_yr=2010,
         output_percentiles=[25, 75],
         num_spatial_members=6,
         compute_total=False,
@@ -339,7 +341,7 @@ def test_output_size_estimate_counts_every_output(mock_fetch, capsys):
     components = get_dummy_components(n_years=4)
     components["other"] = get_dummy_components(n_years=4)["mock_comp"]
     spatial = Spatial(
-        components=components, end_year=2010, grid_config=GRID_2X2
+        components=components, end_yr=2010, grid_config=GRID_2X2
     )  # 5 percentiles, float32, 2 x 2 grid
 
     per_array_gb = 5 * 4 * 2 * 2 * 4 / 1e9
@@ -348,6 +350,6 @@ def test_output_size_estimate_counts_every_output(mock_fetch, capsys):
     assert spatial.output_gb == pytest.approx(3 * per_array_gb)
 
     without_total = Spatial(
-        components=components, end_year=2010, grid_config=GRID_2X2, compute_total=False
+        components=components, end_yr=2010, grid_config=GRID_2X2, compute_total=False
     )
     assert without_total.n_output_arrays == 2

@@ -97,7 +97,7 @@ def print_spatial_preflight(model) -> None:
     )
 
     table.add_row("Components", components_list)
-    table.add_row("Timeframe", f"{model.start_year} -> {model.end_year}")
+    table.add_row("Timeframe", f"{model.start_yr} -> {model.end_yr}")
     table.add_row("Baseline", f"{model.baseline_yrs[0]} - {model.baseline_yrs[1]}")
     table.add_row("Grid Resolution", grid_str)
     table.add_row("Output", output_str)

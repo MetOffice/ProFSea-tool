@@ -121,7 +121,7 @@ class TestLocalMetadataGeneration:
         local = Local(
             components=components,
             locations=locations,
-            end_year=2010,
+            end_yr=2010,
             output_percentiles=[5, 50, 95],
         )
 
@@ -141,7 +141,8 @@ class TestLocalMetadataGeneration:
         local = Local(
             components=components,
             locations=locations,
-            end_year=2010,
+            start_yr=2006,
+            end_yr=2010,
             output_percentiles=None,
             num_spatial_members=7,
         )
@@ -163,7 +164,7 @@ def test_run_full_spatial_member_ensemble(mock_fetch, percentiles):
     model = Local(
         components={"custom": MockLocalComponent()},
         locations={"Newlyn": (50.1, -5.5), "Aberdeen": (57.1, -2.1)},
-        end_year=2010,
+        end_yr=2010,
         output_percentiles=percentiles,
         num_spatial_members=7,
     )
@@ -199,7 +200,7 @@ def test_universal_mask_does_not_drop_sites_for_one_masked_member(
     model = Local(
         components={"custom": PartlyMaskedComponent()},
         locations={"Newlyn": (50.1, -5.5)},
-        end_year=2010,
+        end_yr=2010,
         output_percentiles=percentiles,
         num_spatial_members=7,
     )

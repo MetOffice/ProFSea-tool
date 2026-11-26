@@ -40,7 +40,8 @@ class Spatial(RegionalEnsemble):
         components: dict[str, SpatialComponent],
         grid_config: dict = None,
         grid_interpolation: str = "linear",
-        end_year: int = 2301,
+        start_yr: int = 2006,
+        end_yr: int = 2301,
         baseline_yrs: tuple = (1995, 2014),
         output_percentiles: list | np.ndarray = [5, 17, 50, 83, 95],
         num_spatial_members: int = 1000,
@@ -65,8 +66,10 @@ class Spatial(RegionalEnsemble):
         grid_interpolation: str, optional
             Interpolation method for regridding patterns. Currently not applied:
             patterns are always interpolated linearly. Default is 'linear'.
-        end_year: int, optional
-            The projections run from 2006 to end_year - 1. Default is 2301.
+        start_yr: int, optional
+            The projections run from start_yr to end_yr - 1. Default is 2006.
+        end_yr: int, optional
+            The projections run from start_yr to end_yr - 1. Default is 2301.
         baseline_yrs: tuple, optional
             First and last year of the baseline period. Default is (1995, 2014).
         output_percentiles: list or np.ndarray, optional
@@ -95,11 +98,11 @@ class Spatial(RegionalEnsemble):
         )
 
         self.grid_interpolation = grid_interpolation
-        self.end_year = end_year
+        self.start_yr = start_yr
+        self.end_yr = end_yr
         self.baseline_yrs = baseline_yrs
         self.output_percentiles = output_percentiles
-        self.start_year = 2006
-        self.n_years = self.end_year - self.start_year
+        self.n_years = self.end_yr - self.start_yr
         self.num_spatial_members = num_spatial_members
         self.dtype = dtype
         self.compute_total = compute_total
