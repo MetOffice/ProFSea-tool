@@ -6,13 +6,16 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-from profsea.components.core.base import SpatialComponent
+from profsea.components.core.base import SeparableProjection, SpatialComponent
 from profsea.components.core.state import SpatialState
-from profsea.utils import reformat_global_projection
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 FP_DIR = PROFSEA_DIR / "profsea-assets" / "grd-fingerprints"
 
+# Default fingerprint files for each component. Where a component has several
+# GRD models, they are listed in the same order everywhere (Klemann, Slangen,
+# Spada): members choose a model by position, so a member gets the same GRD
+# model in every component (as in Palmer et al., 2020).
 FP_PATH_MAP = {
     "greendyn": [
         FP_DIR / "greendyn_klemann.nc",
@@ -47,8 +50,12 @@ FP_PATH_MAP = {
 
 
 class Fingerprint(SpatialComponent):
-    """
-    Spatial fingerprint component that applies spatial patterns to global projections.
+    """Regional pattern of a barystatic (land ice or land water) contribution.
+
+    Multiplies each member's global contribution (e.g. Greenland mass loss, in
+    metres of global mean sea level) by a GRD fingerprint: the local sea-level
+    change per metre of global mean change, from the gravitational, rotational
+    and solid-Earth deformation response to that mass change.
     """
 
     def __init__(
@@ -63,20 +70,29 @@ class Fingerprint(SpatialComponent):
         Parameters
         ----------
         global_projection: xr.DataArray
-             A 2D array (members x years) of global projections to apply the fingerprints to.
-        fingerprint_paths: str, Path, or list of str/Path
-             Path(s) to NetCDF files containing the spatial fingerprint patterns. Each file should contain a DataArray with dimensions (lat, lon).
+            Full global ensemble of this contribution from ``Global``, shape
+            (climate_member, process_member, time), or (members, time).
+        fingerprint_component: str
+            Which default fingerprints to use, a key of ``FP_PATH_MAP`` (e.g.
+            "glacier", "greenland", "wais"). Ignored for the defaults when
+            ``fingerprint_paths`` is given.
+        fingerprint_paths: str, Path, or list of str/Path, optional
+            NetCDF files with fingerprints, one GRD model per file, each a
+            DataArray with dimensions (lat, lon). Overrides the defaults.
         scaling_factor: float, optional
-             Optional multiplier to apply to the fingerprint patterns (e.g., to convert from m to mm). Default is 1.0 (no scaling).
+            Multiplier applied to the fingerprints (e.g. to convert units).
+            Default is 1.0.
         sample_spatial: bool, optional
-             If True, randomly sample a different fingerprint pattern for each member. If False, use the mean of all provided fingerprints for all members (storyline mode). Default is True.
+            If True, each member uses one of the fingerprints, chosen with the
+            state's shared fingerprint fraction: a member uses the same GRD
+            model (the same position in the file list) in every Fingerprint
+            component, independently of which global member it is. If False,
+            every member uses the mean of the fingerprints ("storyline" mode).
+            Default is True.
         """
 
         self.fetch_assets()
-        self._global_projection = da.from_array(
-            global_projection.data,
-            chunks=(*([-1] * (global_projection.ndim - 1)), 1),
-        )
+        self._set_global_projection(global_projection)
         self.scaling_factor = scaling_factor
         self.sample_spatial = sample_spatial
         self.fingerprint_component = fingerprint_component
@@ -101,81 +117,58 @@ class Fingerprint(SpatialComponent):
                 if not p.exists():
                     raise FileNotFoundError(f"Missing fingerprint file: {p}")
 
-    @property
-    def global_projection(self):
-        return self._global_projection
-
     def _load_and_interpolate(self, state: SpatialState) -> da.Array:
         """
-        Lazily load and regrid all provided fingerprints.
+        Lazily load the fingerprints at the target grid or sites.
 
         Parameters
         ----------
-        state: SpatialState
-            The state object containing the target grid information.
+        state: SpatialState | LocalState
+            Target grid or sites.
 
         Returns
         -------
         da.Array
+            Fingerprints in file order, scaled, shape (n_fingerprints, *spatial).
         """
         grids = []
         for path in self.fp_paths:
             fp_da = xr.open_dataarray(path, chunks={"lat": -1, "lon": -1})
             fp_interp = self.extract_spatial(fp_da, state)
-            if "lat" in fp_interp.dims and "lon" in fp_interp.dims:
-                fp_interp = fp_interp.chunk({"lat": 30, "lon": 30})
             grids.append(fp_interp.data * self.scaling_factor)
 
         # Stack them into a 3D array: (n_fingerprints, lat, lon)
         return da.stack(grids, axis=0)
 
-    def project(self, state: SpatialState, rng: np.random.Generator) -> da.Array:
+    def project_separable(
+        self, state: SpatialState, rng: np.random.Generator
+    ) -> SeparableProjection:
         """
-        Calculate the spatial projection by applying the fingerprints to the global projection.
+        Global time series of the sampled members times their fingerprints.
 
         Parameters
         ----------
-        state: SpatialState
-            The state object containing the target grid information and number of members.
+        state: SpatialState | LocalState
+            Target grid or sites, sampled member indices and fingerprint fraction.
         rng: np.random.Generator
-            Random number generator for sampling fingerprints if sample_spatial is True.
+            Not used: fingerprint choices come from the shared fingerprint
+            fraction, so they match across Fingerprint components.
 
         Returns
         -------
-        da.Array
-            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year.
+        SeparableProjection
+            Members (members, time) and fingerprints (n_fingerprints, *spatial).
         """
-        fps = self._load_and_interpolate(state)  # Shape: (n_fps, lat, lon)
-        spatial_shape = fps.shape[1:]
-
-        global_projection = reformat_global_projection(self.global_projection, state)
-        indices = (state.random_fraction * global_projection.shape[0]).astype(int)
-        global_projection = global_projection[indices, :]
-
-        # Determine the spatial fingerprint for each member
-        n_fps = fps.shape[0]
-
-        if n_fps == 1:
-            # Only one fingerprint available
-            selected_fps = da.broadcast_to(
-                fps[0],
-                (state.num_localMC_members, *spatial_shape),
-            )
-        elif self.sample_spatial:
-            # Probabilistic mode: pick a random fingerprint per member
-            fp_indices = (state.random_fraction * n_fps).astype(int)
-            selected_fps = fps[fp_indices, ...]
-        else:
-            # Storyline mode: take the mean of the available fingerprints
-            mean_fp = da.nanmean(fps, axis=0)
-            selected_fps = da.broadcast_to(
-                mean_fp,
-                (state.num_localMC_members, *spatial_shape),
-            )
-
-        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
-        global_projection = global_projection.rechunk({0: -1, 1: time_chunk})
-        selected_fps = selected_fps.rechunk({0: -1})
-
-        # Broadcast and multiply: (members, years) * (members, lat, lon)
-        return self.broadcast_spatiotemporal(global_projection, selected_fps)
+        fingerprints = self._load_and_interpolate(state)
+        patterns, pattern_index = self.choose_patterns(
+            fingerprints,
+            state,
+            rng,
+            self.sample_spatial,
+            fraction=state.fingerprint_fraction,
+        )
+        return SeparableProjection(
+            temporal=self.sample_global_members(state),
+            patterns=patterns,
+            pattern_index=pattern_index,
+        )

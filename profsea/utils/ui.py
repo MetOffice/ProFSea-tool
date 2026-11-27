@@ -86,24 +86,25 @@ def print_spatial_preflight(model) -> None:
         output_str = f"Percentiles: {model.output_percentiles}"
         members = len(model.output_percentiles)
     else:
-        members = model.num_localMC_members
+        members = model.num_spatial_members
         output_str = f"Full Distribution ({members} members)"
 
-    # Memory estimation
-    bytes_per_element = 8
-    future_size_gb = (members * model.n_years * n_lat * n_lon * bytes_per_element) / 1e9
+    # Size of all outputs together (computed by the model), uncompressed
+    total_gb = model.output_gb
+    size_str = (
+        f"~{total_gb:.2f} GB ({model.n_output_arrays} arrays × "
+        f"{model.output_gb_per_array:.2f} GB, uncompressed)"
+    )
 
     table.add_row("Components", components_list)
-    table.add_row("Timeframe", f"{model.start_year} -> {model.end_year}")
+    table.add_row("Timeframe", f"{model.start_yr} -> {model.end_yr}")
     table.add_row("Baseline", f"{model.baseline_yrs[0]} - {model.baseline_yrs[1]}")
     table.add_row("Grid Resolution", grid_str)
     table.add_row("Output", output_str)
 
     # Color-code the memory warning
-    mem_style = "bold red" if future_size_gb > 20 else "magenta"
-    table.add_row(
-        "Est. Output Size", f"[{mem_style}]~{future_size_gb:.2f} GB[/{mem_style}]"
-    )
+    mem_style = "bold red" if total_gb > 20 else "magenta"
+    table.add_row("Est. Output Size", f"[{mem_style}]{size_str}[/{mem_style}]")
 
     panel = Panel(
         table,

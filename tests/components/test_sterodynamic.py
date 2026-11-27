@@ -11,6 +11,7 @@ from profsea.components.core.state import LocalState, SpatialState
 from profsea.components.spatial.sterodynamic import (
     SterodynamicCMIP5,
     SterodynamicCMIP6,
+    _SterodynamicCMIP,
 )
 
 
@@ -34,10 +35,12 @@ class TestSterodynamicInit:
         mock_fetch_assets.assert_called_once()
 
 
+@pytest.mark.parametrize("component_cls", [SterodynamicCMIP5, SterodynamicCMIP6])
 @patch("profsea.components.spatial.sterodynamic.xr.open_dataset")
 @patch("profsea.components.spatial.sterodynamic.Path.glob")
-def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
+def test_load_cmip6_slopes(mock_glob, mock_open_dataset, component_cls):
     # Mock file paths (glob is called twice: once for slopes, once for masks)
+    """Slope and land-mask files are stacked along a new model dimension."""
     mock_glob.side_effect = [
         [
             Path("dummy/zos_regression_ssp585_1.nc"),
@@ -60,168 +63,110 @@ def test_load_cmip6_slopes(mock_glob, mock_open_dataset):
 
     # Updated shape to (climate_members, process_members, time)
     dummy_global = xr.DataArray(np.zeros((3, 4, 100)))
-    stero = SterodynamicCMIP6(global_projection=dummy_global)
+    stero = component_cls(global_projection=dummy_global)
 
-    slopes, masks = stero._load_CMIP6_slopes()
+    slopes, masks = stero._load_slopes()
 
     assert slopes.shape == (2, 5, 5)
     assert "model" in slopes.dims
     assert masks is not None
     assert masks.shape == (2, 5, 5)
-    assert stero.land_mask_present is True
 
 
-@patch.object(SpatialComponent, "extract_spatial")
-@patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
-def test_expansion_contribution_storyline_mode(mock_load, mock_interp):
-    # Mock the loaded data and masks
-    mock_coeffs = xr.DataArray(
-        np.array([np.ones((2, 2)), np.ones((2, 2)) * 2, np.ones((2, 2)) * 3]),
-        coords=[("model", [0, 1, 2]), ("lat", [0, 1]), ("lon", [0, 1])],
-    )
-    mock_masks = xr.DataArray(
-        np.zeros((3, 2, 2)),
-        coords=[("model", [0, 1, 2]), ("lat", [0, 1]), ("lon", [0, 1])],
-    )
-    mock_load.return_value = (mock_coeffs, mock_masks)
-
-    # Let the mocked interpolator just return the array passed into it
-    mock_interp.return_value = mock_coeffs
-
-    # Test Storyline Mode with 3D global array: (5 climate, 2 process, 100 time)
-    dummy_global = xr.DataArray(np.zeros((5, 2, 100)))
-    stero_storyline = SterodynamicCMIP6(
-        global_projection=dummy_global, sample_spatial=False
-    )
-
-    state = SpatialState(
-        grid_lats=np.array([0, 1]),
-        grid_lons=np.array([0, 1]),
-        n_years=100,
-        num_localMC_members=10,
-        grid_interpolation="nearest",
-        output_percentiles=None,
-        baseline_yrs=(1995, 2014),
-        endofhistory=2006,
-        num_output_members=10,  # 5 climate_members * 2 process_members
-    )
-
-    stero_storyline.land_mask_present = (
-        True  # Simulate the flag being set during the load phase
-    )
-
-    rng = np.random.default_rng(42)
-    result_storyline = stero_storyline._calc_expansion_contribution(rng, state)
-
-    # In storyline mode, it takes the ensemble mean: (1+2+3)/3 = 2
-    # Expect flattened output members on the spatial dimension
-    assert result_storyline.shape == (10, 2, 2)
-    computed_result = result_storyline.compute()
-    np.testing.assert_array_equal(computed_result, np.ones((10, 2, 2)) * 2)
-
-
-@patch.object(SpatialComponent, "extract_spatial")
-@patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
-def test_expansion_contribution_sampled_mode(mock_load, mock_interp):
-    mock_coeffs = xr.DataArray(
-        np.array([np.ones((2, 2)), np.ones((2, 2)) * 2, np.ones((2, 2)) * 3]),
-        coords=[("model", [0, 1, 2]), ("lat", [0, 1]), ("lon", [0, 1])],
-    )
-    mock_masks = xr.DataArray(
-        np.zeros((3, 2, 2)),
-        coords=[("model", [0, 1, 2]), ("lat", [0, 1]), ("lon", [0, 1])],
-    )
-    mock_load.return_value = (mock_coeffs, mock_masks)
-    mock_interp.return_value = mock_coeffs
-
-    dummy_global = xr.DataArray(np.zeros((5, 2, 100)))
-    stero_sampled = SterodynamicCMIP6(
-        global_projection=dummy_global, sample_spatial=True
-    )
-
-    state = SpatialState(
-        grid_lats=np.array([0, 1]),
-        grid_lons=np.array([0, 1]),
-        n_years=100,
-        num_localMC_members=10,
-        grid_interpolation="nearest",
-        output_percentiles=None,
-        baseline_yrs=(1995, 2014),
-        endofhistory=2006,
-        num_output_members=10,
-    )
-
-    stero_sampled.land_mask_present = True
-
-    rng = np.random.default_rng(42)
-    result_sampled = np.asarray(stero_sampled._calc_expansion_contribution(rng, state))
-
-    assert result_sampled.shape == (10, 2, 2)
-    unique_values = np.unique(result_sampled)
-    assert len(unique_values) > 1
-
-
-@pytest.mark.parametrize("at_sites", [False, True])
-@pytest.mark.parametrize("sample_spatial", [False, True])
-@pytest.mark.parametrize(("n_years", "time_chunks"), [(3, (3,)), (3500, (3472, 28))])
-@patch.object(SterodynamicCMIP6, "_load_CMIP6_slopes")
-@patch.object(SpatialComponent, "extract_spatial")
-def test_project_resamples_global_members(
-    mock_extract, mock_load, at_sites, sample_spatial, n_years, time_chunks
-):
+def make_state(at_sites: bool, n_years: int = 3) -> SpatialState | LocalState:
+    """A four-member state on a 2x2 grid or at two sites."""
     kwargs = dict(
         n_years=n_years,
-        num_localMC_members=4,
-        num_output_members=1,
-        output_percentiles=[50],
+        num_spatial_members=4,
+        output_percentiles=None,
         baseline_yrs=(1995, 2014),
         endofhistory=2006,
-        random_fraction=np.random.default_rng(42).uniform(size=4),
+        member_indices=np.array([3, 0, 2, 1]),
+        fingerprint_fraction=np.array([0.1, 0.6, 0.9, 0.4]),
     )
     if at_sites:
-        state = LocalState(
+        return LocalState(
             target_lats=[0, 1],
             target_lons=[0, 1],
             interpolation_method="bilinear",
             **kwargs,
         )
-        spatial_shape = (2,)
-    else:
-        state = SpatialState(
-            grid_lats=np.array([0, 1]),
-            grid_lons=np.array([0, 1]),
-            grid_interpolation="linear",
-            **kwargs,
-        )
-        spatial_shape = (2, 2)
-    patterns = xr.DataArray(da.ones((3, *spatial_shape)) * 2)
-    mock_load.return_value = (patterns, None)
-    mock_extract.return_value = patterns
-    raw = np.arange(4 * n_years, dtype=float).reshape(2, 2, n_years)
-    comp = SterodynamicCMIP6(xr.DataArray(raw), sample_spatial=sample_spatial)
-    comp.land_mask_present = False
-
-    with patch.object(
-        comp, "broadcast_spatiotemporal", wraps=comp.broadcast_spatiotemporal
-    ) as mock_broadcast:
-        result = comp.project(state, np.random.default_rng(42))
-
-    temporal, spatial = mock_broadcast.call_args.args
-    assert temporal.chunks == ((4,), time_chunks)
-    assert spatial.chunks[0] == (4,)
-
-    indices = (state.random_fraction * 4).astype(int)
-    expected = raw.reshape(4, n_years)[indices] * 2
-    expected = expected.reshape((4, n_years) + (1,) * len(spatial_shape))
-    assert isinstance(result, da.Array)
-    assert result.shape == (4, n_years, *spatial_shape)
-    assert result.chunks[1] == time_chunks
-    np.testing.assert_allclose(
-        result.compute(), np.broadcast_to(expected, result.shape)
+    return SpatialState(
+        grid_lats=np.array([0, 1]),
+        grid_lons=np.array([0, 1]),
+        grid_interpolation="linear",
+        **kwargs,
     )
 
 
-def test_cmip5_placeholder_raises_clear_error():
-    """The CMIP5 placeholder should fail loudly rather than return zeros."""
-    with pytest.raises(NotImplementedError, match="SterodynamicCMIP6"):
-        SterodynamicCMIP5()
+def mock_patterns(mock_load, mock_extract, spatial_shape):
+    """Three CMIP model patterns with values 1, 2 and 3."""
+    values = np.stack([np.full(spatial_shape, v, dtype=float) for v in (1, 2, 3)])
+    patterns = xr.DataArray(da.from_array(values))
+    mock_load.return_value = (patterns, None)
+    mock_extract.return_value = patterns
+    return values
+
+
+@pytest.mark.parametrize("component_cls", [SterodynamicCMIP5, SterodynamicCMIP6])
+@pytest.mark.parametrize("at_sites", [False, True])
+@patch.object(_SterodynamicCMIP, "_load_slopes")
+@patch.object(SpatialComponent, "extract_spatial")
+def test_storyline_mode_uses_pattern_mean(
+    mock_extract, mock_load, at_sites, component_cls
+):
+    """With sample_spatial=False every member uses the mean CMIP pattern."""
+    spatial_shape = (2,) if at_sites else (2, 2)
+    mock_patterns(mock_load, mock_extract, spatial_shape)
+    raw = np.arange(12, dtype=float).reshape(2, 2, 3)
+    comp = component_cls(xr.DataArray(raw), sample_spatial=False)
+    state = make_state(at_sites)
+
+    result = comp.project(state, np.random.default_rng(42)).compute()
+
+    # Pattern mean is (1 + 2 + 3) / 3 = 2
+    expected = raw.reshape(4, 3)[state.member_indices] * 2
+    np.testing.assert_allclose(
+        result,
+        np.broadcast_to(expected[(...,) + (None,) * len(spatial_shape)], result.shape),
+    )
+
+
+@pytest.mark.parametrize("component_cls", [SterodynamicCMIP5, SterodynamicCMIP6])
+@pytest.mark.parametrize("at_sites", [False, True])
+@patch.object(_SterodynamicCMIP, "_load_slopes")
+@patch.object(SpatialComponent, "extract_spatial")
+def test_sampled_mode_draws_a_model_per_member(
+    mock_extract, mock_load, at_sites, component_cls
+):
+    """With sample_spatial=True each member uses the slope of the model it drew."""
+    spatial_shape = (2,) if at_sites else (2, 2)
+    values = mock_patterns(mock_load, mock_extract, spatial_shape)
+    raw = np.arange(12, dtype=float).reshape(2, 2, 3)
+    comp = component_cls(xr.DataArray(raw), sample_spatial=True)
+    state = make_state(at_sites)
+
+    separable = comp.project_separable(state, np.random.default_rng(7))
+    result = comp.project(state, np.random.default_rng(7)).compute()
+
+    assert separable.pattern_index.shape == (4,)
+    expected = (
+        raw.reshape(4, 3)[state.member_indices][(...,) + (None,) * len(spatial_shape)]
+        * values[separable.pattern_index][:, None]
+    )
+    np.testing.assert_allclose(result, expected)
+
+
+@pytest.mark.parametrize(
+    ("component_cls", "expected_dir"),
+    [
+        (SterodynamicCMIP5, "cmip5-patterns"),
+        (SterodynamicCMIP6, "cmip6-patterns"),
+    ],
+)
+def test_selects_correct_pattern_directory(component_cls, expected_dir):
+    dummy_global = xr.DataArray(np.zeros((3, 4, 100)))
+
+    stero = component_cls(global_projection=dummy_global)
+
+    assert stero.patterns_dir.name == expected_dir

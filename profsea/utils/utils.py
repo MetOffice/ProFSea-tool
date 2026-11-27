@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import zipfile
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import dask
 import dask.array as da
@@ -24,9 +24,6 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from scipy.spatial.distance import cdist
-
-if TYPE_CHECKING:
-    from profsea.components.core.state import LocalState, SpatialState
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -198,6 +195,41 @@ def sample_members_2D(
         return _eager_sample(array, percentiles)
 
 
+def _nanpercentile_axis0(array: np.ndarray, percentiles: np.ndarray) -> np.ndarray:
+    """Vectorised NaN-aware percentiles along axis 0 (linear interpolation).
+
+    Gives the same result as ``np.nanpercentile(array, percentiles, axis=0)``
+    but avoids its per-column Python loop when NaNs are present: NaNs sort to
+    the end, so each column's valid values are interpolated by their count.
+    """
+    # Integer inputs need floating point interpolation, as in NumPy.
+    if array.dtype.kind != "f":
+        array = array.astype(np.float64)
+
+    # Sort each column; NaNs go to the end, after the n_valid real values.
+    sorted_array = np.sort(array, axis=0)
+    n_valid = np.count_nonzero(~np.isnan(array), axis=0)
+    last_valid = np.maximum(n_valid - 1, 0)
+
+    # NumPy's default ("linear") method: the q-th percentile of n sorted values
+    # sits at position q / 100 * (n - 1), interpolating between the two values
+    # either side of it.
+    q = np.asarray(percentiles, dtype=np.float64).reshape(
+        (-1,) + (1,) * (array.ndim - 1)
+    )
+    position = q / 100.0 * last_valid
+    rank_below = np.floor(position).astype(np.intp)
+    rank_above = np.minimum(rank_below + 1, last_valid)
+    weight_above = (position - rank_below).astype(array.dtype)
+
+    result = (
+        np.take_along_axis(sorted_array, rank_below, axis=0) * (1 - weight_above)
+        + np.take_along_axis(sorted_array, rank_above, axis=0) * weight_above
+    )
+    # Columns with no valid values stay NaN
+    return np.where(n_valid > 0, result, np.nan).astype(array.dtype, copy=False)
+
+
 def members_percentiles(
     array: np.ndarray | da.Array,
     percentiles: list[float] | np.ndarray,
@@ -216,13 +248,126 @@ def members_percentiles(
     -------
     np.ndarray | da.Array
         Array of shape (len(percentiles), *array.shape[1:]). Dask inputs
-        remain lazy; exact percentiles require rechunking the member axis
-        into a single chunk. Locations with only NaNs remain NaN.
+        remain lazy and are processed block by block, with the member axis in
+        a single chunk. Locations with only NaNs remain NaN.
     """
+    percentiles = np.atleast_1d(np.asarray(percentiles, dtype=np.float64))
+    if percentiles.ndim != 1 or not np.all((percentiles >= 0) & (percentiles <= 100)):
+        raise ValueError("Percentiles must be a one-dimensional array in [0, 100].")
+
     if isinstance(array, da.Array):
-        members_last = da.moveaxis(array, 0, -1)
-        return da.nanpercentile(members_last, percentiles, axis=-1)
+        array = array.rechunk({0: -1})
+        return da.map_blocks(
+            _nanpercentile_axis0,
+            array,
+            percentiles,
+            chunks=((len(percentiles),), *array.chunks[1:]),
+            dtype=array.dtype if array.dtype.kind == "f" else np.float64,
+        )
     return np.nanpercentile(array, percentiles, axis=0)
+
+
+def stratified_member_indices(
+    n_climate: int,
+    n_process: int,
+    n_members: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Draw member indices into a flattened (climate, process) ensemble.
+
+    Every climate trajectory gets an equal share of the members (any remainder
+    goes to randomly chosen trajectories), so the forcing is weighted exactly
+    rather than by chance. Within a trajectory, process members are taken
+    without replacement, cycling through all of them before repeating. If
+    ``n_members`` equals the ensemble size, every member is used once.
+
+    Parameters
+    ----------
+    n_climate: int
+        Number of climate (forcing) trajectories.
+    n_process: int
+        Number of process members per trajectory.
+    n_members: int
+        Number of members to draw.
+    rng: np.random.Generator
+        Random number generator.
+
+    Returns
+    -------
+    np.ndarray
+        Integer indices of shape (n_members,) into the flattened ensemble,
+        grouped by climate trajectory (index = climate * n_process + process).
+    """
+    if n_members < 1:
+        raise ValueError(f"n_members must be at least 1, got {n_members}.")
+    if n_members == n_climate * n_process:
+        return np.arange(n_members)
+
+    per_trajectory = np.full(n_climate, n_members // n_climate)
+    extra = rng.choice(n_climate, size=n_members % n_climate, replace=False)
+    per_trajectory[extra] += 1
+
+    indices = []
+    for climate, count in enumerate(per_trajectory):
+        full_cycles, remainder = divmod(int(count), n_process)
+        process = np.concatenate(
+            [
+                np.tile(np.arange(n_process), full_cycles),
+                rng.choice(n_process, size=remainder, replace=False),
+            ]
+        )
+        indices.append(climate * n_process + process)
+    return np.concatenate(indices).astype(np.intp)
+
+
+def plan_chunks(
+    n_members: int,
+    n_years: int,
+    spatial_shape: tuple[int, ...],
+    itemsize: int,
+    target_bytes: int,
+) -> tuple[int, tuple[int, ...]]:
+    """Choose time and spatial chunk sizes for (members, time, *spatial) arrays.
+
+    The member axis is always a single chunk (percentiles need every member).
+    Chunks keep whole time series where the budget allows and otherwise split
+    time, then use roughly square spatial blocks, so one chunk is close to
+    ``target_bytes``.
+
+    Parameters
+    ----------
+    n_members: int
+        Number of ensemble members.
+    n_years: int
+        Length of the time axis.
+    spatial_shape: tuple[int, ...]
+        (n_sites,) or (n_lat, n_lon).
+    itemsize: int
+        Bytes per element of the output dtype.
+    target_bytes: int
+        Approximate size of one chunk in bytes.
+
+    Returns
+    -------
+    tuple[int, tuple[int, ...]]
+        Time chunk length and spatial chunk sizes.
+    """
+    # Every chunk holds all members, so the budget sets how many (time, place)
+    # values each member can have in one chunk.
+    elements_per_member = max(1, int(target_bytes) // (itemsize * n_members))
+
+    # Prefer whole time series; split time only if one series is over budget.
+    time_chunk = int(min(n_years, elements_per_member))
+    points = max(1, elements_per_member // time_chunk)  # places per chunk
+
+    if len(spatial_shape) == 1:  # sites
+        return time_chunk, (int(min(points, spatial_shape[0])),)
+
+    # Grid: a roughly square block of about `points` cells
+    n_lat, n_lon = spatial_shape
+    lat_chunk = int(min(n_lat, max(1, np.sqrt(points))))
+    lon_chunk = int(min(n_lon, max(1, points // lat_chunk)))
+    return time_chunk, (lat_chunk, lon_chunk)
 
 
 def interpolate(data: da.array, lats: int, lons: int) -> da.array:
@@ -313,10 +458,11 @@ def interpolate_to_grid(
         lat=target_lats, lon=target_lons_norm, method=grid_interpolation
     )
 
-    # Account for land mask (using regionmask library)
+    # Account for land mask (using regionmask library). drop=False keeps the
+    # land region even when no target cell is land (an open-ocean grid), which
+    # regionmask would otherwise drop, leaving an empty region axis.
     land = regionmask.defined_regions.natural_earth_v5_0_0.land_110
-    land_mask = land.mask_3D(data_interp)
-    is_land = land_mask.squeeze("region", drop=True)
+    is_land = land.mask_3D(data_interp, drop=False).any("region")
     data_interp = data_interp.where(~is_land)
 
     return data_interp
@@ -378,7 +524,6 @@ def fetch_zenodo_fingerprints(
             version_file.read_text().strip() if version_file.exists() else None
         )
         if version is None or local_version == version:
-            logger.info("[bold green]✓ ProFSea assets found locally![/bold green]")
             return
         found = f"v{local_version}" if local_version else "an unversioned copy"
         logger.info(f"Updating ProFSea assets from {found} to v{version}...")
@@ -449,6 +594,67 @@ def fetch_zenodo_fingerprints(
             zip_path.unlink()
 
 
+def _storage_chunks(
+    shape: tuple[int, ...],
+    chunks: tuple[tuple[int, ...], ...],
+    itemsize: int,
+    target_bytes: float,
+) -> tuple[int, ...]:
+    """Regular Zarr chunk sizes for an array computed in blocks of ``chunks``.
+
+    Zarr needs every chunk along an axis to be the same size, except for a
+    smaller final one. Dask's "auto" rechunking does not guarantee that: it
+    merges whole compute blocks and can fold a short final block into a larger
+    last chunk (e.g. (88, 92) for 180 latitudes computed in blocks of 44).
+
+    The leading axis (percentiles or members) stays whole. Every other axis
+    gets a single chunk size, a whole multiple of its compute block so blocks
+    are merged rather than split, growing from the last axis (longitude or
+    site) backwards while one chunk stays within ``target_bytes``.
+
+    Parameters
+    ----------
+    shape: tuple[int, ...]
+        Array shape, e.g. (percentile, time, lat, lon).
+    chunks: tuple[tuple[int, ...], ...]
+        The array's Dask chunks.
+    itemsize: int
+        Bytes per element.
+    target_bytes: float
+        Approximate size of one storage chunk in bytes.
+
+    Returns
+    -------
+    tuple[int, ...]
+        One chunk size per axis.
+    """
+    sizes = [shape[0], *(max(1, *axis_chunks) for axis_chunks in chunks[1:])]
+    budget = max(1, int(target_bytes // itemsize))  # elements per chunk
+    for axis in range(len(shape) - 1, 0, -1):
+        blocks_that_fit = max(1, budget // max(1, math.prod(sizes)))
+        sizes[axis] = min(shape[axis], sizes[axis] * blocks_that_fit)
+    return tuple(sizes)
+
+
+def _rechunk_for_storage(ds: xr.Dataset, target_mb: float) -> xr.Dataset:
+    """Merge small compute blocks into storage chunks of about ``target_mb``.
+
+    The spatial models compute in small blocks to bound memory, and Zarr
+    stores one file per chunk, so writing those blocks directly creates tens
+    of thousands of tiny files (about 86,000 for a 1-degree run). Each lazily
+    computed variable is rechunked as ``_storage_chunks`` describes; in-memory
+    variables are left alone.
+    """
+    target_bytes = target_mb * 1e6
+    for name, var in ds.data_vars.items():
+        if isinstance(var.data, da.Array) and var.ndim > 1:
+            sizes = _storage_chunks(
+                var.shape, var.data.chunks, var.dtype.itemsize, target_bytes
+            )
+            ds[name] = var.copy(data=var.data.rechunk(sizes))
+    return ds
+
+
 def save_components(
     self,
     components: dict[str, xr.DataArray],
@@ -458,6 +664,7 @@ def save_components(
     output_format: str = "zarr",
     output_dtype: str | None = None,
     description: str = "Spatial sea level rise projections",
+    zarr_chunk_mb: float = 32,
 ) -> None:
     """
     Stream sea level projections to disk in a single file/store.
@@ -479,6 +686,10 @@ def save_components(
         is dynamically inferred from each individual component.
     description: str
         Metadata description attached to the dataset attributes.
+    zarr_chunk_mb: float
+        Approximate size of each Zarr chunk (one file per chunk), in MB, for
+        lazily computed outputs. Default is 32, which stores a 1-degree
+        percentile output in about 12 files per variable.
 
     Returns
     -------
@@ -524,6 +735,9 @@ def save_components(
     # Dynamically adjust console message string based on the prefix
     log_prefix = "Global " if "global" in output_prefix.lower() else ""
 
+    if output_format == "zarr":
+        ds = _rechunk_for_storage(ds, zarr_chunk_mb)
+
     # Stream the computation and write to disk
     if output_format == "netcdf":
         out_path = os.path.join(output_dir, f"{file_name}.nc")
@@ -559,18 +773,6 @@ def save_components(
     logger.info(
         f"{log_prefix}Output shape for '{sample_name}' was {ds[sample_name].shape} ({dims_str})"
     )
-
-
-def reformat_global_projection(
-    raw_projection: np.ndarray | da.Array, state: SpatialState | LocalState
-) -> np.ndarray | da.Array:
-    """Flatten global ensemble axes to (members, time), without percentile sampling."""
-    if raw_projection.ndim == 3:
-        flat_projection = raw_projection.reshape(-1, raw_projection.shape[-1])
-    else:
-        flat_projection = raw_projection
-
-    return flat_projection
 
 
 def rebaseline_projection(
@@ -733,9 +935,16 @@ def _read_imbie3_obs(
         },
     )
 
-    # Convert the monthly observational record to annual means and use
-    # integer years as the time coordinate.
-    ds = ds.groupby("time.year").mean("time")
+    # Convert the monthly observational record to annual means, with integer
+    # years as the time coordinate. Each month is weighted by its number of
+    # days (leap years included); missing months are left out of both the
+    # weighted sum and the total weight.
+    days = ds["time"].dt.days_in_month.astype(np.float64)
+    valid_days = ds.notnull() * days
+    with xr.set_options(keep_attrs=True):
+        annual_sum = (ds * days).groupby("time.year").sum("time")
+        annual_days = valid_days.groupby("time.year").sum("time")
+        ds = annual_sum / annual_days.where(annual_days > 0)
     ds = ds.rename({"year": "time"})
 
     # Reference cumulative SLE to its mean over the requested baseline

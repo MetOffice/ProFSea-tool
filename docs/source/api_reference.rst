@@ -19,6 +19,12 @@ Core Models
 .. automodule:: profsea.components.core.state
    :members: ClimateState, SpatialState
 
+.. automodule:: profsea.components.core.base
+   :members: SeparableProjection
+
+.. automodule:: profsea.components.core.regional
+   :members: RegionalEnsemble
+
 .. automodule:: profsea.components.core.time_projection
    :members: time_projection
 

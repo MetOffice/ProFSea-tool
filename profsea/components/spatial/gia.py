@@ -6,7 +6,7 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 
-from profsea.components.core.base import SpatialComponent
+from profsea.components.core.base import SeparableProjection, SpatialComponent
 from profsea.components.core.state import SpatialState
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
@@ -14,10 +14,12 @@ GIA_DIR = PROFSEA_DIR / "profsea-assets" / "gia"
 
 
 class GIA(SpatialComponent):
-    """
-    Handles Glacial Isostatic Adjustment.
-    GIA accumulates linearly over time and has no global warming driver input.
-    Supports loading single files, lists of files, or directories of files.
+    """Relative sea-level change from glacial isostatic adjustment (GIA).
+
+    GIA is the ongoing response of the solid Earth to past ice-sheet loading.
+    Each GIA model gives a constant rate of local sea-level change (mm/yr), so
+    the change relative to the baseline grows linearly with time. It does not
+    depend on the warming scenario, so this component has no global projection.
     """
 
     def __init__(
@@ -26,11 +28,16 @@ class GIA(SpatialComponent):
         sample_spatial: bool = True,
     ) -> None:
         """
+        Parameters
+        ----------
         gia_paths: str, Path, list of str/Path, or None
-            Path(s) to a directory containing GIA files or direct paths to specific GIA NetCDF files.
-            Defaults to the main GIA_DIR if None.
+            GIA rate files (NetCDF, mm/yr), or directories containing them.
+            A file may hold several models along a "model" dimension. Defaults
+            to the GIA estimates in the downloaded assets.
         sample_spatial: bool, optional
-            Whether to sample spatial patterns probabilistically. Default is True.
+            If True, each member uses one GIA model, drawn at random with equal
+            probability. If False, every member uses the mean of the models.
+            Default is True.
         """
 
         self.fetch_assets()
@@ -50,8 +57,10 @@ class GIA(SpatialComponent):
                 raise FileNotFoundError(f"Provided GIA path does not exist: {p}")
 
             if p.is_dir():
-                # Extract all .nc files if a directory is passed
-                self.gia_files.extend(list(p.glob("*.nc")))
+                # Extract all .nc files if a directory is passed, sorted by
+                # name: members draw a model by position, so the order must not
+                # depend on the file system for a seed to be reproducible
+                self.gia_files.extend(sorted(p.glob("*.nc")))
             elif p.is_file() and p.suffix == ".nc":
                 # Keep direct NetCDF files
                 self.gia_files.append(p)
@@ -60,12 +69,6 @@ class GIA(SpatialComponent):
             raise FileNotFoundError(
                 f"No GIA NetCDF files found in the provided paths: {raw_paths}"
             )
-
-        self._global_projection = da.zeros((1, 1))
-
-    @property
-    def global_projection(self):
-        return self._global_projection
 
     def _load_and_interpolate_rates(self, state: SpatialState) -> da.Array:
         """
@@ -86,8 +89,6 @@ class GIA(SpatialComponent):
         for path in self.gia_files:
             gia_da = xr.open_dataarray(path, chunks={"lat": -1, "lon": -1})
             interp_da = self.extract_spatial(gia_da, state)
-            if "lat" in interp_da.dims and "lon" in interp_da.dims:
-                interp_da = interp_da.chunk({"lat": 30, "lon": 30})
             data = interp_da.data
 
             # Determine expected spatial dims based on state
@@ -102,60 +103,42 @@ class GIA(SpatialComponent):
         # Concatenate along the model axis (axis 0)
         return da.concatenate(grids, axis=0)
 
-    def project(self, state: SpatialState, rng: np.random.Generator) -> da.Array:
+    def project_separable(
+        self, state: SpatialState, rng: np.random.Generator
+    ) -> SeparableProjection:
         """
-        Project the GIA component by multiplying the accumulation time vector with the spatial rates.
+        Accumulated GIA: elapsed time since the baseline midpoint times the rates.
 
         Parameters
         ----------
-        state: SpatialState
-            The spatial state containing the target grid information.
+        state: SpatialState | LocalState
+            Target grid or sites, baseline period and number of members.
         rng: np.random.Generator
-            Random number generator for sampling GIA models if sample_spatial is True.
+            Random number generator for drawing a GIA model per member if
+            sample_spatial is True.
 
         Returns
         -------
-        da.Array
-            A 4D array of shape (members, years, lat, lon) containing the spatial projections for each member and year, in state.dtype.
+        SeparableProjection
+            Shared time series in years (scaled from mm to m) and GIA rates
+            (n_models, *spatial).
         """
-        gia_rates = self._load_and_interpolate_rates(state).astype(state.dtype)
-        n_patterns = gia_rates.shape[0]
+        gia_rates = self._load_and_interpolate_rates(state)  # mm/yr
 
-        # Dynamically capture spatial shape (site,) or (lat, lon)
-        spatial_shape = gia_rates.shape[1:]
+        # Sea-level change relative to the baseline = rate x years elapsed
+        # since the middle of the baseline period (2005 for 1995-2014).
+        baseline_start, baseline_end = state.baseline_yrs
+        baseline_middle = (baseline_start + baseline_end + 1) / 2
+        years = state.endofhistory + np.arange(state.n_years)
+        mm_to_m = 1e-3
+        years_since_baseline = (years - baseline_middle) * mm_to_m
 
-        # Calculate the accumulation time vector (mm/yr to m/yr)
-        midyr = (
-            state.baseline_yrs[1] - state.baseline_yrs[0] + 1
-        ) * 0.5 + state.baseline_yrs[0]
-        Tdelta = state.endofhistory - midyr
-        unit_series = ((np.arange(state.n_years) + Tdelta) * 0.001).astype(state.dtype)
-
-        # Broadcast 1D time series to match expected (members, years) signature
-        temporal_array = da.broadcast_to(
-            unit_series, (state.num_localMC_members, state.n_years)
+        patterns, pattern_index = self.choose_patterns(
+            gia_rates, state, rng, self.sample_spatial
         )
-
-        # Handle sampling if required
-        if n_patterns == 1:
-            selected_gia = da.broadcast_to(
-                gia_rates[0],
-                (state.num_localMC_members, *spatial_shape),
-            )
-        else:
-            if self.sample_spatial:
-                rgiai = (state.random_fraction * n_patterns).astype(int)
-                selected_gia = gia_rates[rgiai, ...]
-            else:
-                mean_gia = da.nanmean(gia_rates, axis=0)
-                selected_gia = da.broadcast_to(
-                    mean_gia,
-                    (state.num_localMC_members, *spatial_shape),
-                )
-        time_chunk = max(1, 100_000_000 // (state.num_localMC_members * 30 * 30 * 8))
-        temporal_array = temporal_array.rechunk({0: -1, 1: time_chunk})
-        selected_gia = selected_gia.rechunk({0: -1})
-
-        projected = self.broadcast_spatiotemporal(temporal_array, selected_gia)
-
-        return projected
+        # Every member shares this time series; members differ only by GIA model
+        return SeparableProjection(
+            temporal=years_since_baseline,
+            patterns=patterns,
+            pattern_index=pattern_index,
+        )

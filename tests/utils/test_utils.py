@@ -19,12 +19,15 @@ from profsea.utils import (
     read_antarctic_obs,
     read_thermal_expansion_obs,
     rebaseline_projection,
-    reformat_global_projection,
     sample_members_2D,
     save_components,
     validate_projection_years,
 )
-from profsea.utils.utils import _load_zheng_component, _read_imbie3_obs
+from profsea.utils.utils import (
+    _load_zheng_component,
+    _read_imbie3_obs,
+    _rechunk_for_storage,
+)
 
 
 class DummyClimateState:
@@ -121,6 +124,40 @@ def test_interpolate_to_grid_longitude_wrapping():
     np.testing.assert_array_almost_equal(result.lon.values, expected_lons)
 
 
+def _no_land_regionmask() -> MagicMock:
+    """Stand-in for regionmask (its shapes are downloaded on first use) for a
+    grid with no land. Like the real ``mask_3D``, it drops the land region
+    unless ``drop=False``."""
+
+    def mask_3D(obj, drop=True):
+        mask = xr.DataArray(
+            np.zeros((1, obj.lat.size, obj.lon.size), dtype=bool),
+            dims=["region", "lat", "lon"],
+            coords={"region": [0], "lat": obj.lat.values, "lon": obj.lon.values},
+        )
+        return mask.isel(region=slice(0, 0)) if drop else mask
+
+    fake = MagicMock()
+    fake.defined_regions.natural_earth_v5_0_0.land_110.mask_3D.side_effect = mask_3D
+    return fake
+
+
+def test_interpolate_to_grid_open_ocean_grid():
+    """A target grid without land cells is regridded rather than rejected."""
+    data = xr.DataArray(
+        np.random.default_rng(42).random((3, 4)),
+        coords=[("lat", [-60, -55, -50]), ("lon", [0, 90, 180, 270])],
+    )
+
+    with patch.dict("sys.modules", {"regionmask": _no_land_regionmask()}):
+        result = interpolate_to_grid(
+            data, np.array([-58.0, -52.0]), np.array([10.0, 100.0, -100.0])
+        )
+
+    assert result.shape == (2, 3)
+    assert not result.isnull().any()
+
+
 # --- sample_members_2D ---
 
 
@@ -171,6 +208,7 @@ def test_members_percentiles_first_axis(shape, lazy):
 
 @pytest.mark.parametrize("lazy", [False, True])
 def test_members_percentiles_all_nan_location(lazy):
+    """Columns with no valid members stay NaN."""
     array = np.array([[0.0, np.nan], [10.0, np.nan], [20.0, np.nan]])
     if lazy:
         array = da.from_array(array, chunks=(1, 1))
@@ -185,51 +223,21 @@ def test_members_percentiles_all_nan_location(lazy):
     np.testing.assert_allclose(values, [[5.0, np.nan], [15.0, np.nan]], equal_nan=True)
 
 
-# --- reformat_global_projection ---
-
-
-@pytest.mark.parametrize("percentiles", [None, [], [5, 95]])
-@pytest.mark.parametrize("lazy", [False, True])
-@patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_3d_flattens(mock_sample, lazy, percentiles):
-    """Flatten global ensemble axes without selecting percentiles."""
-    state = DummyClimateState(percentiles=percentiles)
-    raw_arr = np.arange(24).reshape(2, 3, 4)
-    if lazy:
-        raw_arr = da.asarray(raw_arr)
-    result = reformat_global_projection(raw_arr, state)
-    assert result.shape == (6, 4)
-    assert isinstance(result, da.Array if lazy else np.ndarray)
-    np.testing.assert_array_equal(np.asarray(result), np.arange(24).reshape(6, 4))
-    mock_sample.assert_not_called()
-
-
-@patch("profsea.utils.utils.sample_members_2D")
-def test_reformat_global_projection_2d_preserves_members(mock_sample):
-    """Already-flat arrays retain all members until the spatial stage."""
-    state = DummyClimateState(percentiles=[5, 95])
-    raw_arr = np.ones((6, 4))
-
-    result = reformat_global_projection(raw_arr, state)
-    assert result.shape == (6, 4)
-    assert result is raw_arr
-    mock_sample.assert_not_called()
-
-
 # --- fetch_zenodo_fingerprints ---
 
 
-def test_fetch_zenodo_early_return(tmp_path, capsys):
-    """Should return immediately if the target directory exists and is populated."""
+@patch("requests.get")
+def test_fetch_zenodo_early_return(mock_get, tmp_path, capsys):
+    """Should return quietly, without downloading, if the assets are present."""
     target_dir = tmp_path / "profsea-assets"
     target_dir.mkdir()
     (target_dir / "dummy_file.nc").touch()
 
     fetch_zenodo_fingerprints("http://fake.url", tmp_path, "profsea-assets")
 
+    mock_get.assert_not_called()
     # Rich logger writes to stdout, so we use capsys instead of caplog
-    captured = capsys.readouterr()
-    assert "ProFSea assets found locally!" in captured.out
+    assert capsys.readouterr().out == ""
 
 
 @patch("requests.get")
@@ -279,7 +287,7 @@ def test_fetch_zenodo_matching_version_early_return(mock_get, tmp_path, capsys):
     )
 
     mock_get.assert_not_called()
-    assert "ProFSea assets found locally!" in capsys.readouterr().out
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize("old_marker", [None, "1.0"])
@@ -377,6 +385,94 @@ def test_save_components_zarr(tmp_path):
 
     ds = xr.open_zarr(expected_store)
     assert "comp1" in ds
+
+
+def test_save_components_zarr_merges_small_blocks(tmp_path):
+    """Small compute blocks are written as larger Zarr chunks (fewer files),
+    keeping the leading axis whole and the values unchanged."""
+    values = np.arange(5 * 4 * 6 * 8, dtype=np.float32).reshape(5, 4, 6, 8)
+    lazy = da.from_array(values, chunks=(5, 4, 1, 1))  # 48 tiny blocks
+    components = {
+        "comp1": xr.DataArray(lazy, dims=["percentile", "time", "lat", "lon"])
+    }
+
+    save_components(
+        DummyInstance(),
+        components,
+        scenario_name="test",
+        output_dir=str(tmp_path),
+        output_format="zarr",
+        zarr_chunk_mb=0.002,  # about 2 kB: several blocks per chunk, not all
+    )
+
+    stored = xr.open_zarr(tmp_path / "test_projection.zarr")["comp1"]
+    chunks = stored.encoding["chunks"]
+    assert chunks[0] == 5  # leading axis kept whole
+    assert 1 < np.prod(chunks) / (5 * 4) < 48  # merged, but within the budget
+    np.testing.assert_array_equal(stored.values, values)
+
+
+def _is_zarr_compatible(chunks: tuple[tuple[int, ...], ...]) -> bool:
+    """Zarr needs equal chunks along each axis, except a smaller final one."""
+    return all(
+        len(set(axis[:-1])) <= 1 and axis[-1] <= axis[0] for axis in chunks if axis
+    )
+
+
+@pytest.mark.parametrize(
+    "leading, compute_block",
+    [
+        (3, 44),  # reported failure: Dask "auto" gave lat (88, 92)
+        (3, 67),  # Dask "auto" gave lon (67, 67, 67, 67, 92)
+        (5, 11),
+        (1000, 3),
+    ],
+)
+def test_rechunk_for_storage_gives_regular_chunks(leading, compute_block):
+    """Storage chunks are regular whole multiples of the compute blocks.
+
+    Lazy only: nothing is computed, so a full 1-degree shape stays cheap.
+    """
+    shape = (leading, 295, 180, 360)
+    lazy = da.zeros(
+        shape, dtype=np.float32, chunks=(leading, 295, compute_block, compute_block)
+    )
+    ds = xr.Dataset({"x": (("percentile", "time", "lat", "lon"), lazy)})
+
+    stored = _rechunk_for_storage(ds, target_mb=32)["x"].data
+
+    assert stored.shape == shape
+    assert _is_zarr_compatible(stored.chunks)
+    assert stored.chunks[0] == (leading,)  # leading axis kept whole
+    for axis in (2, 3):  # merges compute blocks without splitting them
+        size = stored.chunks[axis][0]
+        assert size == shape[axis] or size % compute_block == 0
+    chunk_bytes = np.prod([axis[0] for axis in stored.chunks]) * 4
+    single_block = leading * 295 * compute_block**2 * 4
+    assert chunk_bytes <= max(32e6, single_block)
+
+
+def test_save_components_zarr_regularises_irregular_blocks(tmp_path):
+    """Components computed in irregular blocks are still written to Zarr."""
+    values = np.arange(3 * 4 * 7 * 5, dtype=np.float32).reshape(3, 4, 7, 5)
+    lazy = da.from_array(values, chunks=((3,), (4,), (2, 3, 2), (1, 4)))
+    components = {
+        "comp1": xr.DataArray(lazy, dims=["percentile", "time", "lat", "lon"])
+    }
+
+    save_components(
+        DummyInstance(),
+        components,
+        scenario_name="test",
+        output_dir=str(tmp_path),
+        output_format="zarr",
+        zarr_chunk_mb=0.0002,  # 200 bytes: several chunks along lat
+    )
+
+    stored = xr.open_zarr(tmp_path / "test_projection.zarr")["comp1"]
+    assert stored.shape == values.shape
+    assert stored.encoding["chunks"][2] < values.shape[2]
+    np.testing.assert_array_equal(stored.values, values)
 
 
 def test_validate_projection_years():
@@ -584,6 +680,35 @@ def test_read_imbie3_obs_explicit_baseline_overrides_state(
     assert sle == pytest.approx(-0.003)
 
 
+def test_read_imbie3_obs_weights_months_by_days(tmp_path):
+    """Annual means weight each month by its length (leap years included) and
+    leave out missing months; a year with no data stays NaN."""
+    dates = pd.date_range("2003-01-01", "2005-12-01", freq="MS")
+    rate = np.where(dates.month == 2, 1.0, 0.0)  # mm/yr, February only
+    rate[(dates.year == 2004) & (dates.month == 12)] = np.nan
+    rate[dates.year == 2005] = np.nan
+    columns = [
+        "Cumulative mass balance anomaly (mm)",
+        "Cumulative mass balance anomaly uncertainty (mm)",
+        "Mass balance (mm/yr)",
+        "Mass balance uncertainty (mm/yr)",
+    ]
+    fpath = tmp_path / "imbie3_monthly.csv"
+    pd.DataFrame(
+        {"Date": dates.strftime("%Y-%m-%d"), **{name: rate for name in columns}}
+    ).to_csv(fpath, index=False)
+
+    ds = _read_imbie3_obs(fpath, "total", baseline_start=2003, baseline_end=2004)
+
+    assert list(ds["time"].values) == [2003, 2004, 2005]
+    # Sign flips: IMBIE3 mass balance is negative for sea-level rise
+    assert ds["rate"].sel(time=2003).item() == pytest.approx(-28 / 365)
+    assert ds["rate"].sel(time=2004).item() == pytest.approx(-29 / (366 - 31))
+    assert np.isnan(ds["rate"].sel(time=2005).item())
+    assert ds["rate"].attrs["units"] == "mm yr-1"
+    assert ds.attrs["component"] == "total"
+
+
 def _write_mock_zheng_dataset(tmp_path):
     """Write a small mock NetCDF dataset."""
 
@@ -777,3 +902,60 @@ def test_utils_importable_first():
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_integer_interpolation(lazy):
+    """Integer inputs are interpolated in floating point, as NumPy does."""
+    array = np.array([[0, 10], [3, 15]], dtype=np.int32)
+    source = da.from_array(array, chunks=1) if lazy else array
+    result = members_percentiles(source, [25, 50, 75])
+    assert result.shape == (3, 2)
+    np.testing.assert_allclose(
+        result.compute() if lazy else result,
+        np.nanpercentile(array, [25, 50, 75], axis=0),
+    )
+
+
+@pytest.mark.parametrize("q", [[-1], [101], [np.nan], [[50]]])
+@pytest.mark.parametrize("lazy", [False, True])
+def test_members_percentiles_rejects_invalid_requests(q, lazy):
+    """Percentiles outside [0, 100], NaN or nested lists are rejected."""
+    array = np.arange(6, dtype=float).reshape(3, 2)
+    if lazy:
+        array = da.from_array(array, chunks=1)
+    with pytest.raises(ValueError, match="Percentiles"):
+        members_percentiles(array, q)
+
+
+@pytest.mark.parametrize("n_members", [2, 6, 17])
+def test_stratified_members_balance_and_cover_ensemble(n_members):
+    """Each trajectory gets an equal share, and process members cycle before repeating."""
+    from profsea.utils import stratified_member_indices
+
+    indices = stratified_member_indices(2, 3, n_members, np.random.default_rng(42))
+    assert indices.shape == (n_members,)
+    counts = np.bincount(indices // 3, minlength=2)
+    assert counts.max() - counts.min() <= 1
+    for climate, count in enumerate(counts):
+        process = indices[indices // 3 == climate] % 3
+        frequencies = np.bincount(process, minlength=3)
+        assert frequencies.min() == count // 3
+        assert frequencies.max() <= count // 3 + 1
+    np.testing.assert_array_equal(
+        indices,
+        stratified_member_indices(2, 3, n_members, np.random.default_rng(42)),
+    )
+
+
+@pytest.mark.parametrize("spatial_shape", [(15,), (18, 36)])
+@pytest.mark.parametrize("target_bytes", [32, 4096, 1000000])
+def test_plan_chunks_respects_memory_budget(spatial_shape, target_bytes):
+    """Chunks stay within the grid and, where possible, within the byte budget."""
+    from profsea.utils import plan_chunks
+
+    time_chunk, spatial_chunks = plan_chunks(7, 20, spatial_shape, 4, target_bytes)
+    assert 1 <= time_chunk <= 20
+    assert len(spatial_chunks) == len(spatial_shape)
+    assert all(1 <= chunk <= size for chunk, size in zip(spatial_chunks, spatial_shape))
+    assert 7 * time_chunk * np.prod(spatial_chunks) * 4 <= target_bytes

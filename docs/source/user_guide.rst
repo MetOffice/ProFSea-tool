@@ -54,18 +54,34 @@ Detailed examples on how to use ProFSea can be found in the tutorial notebooks, 
 
 
 Spatial and local ensembles
---------------------------
+---------------------------
 
-``Spatial`` and ``Local`` use ``num_localMC_members`` (default 100000) to
-control a separate Monte Carlo ensemble. Global climate and process ensemble
-axes are flattened and sampled using a shared random fraction across components.
-Spatial components return all local Monte Carlo members before any output
-percentile selection.
+``Spatial`` and ``Local`` draw ``num_spatial_members`` (default 1000) members
+from the full global ensemble, so run ``Global`` with ``output_percentiles=None``.
+Every climate trajectory gets an equal share of the members, and every component
+uses the same members, so ``total_rsl`` (added when ``compute_total=True``, the
+default) is summed member by member. Each member also draws its spatial
+patterns (GRD fingerprint, CMIP sterodynamic pattern and GIA model) at random,
+independently of its global member, and keeps the same GRD model for every
+fingerprint component. This follows the local-projection method of Palmer et
+al. (2020, *Earth's Future*, doi:10.1029/2019EF001413). Set
+``sample_spatial=False`` on a component to use the mean of its patterns
+instead.
 
-With ``output_percentiles=None`` or ``[]``, gridded output has dimensions
-``(process_member, time, lat, lon)`` and site output has dimensions
-``(process_member, time, site)``. Here ``process_member`` labels the local Monte
-Carlo ensemble, not the original global process axis.
+Percentiles (``output_percentiles``, default ``[5, 17, 50, 83, 95]``) are taken
+over the members at every grid point or site and year. With
+``output_percentiles=None`` or ``[]`` the outputs keep every member, with
+dimensions ``(member, time, lat, lon)`` or ``(member, time, site)``; the
+``climate_member`` and ``process_member`` coordinates record which global member
+each one came from. Full-member output is large on a grid (about 76 GB per
+variable for 1000 members on the 1° grid), so prefer percentiles, a coarser grid
+or ``Local`` for site time series. ``chunk_size_mb`` (default 64) sets the
+approximate memory of one block of the calculation.
+
+At a coastal site, a model whose four surrounding grid cells are all land has
+no value there, and members that drew it are left out of that site's
+percentiles. Check how many members remain (``output_percentiles=None``) for
+sites close to the coast.
 
 Tutorial Notebook
 -----------------
