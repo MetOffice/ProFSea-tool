@@ -10,28 +10,31 @@ import xarray as xr
 from profsea.components.core.base import SeparableProjection, SpatialComponent
 from profsea.components.core.state import SpatialState
 
-logging.basicConfig(level=logging.WARNING)
+logger = logging.getLogger(__name__)
 
 PROFSEA_DIR = Path(__file__).resolve().parents[2]
 PATTERNS_DIR = PROFSEA_DIR / "profsea-assets"
 
 
-class SterodynamicCMIP6(SpatialComponent):
-    """Local sterodynamic sea-level change from global thermal expansion.
+class _SterodynamicCMIP(SpatialComponent):
+    """Shared implementation for CMIP sterodynamic components.
 
     Sterodynamic change is local sea-level change from ocean density and
     circulation. For each CMIP model, a regression slope relates the local
     change (zos + zostoga) to global thermal expansion (zostoga); multiplying
     a member's global thermal expansion by a model's slope gives its local
-    sterodynamic change. Despite the name, ``cmip_era`` selects CMIP6 (default)
-    or CMIP5 patterns.
+    sterodynamic change.
+
+    Subclasses specify the CMIP era and corresponding patterns [either CMIP6, 22
+    models or CMIP5, 21 models (as used by Palmer et al., 2020)].
     """
+
+    cmip_era: str
 
     def __init__(
         self,
         global_projection: xr.DataArray,
-        patterns_dir: str = None,
-        cmip_era: str = "CMIP6",
+        patterns_dir: str | Path | None = None,
         sample_spatial: bool = True,
     ) -> None:
         """
@@ -43,9 +46,6 @@ class SterodynamicCMIP6(SpatialComponent):
         patterns_dir: str, optional
             Directory of regression patterns, one sub-directory per model.
             Defaults to the "{cmip_era}-patterns" folder of the assets.
-        cmip_era: str, optional
-            "CMIP6" (default, 22 models) or "CMIP5" (21 models, as used by
-            Palmer et al., 2020).
         sample_spatial: bool, optional
             If True, each member uses one CMIP model's slope, drawn at random
             with equal probability. If False, every member uses the mean of
@@ -55,17 +55,17 @@ class SterodynamicCMIP6(SpatialComponent):
 
         self._set_global_projection(global_projection)
         self.sample_spatial = sample_spatial
-        self.cmip_era = cmip_era.lower()
 
         if patterns_dir is None:
-            cmip_str = self.cmip_era + "-patterns"
-            self.patterns_dir = PATTERNS_DIR / cmip_str
+            self.patterns_dir = PATTERNS_DIR / f"{self.cmip_era.lower()}-patterns"
         else:
             self.patterns_dir = Path(patterns_dir)
 
-    def _load_CMIP6_slopes(self) -> tuple[xr.DataArray, xr.DataArray]:
+    def _load_slopes(
+        self,
+    ) -> tuple[xr.DataArray, xr.DataArray | None]:
         """
-        Load in the CMIP6 slope coefficients.
+        Lazily load sterodynamic slopes and optional land masks.
 
         Parameters
         ----------
@@ -75,14 +75,14 @@ class SterodynamicCMIP6(SpatialComponent):
         -------
         xr.DataArray
             A dask array of shape (n_models, n_lats, n_lons) containing the sterodynamic
-            fingerprint patterns (i.e., regression coefficients) for each CMIP6 model.
-        xr.DataArray
+            fingerprint patterns (i.e., regression coefficients) for each CMIP model.
+        xr.DataArray or None
             A dask array of shape (n_models, n_lats, n_lons) containing the land mask for
-            each CMIP6 model, if present.
+            each CMIP model, if present.
         """
         slope_files = sorted(
-            Path(self.patterns_dir).glob("*/zos_regression_*85_*.nc"),
-            key=lambda p: p.name,
+            self.patterns_dir.glob("*/zos_regression_*85_*.nc"),
+            key=lambda path: path.name,
         )
 
         if not slope_files:
@@ -91,40 +91,47 @@ class SterodynamicCMIP6(SpatialComponent):
             )
 
         # Lazily load all files keeping metadata intact
-        datasets = [
-            xr.open_dataset(f, chunks={"lat": -1, "lon": -1})[
-                "zos_zostoga_regression_slope"
-            ]
-            for f in slope_files
+        slopes = [
+            xr.open_dataset(
+                path,
+                chunks={"lat": -1, "lon": -1},
+            )["zos_zostoga_regression_slope"]
+            for path in slope_files
         ]
 
         # Concatenate along a new dimension (representing the ensemble/models)
-        slopes_stack = xr.concat(datasets, dim="model").chunk({"model": -1})
+        slopes_stack = xr.concat(
+            slopes,
+            dim="model",
+        ).chunk({"model": -1})
 
         # Read land mask if present
         mask_files = sorted(
-            Path(self.patterns_dir).glob("*/zos_mask_*85_*.nc"), key=lambda p: p.name
+            self.patterns_dir.glob("*/zos_mask_*85_*.nc"),
+            key=lambda path: path.name,
         )
 
         if mask_files:
             if len(slope_files) == len(mask_files):
-                self.land_mask_present = True
-
-                datasets_mask = [
-                    xr.open_dataset(f, chunks={"lat": -1, "lon": -1})["zos_mask"]
-                    for f in mask_files
+                masks = [
+                    xr.open_dataset(
+                        path,
+                        chunks={"lat": -1, "lon": -1},
+                    )["zos_mask"]
+                    for path in mask_files
                 ]
-                mask_stack = xr.concat(datasets_mask, dim="model").chunk({"model": -1})
+                mask_stack = xr.concat(
+                    masks,
+                    dim="model",
+                ).chunk({"model": -1})
                 # mask_stack = mask_stack.sum(dim='model', skipna=True)
             else:
-                logging.warning(
+                logger.warning(
                     "There is a mismatch between number of slope files and mask files. "
                     "Ignoring mask files."
                 )
-                self.land_mask_present = False
                 mask_stack = None
         else:
-            self.land_mask_present = False
             mask_stack = None
 
         return slopes_stack, mask_stack
@@ -145,9 +152,9 @@ class SterodynamicCMIP6(SpatialComponent):
             thermal expansion), shape (n_models, *spatial). Land points are
             NaN where land masks are provided.
         """
-        coeffs_da, mask_da = self._load_CMIP6_slopes()
+        coeffs_da, mask_da = self._load_slopes()
 
-        if self.land_mask_present:  # apply land mask
+        if mask_da is not None:
             coeffs_da = coeffs_da.where(mask_da == 0.0)
 
         return self.extract_spatial(coeffs_da, state).data
@@ -181,24 +188,13 @@ class SterodynamicCMIP6(SpatialComponent):
         )
 
 
-class SterodynamicCMIP5(SpatialComponent):
-    """
-    Placeholder for a sterodynamic SLR component based on CMIP5 patterns.
+class SterodynamicCMIP6(_SterodynamicCMIP):
+    """Sterodynamic sea-level component based on CMIP6 patterns."""
 
-    Not implemented yet: constructing it raises ``NotImplementedError`` so that
-    it cannot silently contribute zeros to a projection. Use
-    :class:`SterodynamicCMIP6` instead.
-    """
+    cmip_era = "CMIP6"
 
-    def __init__(self, *args, **kwargs) -> None:
-        raise NotImplementedError(
-            "SterodynamicCMIP5 is a placeholder and is not implemented yet. "
-            "Use SterodynamicCMIP6 instead."
-        )
 
-    @property
-    def global_projection(self):
-        raise NotImplementedError("SterodynamicCMIP5 is not implemented yet.")
+class SterodynamicCMIP5(_SterodynamicCMIP):
+    """Sterodynamic sea-level component based on CMIP5 patterns."""
 
-    def project(self, state, rng) -> da.Array:
-        raise NotImplementedError("SterodynamicCMIP5 is not implemented yet.")
+    cmip_era = "CMIP5"
